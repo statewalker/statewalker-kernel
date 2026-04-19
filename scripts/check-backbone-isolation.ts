@@ -35,10 +35,7 @@ async function checkPackage(pkgDir: string): Promise<Violation[]> {
   for (const scope of ["dependencies", "peerDependencies"] as const) {
     const deps = pj[scope] ?? {};
     for (const [dep, version] of Object.entries(deps)) {
-      if (
-        dep.startsWith("@statewalker/") &&
-        !dep.startsWith("@statewalker/backbone-")
-      ) {
+      if (dep.startsWith("@statewalker/") && !dep.startsWith("@statewalker/backbone-")) {
         violations.push({ pkg: pj.name ?? pkgDir, dep, version, scope });
       }
     }
@@ -63,24 +60,16 @@ async function main() {
   }
 
   if (violations.length === 0) {
-    console.log(
-      `check-backbone-isolation: OK (${backboneDirs.length} backbone-* packages clean)`,
-    );
+    console.log(`check-backbone-isolation: OK (${backboneDirs.length} backbone-* packages clean)`);
     process.exit(0);
   }
 
   console.error("check-backbone-isolation: VIOLATIONS");
   for (const v of violations) {
-    console.error(
-      `  ${v.pkg} [${v.scope}]: depends on ${v.dep}@${v.version}`,
-    );
+    console.error(`  ${v.pkg} [${v.scope}]: depends on ${v.dep}@${v.version}`);
   }
-  console.error(
-    "\nBackbone packages MUST NOT depend on @statewalker/* at runtime.",
-  );
-  console.error(
-    "Vendor the narrow slice into backbone-common/src/_vendor/ and rewire.",
-  );
+  console.error("\nBackbone packages MUST NOT depend on @statewalker/* at runtime.");
+  console.error("Vendor the narrow slice into backbone-common/src/_vendor/ and rewire.");
   process.exit(1);
 }
 
