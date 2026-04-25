@@ -4,8 +4,8 @@
 // @statewalker/* package OTHER than a sibling @statewalker/backbone-*.
 // devDependencies are allowed.
 //
-// Non-backbone siblings (shared-*, app-shell-core) are forbidden: vendor the
-// narrow slice you need into backbone-common/src/_vendor/ and rewire.
+// Non-backbone siblings (shared-*) are forbidden: vendor the narrow slice you
+// need into backbone-common/src/_vendor/ and rewire.
 //
 // Usage: `tsx scripts/check-backbone-isolation.ts`
 // Exit 0 on clean; exit 1 on any violation (with a human-readable report).
