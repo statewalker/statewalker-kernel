@@ -43,7 +43,7 @@ mk_logic_pkg() {
     "@statewalker/shared-intents": "catalog:",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
-    "@statewalker/workspace-api": "workspace:*"
+    "@statewalker/workspace": "workspace:*"
   },
   "devDependencies": {
     "typescript": "catalog:",
@@ -152,7 +152,7 @@ mk_react_pkg() {
     "@statewalker/shared-intents": "catalog:",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
-    "@statewalker/workspace-api": "workspace:*"
+    "@statewalker/workspace": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=18",
@@ -252,7 +252,6 @@ mk_react_pkg shadcn-react      "Substrate React fragment: shadcn primitives (But
 mk_logic_pkg dock              "Dock logic fragment: dock:* slot keys, dock state, dock:show-panel/close-panel/focus-panel intents."
 mk_react_pkg dock-react        "Dock renderer fragment: dockview-react host, MainShell, ShellHeader, JsonPanel."
 mk_logic_pkg files             "Files logic fragment: file-op intents, files:* slots, MimeRenderer type, pickMimeRenderer selector, FilesManager."
-mk_react_pkg files-react       "Files renderer fragment: visual surfaces shared between chat-mini.app and explorer.app."
 mk_logic_pkg file-explorer     "File-explorer logic fragment: navigation, search controller, tree-state, browser orchestration intents."
 mk_react_pkg file-explorer-react "File-explorer renderer fragment: tree, list, drag-and-drop, context menu, navigation breadcrumbs, search panel."
 mk_logic_pkg settings          "Settings logic fragment: settings adapter, settings:* slots and intents."
@@ -261,7 +260,9 @@ mk_logic_pkg workspace-bridge  "Workspace bridge logic fragment: WorkspaceShellA
 mk_react_pkg workspace-bridge-react "Workspace bridge renderer fragment: AppWorkspaceProvider, DirectoryPickerEmptyState, ReconnectBanner, switch-workspace header item."
 mk_logic_pkg inline-content    "Inline-content logic fragment: inline-content:components and inline-content:renderers slot keys."
 mk_react_pkg inline-content-react "Inline-content renderer fragment: contributes React renderers via the inline-content:renderers slot."
-mk_logic_pkg json-render       "JSON-render fragment: SpecStore adapter, json:catalogs slot key, useCatalogRegistry helper."
+mk_logic_pkg catalog-registry  "Catalog-registry logic fragment: json:catalogs slot key + newCatalogRegistry(workspace) helper."
+mk_react_pkg catalog-registry-react "Catalog-registry renderer fragment: useCatalogRegistry() React hook."
+mk_logic_pkg spec-store        "Spec-store logic fragment: SpecStore adapter + spec:create/spec:patch intents + restorePanelSpecsFromLayout helper."
 mk_react_pkg image-viewer-react   "Image MIME viewer: contributes a MimeRenderer for image/* to files:mime-renderers."
 mk_react_pkg markdown-viewer-react "Markdown MIME viewer: contributes a MimeRenderer for text/markdown to files:mime-renderers."
 mk_react_pkg pdf-viewer-react     "PDF MIME viewer: contributes a MimeRenderer for application/pdf to files:mime-renderers."
