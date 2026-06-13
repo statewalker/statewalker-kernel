@@ -1,8 +1,8 @@
-import { ShowDockPanelCommand } from "@statewalker/dock";
 import { SpecStore } from "@statewalker/render.core";
 import { Commands } from "@statewalker/shared-commands";
 import { newRegistry } from "@statewalker/shared-registry";
 import { Slots } from "@statewalker/shared-slots";
+import { ShowDockPanelCommand } from "@statewalker/shell.core";
 import { extname } from "@statewalker/webrun-files";
 import type { Workspace } from "@statewalker/workspace";
 import { VisualizeFileCommand } from "../public/commands.js";

@@ -1,10 +1,15 @@
 {
-  "name": "@statewalker/mime.core",
+  "name": "@statewalker/explorer.core",
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "Mime-viewer dispatch: files:visualize + files:open commands, mime:renderers/mime-icons/editor-factories slots, MimeRenderer + pickMimeRenderer.",
+  "description": "File-explorer logic fragment: navigation, search controller, tree-state, browser orchestration intents.",
+  "homepage": "https://github.com/statewalker/statewalker-workbench",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./fragment": "./src/fragment.ts"
@@ -14,21 +19,25 @@
   ],
   "scripts": {
     "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --write .",
     "format": "biome format --write ."
   },
   "dependencies": {
+    "@json-render/core": "0.18.0",
     "@statewalker/shell.core": "workspace:*",
+    "@statewalker/mime.core": "workspace:*",
+    "@statewalker/shared-baseclass": "catalog:",
     "@statewalker/shared-commands": "catalog:",
-    "@statewalker/render.core": "workspace:*",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "workspace:*",
-    "@statewalker/webrun-files": "catalog:",
-    "@statewalker/webrun-files-mem": "catalog:",
-    "@statewalker/workspace": "workspace:*"
+    "@statewalker/webrun-files": "workspace:*",
+    "@statewalker/workspace": "workspace:*",
+    "zod": "catalog:"
   },
   "devDependencies": {
+    "@statewalker/webrun-files-mem": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
