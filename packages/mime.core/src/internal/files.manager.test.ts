@@ -1,7 +1,7 @@
 import { ShowDockPanelCommand } from "@statewalker/dock";
+import { SpecStore } from "@statewalker/render.core";
 import { Commands } from "@statewalker/shared-commands";
 import { Slots } from "@statewalker/shared-slots";
-import { SpecStore } from "@statewalker/spec-store";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
 import { Workspace } from "@statewalker/workspace";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

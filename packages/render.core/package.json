@@ -1,9 +1,9 @@
 {
-  "name": "@statewalker/mime.core",
+  "name": "@statewalker/render.core",
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "Mime-viewer dispatch: files:visualize + files:open commands, mime:renderers/mime-icons/editor-factories slots, MimeRenderer + pickMimeRenderer.",
+  "description": "json-render engine state (opaque, no @json-render dep): SpecStore adapter + spec:create/spec:patch + restorePanelSpecsFromLayout, plus the json:catalogs keyed slot.",
   "license": "MIT",
   "exports": {
     ".": "./src/index.ts",
@@ -19,13 +19,9 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/dock": "workspace:*",
     "@statewalker/shared-commands": "catalog:",
-    "@statewalker/render.core": "workspace:*",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "workspace:*",
-    "@statewalker/webrun-files": "catalog:",
-    "@statewalker/webrun-files-mem": "catalog:",
     "@statewalker/workspace": "workspace:*"
   },
   "devDependencies": {
