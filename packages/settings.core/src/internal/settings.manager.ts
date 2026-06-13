@@ -1,6 +1,6 @@
 import { Commands } from "@statewalker/shared-commands";
 import { newRegistry } from "@statewalker/shared-registry";
-import type { Workspace } from "@statewalker/workspace";
+import type { Workspace } from "@statewalker/workspace.core";
 import { CloseSettingsCommand, OpenSettingsCommand } from "../public/commands.js";
 import { Settings } from "../public/settings.adapter.js";
 

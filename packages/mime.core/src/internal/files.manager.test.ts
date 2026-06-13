@@ -3,7 +3,7 @@ import { Commands } from "@statewalker/shared-commands";
 import { Slots } from "@statewalker/shared-slots";
 import { ShowDockPanelCommand } from "@statewalker/shell.core";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
-import { Workspace } from "@statewalker/workspace";
+import { Workspace } from "@statewalker/workspace.core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mimeRenderersSlot, VisualizeFileCommand } from "../index.js";
 import { FilesManager, guessMimeType, pickRenderer } from "./files.manager.js";

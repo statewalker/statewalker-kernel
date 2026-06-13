@@ -1,5 +1,5 @@
 import { Commands } from "@statewalker/shared-commands";
-import { getWorkspace } from "@statewalker/workspace";
+import { getWorkspace } from "@statewalker/workspace.core";
 
 /**
  * Resolve the workspace-scoped `Commands` bus for the given context bag.

@@ -3,7 +3,7 @@ import { Commands } from "@statewalker/shared-commands";
 import { newRegistry } from "@statewalker/shared-registry";
 import { Slots } from "@statewalker/shared-slots";
 import { FocusPanelCommand } from "@statewalker/shell.core";
-import { getWorkspace } from "@statewalker/workspace";
+import { getWorkspace } from "@statewalker/workspace.core";
 import { fileExplorerPanelId } from "./catalog.js";
 import { type ActiveFileExplorerPanel, activeFileExplorerPanelsSlot } from "./extension-points.js";
 

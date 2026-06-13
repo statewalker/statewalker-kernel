@@ -4,7 +4,7 @@ import { newRegistry } from "@statewalker/shared-registry";
 import { Slots } from "@statewalker/shared-slots";
 import { ShowDockPanelCommand } from "@statewalker/shell.core";
 import { extname } from "@statewalker/webrun-files";
-import type { Workspace } from "@statewalker/workspace";
+import type { Workspace } from "@statewalker/workspace.core";
 import { VisualizeFileCommand } from "../public/commands.js";
 import { pickMimeRenderer } from "../public/pick-mime-renderer.js";
 import type { MimeRenderer } from "../public/types.js";

@@ -33,7 +33,7 @@
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "workspace:*",
     "@statewalker/webrun-files": "workspace:*",
-    "@statewalker/workspace": "workspace:*",
+    "@statewalker/workspace.core": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

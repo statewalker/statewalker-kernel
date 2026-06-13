@@ -1,4 +1,4 @@
-import { LoggerAdapter, loggerOf, Workspace } from "@statewalker/workspace";
+import { LoggerAdapter, loggerOf, Workspace } from "@statewalker/workspace.core";
 import { describe, expect, it } from "vitest";
 import { PinoLoggerAdapter, registerPinoLogger } from "../src/pino-logger.browser.js";
 

@@ -23,7 +23,7 @@
     "@statewalker/render.core": "workspace:*",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "workspace:*",
-    "@statewalker/workspace": "workspace:*",
+    "@statewalker/workspace.core": "workspace:*",
     "dockview-react": "6.0.3"
   },
   "devDependencies": {

@@ -1,6 +1,6 @@
 import { getCommands, getUrlStateView } from "@statewalker/platform.core";
 import { newRegistry } from "@statewalker/shared-registry";
-import { getWorkspace } from "@statewalker/workspace";
+import { getWorkspace } from "@statewalker/workspace.core";
 import { bindUrlState } from "./bind-url-state.js";
 import { registerCopyToClipboardBrowser } from "./handlers/copy-to-clipboard.browser.js";
 import { registerDownloadBlobBrowser } from "./handlers/download-blob.browser.js";

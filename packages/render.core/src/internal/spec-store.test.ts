@@ -1,5 +1,5 @@
 import { Commands } from "@statewalker/shared-commands";
-import { getWorkspace } from "@statewalker/workspace";
+import { getWorkspace } from "@statewalker/workspace.core";
 import { describe, expect, it, vi } from "vitest";
 import { CreateSpecCommand, PatchSpecCommand } from "../public/commands.js";
 import initSpecStore from "../public/init.js";

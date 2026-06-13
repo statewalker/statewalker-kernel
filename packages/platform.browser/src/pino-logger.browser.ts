@@ -1,6 +1,11 @@
 import type { LoggerLevel } from "@statewalker/shared-logger";
 import { newPinoLogger } from "@statewalker/shared-logger-pino";
-import { type Logger, LoggerAdapter, loggerMetaOf, type Workspace } from "@statewalker/workspace";
+import {
+  type Logger,
+  LoggerAdapter,
+  loggerMetaOf,
+  type Workspace,
+} from "@statewalker/workspace.core";
 
 export interface PinoLoggerOptions {
   /** Minimum level; defaults to `info`. */

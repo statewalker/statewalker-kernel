@@ -1,6 +1,6 @@
 import { Commands } from "@statewalker/shared-commands";
 import { Slots } from "@statewalker/shared-slots";
-import { Workspace } from "@statewalker/workspace";
+import { Workspace } from "@statewalker/workspace.core";
 import { describe, expect, it } from "vitest";
 import { CloseSettingsCommand, OpenSettingsCommand, Settings, settingsTabSlot } from "../index.js";
 import { SettingsManager } from "./settings.manager.js";

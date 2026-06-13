@@ -39,7 +39,7 @@
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-browser": "catalog:",
-    "@statewalker/workspace": "workspace:*"
+    "@statewalker/workspace.core": "workspace:*"
   },
   "devDependencies": {
     "@statewalker/webrun-files-mem": "catalog:",

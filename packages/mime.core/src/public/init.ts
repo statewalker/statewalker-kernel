@@ -1,5 +1,5 @@
 import { newRegistry } from "@statewalker/shared-registry";
-import { getWorkspace } from "@statewalker/workspace";
+import { getWorkspace } from "@statewalker/workspace.core";
 import { FilesManager } from "../internal/files.manager.js";
 
 /**
