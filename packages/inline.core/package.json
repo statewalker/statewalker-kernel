@@ -1,0 +1,33 @@
+{
+  "name": "@statewalker/inline.core",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Inline-content logic fragment: declares inline-content:components and inline-content:renderers slot keys.",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fragment": "./src/fragment.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-slots": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}
