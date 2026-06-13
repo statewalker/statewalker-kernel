@@ -1,7 +1,7 @@
 #!/usr/bin/env tsx
 // Enforces the backbone-independence rule (design §D4 of repo-split-foundation):
 // no backbone-*/package.json may declare a runtime dependency on any
-// @statewalker/* package OTHER than a sibling @statewalker/backbone-*.
+// @statewalker/* package OTHER than a sibling @statewalker/backbone.*.
 // devDependencies are allowed.
 //
 // Non-backbone siblings (shared-*) are forbidden: vendor the narrow slice you
@@ -35,7 +35,7 @@ async function checkPackage(pkgDir: string): Promise<Violation[]> {
   for (const scope of ["dependencies", "peerDependencies"] as const) {
     const deps = pj[scope] ?? {};
     for (const [dep, version] of Object.entries(deps)) {
-      if (dep.startsWith("@statewalker/") && !dep.startsWith("@statewalker/backbone-")) {
+      if (dep.startsWith("@statewalker/") && !dep.startsWith("@statewalker/backbone.")) {
         violations.push({ pkg: pj.name ?? pkgDir, dep, version, scope });
       }
     }
@@ -46,7 +46,7 @@ async function checkPackage(pkgDir: string): Promise<Violation[]> {
 async function main() {
   const entries = await readdir(PACKAGES, { withFileTypes: true });
   const backboneDirs = entries
-    .filter((e) => e.isDirectory() && e.name.startsWith("backbone-"))
+    .filter((e) => e.isDirectory() && e.name.startsWith("backbone."))
     .map((e) => join(PACKAGES, e.name));
 
   if (backboneDirs.length === 0) {
