@@ -1,17 +1,17 @@
-# @statewalker/backbone-server
+# @statewalker/backbone.node
 
 Backbone server bootstrap: resolves an `AppManifest` against the filesystem and activates its modules, honoring the shared logger and module resolver.
 
 ## Installation
 
 ```sh
-pnpm add @statewalker/backbone-server
+pnpm add @statewalker/backbone.node
 ```
 
 ## Usage
 
 ```ts
-import { bootstrap } from "@statewalker/backbone-server";
+import { bootstrap } from "@statewalker/backbone.node";
 
 await bootstrap({
   manifestPath: "./manifest.json",
@@ -25,7 +25,7 @@ await bootstrap({
 
 ## Related
 
-- `@statewalker/backbone-common` — primitive resolver/activation used here.
+- `@statewalker/backbone.core` — primitive resolver/activation used here.
 
 ## License
 

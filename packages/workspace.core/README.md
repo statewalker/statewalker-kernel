@@ -1,4 +1,4 @@
-# @statewalker/workspace
+# @statewalker/workspace.core
 
 Workspace logic fragment: the `Workspace` class, its system/secrets/settings adapters, the `workspace:change` command, and the registrar init that wires the change-handler.
 
@@ -53,17 +53,18 @@ hierarchy (the consolidation of `@statewalker/resources-workspace`):
   package's default-exported fragment-init.
 - **`platform:pick-directory` command re-declaration** — `runPickDirectory`,
   `handlePickDirectory`. Re-declared locally (not imported from
-  `@statewalker/platform-api`) to avoid a cyclic dependency.
+  `@statewalker/platform.core`) to avoid a cyclic dependency.
 - **`init(ctx) → cleanup`** (default export, also at `./fragment`) —
   registers the `workspace:change` handler against the workspace's
   `Commands` adapter.
 
 ## Companion packages
 
-- [`@statewalker/workspace-bridge`](../workspace-bridge/README.md) —
-  shell-side wiring for the workspace: menu item, dialog renderer,
-  reconnect / disconnect commands.
-- [`@statewalker/workspace-bridge-react`](../workspace-bridge-react/README.md) —
-  the renderer-side bridge surfaces (`AppWorkspaceProvider`,
-  `DirectoryPickerEmptyState`, `ReconnectBanner`, switch-workspace header
-  item).
+- `@statewalker/workspace.browser` —
+  the browser platform implementation: the workspace shell adapter,
+  IndexedDB-backed directory-handle persistence, and the
+  `workspace:reconnect` / `workspace:disconnect` commands.
+- `@statewalker/workspace.view.react` —
+  the renderer-side surfaces: `DirectoryPickerEmptyState`, the
+  workspace-label header item, and the switch-workspace header button.
+  (`AppWorkspaceProvider` lives in `@statewalker/ui.view.react`, not here.)

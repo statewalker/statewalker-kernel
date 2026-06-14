@@ -1,17 +1,17 @@
-# @statewalker/backbone-web
+# @statewalker/backbone.browser
 
 Backbone web runtime: fragment loader and browser-side module activation for the backbone platform.
 
 ## Installation
 
 ```sh
-pnpm add @statewalker/backbone-web
+pnpm add @statewalker/backbone.browser
 ```
 
 ## Usage
 
 ```ts
-import { loadFragment } from "@statewalker/backbone-web";
+import { loadFragment } from "@statewalker/backbone.browser";
 
 const fragment = await loadFragment({ url: "/fragments/chat.js" });
 await fragment.activate(context);
@@ -24,8 +24,8 @@ await fragment.activate(context);
 
 ## Related
 
-- `@statewalker/backbone-common` — shared primitives.
-- `@statewalker/backbone-server` — Node analogue for server-side manifests.
+- `@statewalker/backbone.core` — shared primitives.
+- `@statewalker/backbone.node` — Node analogue for server-side manifests.
 
 ## License
 

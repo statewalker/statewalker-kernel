@@ -1,10 +1,10 @@
-# @statewalker/platform-api
+# @statewalker/platform.core
 
-Type-only vocabulary of platform-capability commands shared by every application composed of `statewalker-workbench` fragments. A platform-specific implementation is provided by a peer fragment ([`@statewalker/platform-browser`](../platform-browser) for browsers; future `platform-node` / `platform-electron`); this package stays free of runtime browser code and runs unchanged under Node.
+Type-only vocabulary of platform-capability commands shared by every application composed of `statewalker-workbench` fragments. A platform-specific implementation is provided by a peer fragment (`@statewalker/platform.browser` for browsers; future `platform-node` / `platform-electron`); this package stays free of runtime browser code and runs unchanged under Node.
 
 ## Why it exists
 
-Fragments need a single, typed surface to ask the host environment to do environment-y things — pick a directory, save a file, copy to clipboard, persist a preference, sync URL state — without binding to any particular host. Keeping the contract here (and the implementations in `platform-browser` / future siblings) means a fragment that uses `runPickDirectory` works the same in a browser app, a Node test, and a future Electron build.
+Fragments need a single, typed surface to ask the host environment to do environment-y things — pick a directory, save a file, copy to clipboard, persist a preference, sync URL state — without binding to any particular host. Keeping the contract here (and the implementations in `platform.browser` / future siblings) means a fragment that uses `runPickDirectory` works the same in a browser app, a Node test, and a future Electron build.
 
 ## Commands
 
@@ -27,19 +27,19 @@ Each command is a self-contained folder under `src/commands/` exporting four thi
 The package owns three context-bound adapters consumed by every fragment:
 
 ```ts
-import { getCommands, getUrlStateView } from "@statewalker/platform-api";
+import { getCommands, getUrlStateView } from "@statewalker/platform.core";
 
 const commands = getCommands(ctx);          // Commands bus (auto-created on first access)
 const urlState = getUrlStateView(ctx);    // URL ↔ state sync model
 ```
 
 - **`Commands`** — the single `Commands` bus shared by every fragment in a composed app. Auto-creates on first access; no explicit bootstrap step.
-- **`UrlStateView`** — bidirectional URL ↔ model state synchronisation. Fragments register `UrlSerializer`s; the browser binding (in `platform-browser`) flushes serialised state to `location.hash` and feeds incoming `hashchange` back. Auto-created on first access.
+- **`UrlStateView`** — bidirectional URL ↔ model state synchronisation. Fragments register `UrlSerializer`s; the browser binding (in `platform.browser`) flushes serialised state to `location.hash` and feeds incoming `hashchange` back. Auto-created on first access.
 
 ## Usage
 
 ```ts
-import { getCommands, runPickDirectory } from "@statewalker/platform-api";
+import { getCommands, runPickDirectory } from "@statewalker/platform.core";
 
 const { files, label } = await runPickDirectory(getCommands(ctx), {
   title: "Select workspace",
@@ -49,7 +49,7 @@ const { files, label } = await runPickDirectory(getCommands(ctx), {
 Registering a serializer with `UrlStateView`:
 
 ```ts
-import { getUrlStateView, type UrlSerializer } from "@statewalker/platform-api";
+import { getUrlStateView, type UrlSerializer } from "@statewalker/platform.core";
 
 const serializer: UrlSerializer = {
   serialize: (state) => ({ ...state, query: { ...state.query, session: activeSessionId } }),
@@ -67,8 +67,7 @@ const dispose = getUrlStateView(ctx).register(serializer);
 
 ## Related
 
-- [`@statewalker/platform-browser`](../platform-browser) — browser implementation of every command above plus `bindUrlState`.
-- [`@statewalker/workbench-views`](../workbench-views) — view-model layer that consumes `UrlStateView` (e.g. via chat session controllers).
+- `@statewalker/platform.browser` — browser implementation of every command above plus `bindUrlState`.
 
 ## License
 

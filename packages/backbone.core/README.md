@@ -1,17 +1,17 @@
-# @statewalker/backbone-common
+# @statewalker/backbone.core
 
 Backbone primitives used by both the server and web runtimes: module resolver, topological sort, activation sequencing, `AppManifest` type, plus the vendored `Logger`/`getLogger` slice that keeps backbone independent of `@statewalker/*`.
 
 ## Installation
 
 ```sh
-pnpm add @statewalker/backbone-common
+pnpm add @statewalker/backbone.core
 ```
 
 ## Usage
 
 ```ts
-import { activateModules, getLogger, ModuleResolver, topoSort } from "@statewalker/backbone-common";
+import { activateModules, getLogger, ModuleResolver, topoSort } from "@statewalker/backbone.core";
 
 const resolver = new ModuleResolver(/* ... */);
 const modules = await resolver.resolve();
@@ -29,8 +29,8 @@ await activateModules(ordered, { log: getLogger({}) });
 
 ## Related
 
-- `@statewalker/backbone-server` — Node-side bootstrap that consumes this package.
-- `@statewalker/backbone-web` — browser-side fragment loader built on top.
+- `@statewalker/backbone.node` — Node-side bootstrap that consumes this package.
+- `@statewalker/backbone.browser` — browser-side fragment loader built on top.
 
 ## License
 
