@@ -38,7 +38,7 @@ export function newReference<T extends object>(
       updated = updated || refs[i] !== ref;
       refs[i] = ref;
     }
-    _weakRef = updated ? new WeakRef(create(...refs.map((r) => r!.deref()!))) : _weakRef!;
+    _weakRef = updated ? new WeakRef(create(...refs.map((r) => r?.deref()!))) : _weakRef!;
     return _weakRef;
   }
 

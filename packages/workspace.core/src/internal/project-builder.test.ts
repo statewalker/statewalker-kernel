@@ -5,6 +5,7 @@ import {
   type BuilderProvider,
   ProjectBuilder,
   type RegisteredBuilder,
+  SOURCES_REMOVED_SIGNAL,
   SOURCES_SIGNAL,
 } from "../public/builders/index.js";
 import type { Project } from "../public/types/project.js";
@@ -114,5 +115,63 @@ describe("ProjectBuilder — .projectignore", () => {
 
     await drain(builder);
     expect(processed).toEqual(["keep.txt"]);
+  });
+});
+
+/** A builder that records processed sources AND removed ones. */
+function echoWithRemovals(processed: string[], removed: string[]): RegisteredBuilder {
+  return {
+    id: "Echo",
+    inputs: [SOURCES_SIGNAL, SOURCES_REMOVED_SIGNAL],
+    outputs: ["content"],
+    async *handler(p) {
+      const builder = p.requireAdapter(ProjectBuilder);
+      for await (const u of builder.readUpdates({ signal: SOURCES_SIGNAL, cell: "Echo" })) {
+        processed.push(u.uri);
+        await u.handled();
+        yield { signal: "content", uri: u.uri, stamp: u.stamp };
+      }
+      for await (const u of builder.readUpdates({ signal: SOURCES_REMOVED_SIGNAL, cell: "Echo" })) {
+        removed.push(u.uri);
+        await u.handled();
+      }
+      return true;
+    },
+  };
+}
+
+describe("ProjectBuilder — configureSourceIgnore", () => {
+  it("composes the injected predicate with .projectignore", async () => {
+    const p = await project({
+      "/proj/keep.txt": "k",
+      "/proj/skip.txt": "s",
+      "/proj/nature-skip.txt": "n",
+      "/proj/.projectignore": "skip.txt",
+    });
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder(echoBuilder(processed));
+    builder.configureSourceIgnore(async () => (uri) => uri === "nature-skip.txt");
+
+    await drain(builder);
+    expect(processed).toEqual(["keep.txt"]);
+  });
+
+  it("re-invokes the provider each scan, pruning a newly-excluded source", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
+    const processed: string[] = [];
+    const removed: string[] = [];
+    const excluded = new Set<string>();
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder(echoWithRemovals(processed, removed));
+    builder.configureSourceIgnore(async () => (uri) => excluded.has(uri));
+
+    await drain(builder);
+    expect(processed.sort()).toEqual(["a.txt", "b.txt"]);
+
+    // Exclude b on the next scan: it should be emitted as a removed source.
+    excluded.add("b.txt");
+    await drain(builder);
+    expect(removed).toEqual(["b.txt"]);
   });
 });
