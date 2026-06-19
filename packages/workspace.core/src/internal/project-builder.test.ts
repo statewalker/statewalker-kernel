@@ -88,6 +88,80 @@ describe("ProjectBuilder — restartFrom", () => {
   });
 });
 
+/** A builder that never marks its updates handled → never drains, forcing the
+ * scheduler to re-select it every pass (stand-in for a genuinely stuck pipeline). */
+function stuckBuilder(): RegisteredBuilder {
+  return {
+    id: "Stuck",
+    inputs: [SOURCES_SIGNAL],
+    outputs: ["content"],
+    // biome-ignore lint/correctness/useYield: deliberately interrupts without handling input
+    async *handler() {
+      return false;
+    },
+  };
+}
+
+/** A terminal builder that snapshots the cumulative set of indexed URIs on every
+ * run — so a test can observe how many times (and with what content) it "dumps". */
+function indexBuilder(dumps: string[][]): RegisteredBuilder {
+  const indexed = new Set<string>();
+  return {
+    id: "Index",
+    inputs: ["content"],
+    outputs: [],
+    // biome-ignore lint/correctness/useYield: terminal stage, maintains state, emits no signal
+    async *handler(p) {
+      const builder = p.requireAdapter(ProjectBuilder);
+      let touched = false;
+      for await (const u of builder.readUpdates({ signal: "content", cell: "Index" })) {
+        indexed.add(u.uri);
+        touched = true;
+        await u.handled();
+      }
+      if (touched) dumps.push([...indexed].sort());
+      return true;
+    },
+  };
+}
+
+describe("ProjectBuilder — stall backstop", () => {
+  it("aborts loudly instead of silently 'converging' when no progress is made", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.configureYield({ maxStalledPasses: 5 });
+    builder.registerBuilder(stuckBuilder());
+
+    await expect(drain(builder)).rejects.toThrow(/no scheduling progress/);
+  });
+});
+
+describe("ProjectBuilder — scanBatchSize", () => {
+  it("emits sources in batches so downstream stages run and dump per batch", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
+    const dumps: string[][] = [];
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.configureYield({ scanBatchSize: 1 });
+    builder.registerBuilder(echoBuilder([]));
+    builder.registerBuilder(indexBuilder(dumps));
+
+    await drain(builder);
+    // One full-pipeline traversal per batch → the index dumps incrementally.
+    expect(dumps).toEqual([["a.txt"], ["a.txt", "b.txt"], ["a.txt", "b.txt", "c.txt"]]);
+  });
+
+  it("without a batch size the whole corpus is one transaction (single dump)", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
+    const dumps: string[][] = [];
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder(echoBuilder([]));
+    builder.registerBuilder(indexBuilder(dumps));
+
+    await drain(builder);
+    expect(dumps).toEqual([["a.txt", "b.txt", "c.txt"]]);
+  });
+});
+
 describe("ProjectBuilder — nature (BuilderProvider)", () => {
   it("applyNature registers a provider's builders and they run", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
