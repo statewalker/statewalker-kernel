@@ -1,9 +1,9 @@
 import { Commands } from "@statewalker/shared-commands";
 import { getWorkspace } from "@statewalker/workspace.core";
 import { describe, expect, it, vi } from "vitest";
-import { getCommands, removeCommands, setCommands } from "../src/adapters.ts";
+import { getCommands, removeCommands, setCommands } from "../../src/index.js";
 
-describe("getCommands shim", () => {
+describe("getCommands shim [AC: getCommands returns the workspace bus]", () => {
   it("returns the same instance as workspace.requireAdapter(Commands) for the same ctx", () => {
     const ctx: Record<string, unknown> = {};
     const fromShim = getCommands(ctx);
@@ -30,7 +30,7 @@ describe("getCommands shim", () => {
   });
 });
 
-describe("setCommands / removeCommands — deprecation no-op semantics", () => {
+describe("setCommands / removeCommands [AC: setCommands and removeCommands are deprecated no-ops]", () => {
   it("setCommands does not replace the workspace-bound bus", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {

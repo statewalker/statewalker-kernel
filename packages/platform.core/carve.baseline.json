@@ -1,0 +1,8 @@
+{
+  "coupling": 20,
+  "concepts": 16,
+  "granularity": 55,
+  "codeVolume": 182,
+  "cohesion": 0,
+  "files": 12
+}

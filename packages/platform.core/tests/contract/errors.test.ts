@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { isUserCancelled, UserCancelledError } from "../src/errors.js";
+import { isUserCancelled, UserCancelledError } from "../../src/index.js";
 
-describe("UserCancelledError", () => {
+describe("UserCancelledError [AC: UserCancelledError carries name and message]", () => {
   it("constructs with a default message and the expected name", () => {
     const err = new UserCancelledError();
     expect(err).toBeInstanceOf(Error);
@@ -16,7 +16,7 @@ describe("UserCancelledError", () => {
   });
 });
 
-describe("isUserCancelled", () => {
+describe("isUserCancelled [AC: isUserCancelled discriminates cancellation]", () => {
   it("returns true for a UserCancelledError instance", () => {
     expect(isUserCancelled(new UserCancelledError())).toBe(true);
   });
