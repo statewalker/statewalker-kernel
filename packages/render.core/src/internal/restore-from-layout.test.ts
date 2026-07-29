@@ -2,29 +2,9 @@ import { describe, expect, it } from "vitest";
 import { restorePanelSpecsFromLayout } from "../public/restore-from-layout.js";
 import { SpecStore } from "../public/spec-store.js";
 
-function makeStorage(layout: unknown): Storage {
-  const map = new Map<string, string>();
-  if (layout !== undefined) map.set("layout", JSON.stringify(layout));
-  return {
-    get length() {
-      return map.size;
-    },
-    clear: () => map.clear(),
-    key: () => null,
-    getItem: (k) => map.get(k) ?? null,
-    setItem: (k, v) => {
-      map.set(k, v);
-    },
-    removeItem: (k) => {
-      map.delete(k);
-    },
-  };
-}
-
-const setup = (layout: unknown) => ({
+const setup = (layout: object | null | undefined) => ({
   store: new SpecStore(),
-  storage: makeStorage(layout),
-  layoutKey: "layout",
+  layout,
   panelIdPrefix: "pdf-viewer:",
   catalogId: "pdf-viewer",
   buildSpec: (uri: string) => ({ root: "panel", elements: { panel: { uri } } }) as never,
@@ -61,25 +41,20 @@ describe("restorePanelSpecsFromLayout", () => {
     expect(() => restorePanelSpecsFromLayout(env)).not.toThrow();
   });
 
-  it("no-ops when storage is undefined", () => {
-    const env = { ...setup(undefined), storage: undefined };
+  it("no-ops when the layout is null", () => {
+    const env = setup(null);
     expect(() => restorePanelSpecsFromLayout(env)).not.toThrow();
+    expect(env.store.get("spec:pdf-viewer:/anything")).toBeNull();
   });
 
-  it("no-ops when the key is missing", () => {
+  it("no-ops when the layout is undefined", () => {
     const env = setup(undefined);
     restorePanelSpecsFromLayout(env);
     expect(env.store.get("spec:pdf-viewer:/anything")).toBeNull();
   });
 
-  it("survives a non-JSON payload", () => {
-    const env = setup(undefined);
-    env.storage.setItem("layout", "not json{{{");
-    expect(() => restorePanelSpecsFromLayout(env)).not.toThrow();
-  });
-
-  it("survives layouts with non-object panels field", () => {
-    const env = setup({ panels: null });
+  it("survives layouts with a non-object panels field", () => {
+    const env = setup({ panels: null } as unknown as object);
     expect(() => restorePanelSpecsFromLayout(env)).not.toThrow();
   });
 

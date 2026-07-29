@@ -27,6 +27,7 @@
     "dockview-react": "6.0.3"
   },
   "devDependencies": {
+    "@statewalker/webrun-files-mem": "workspace:*",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

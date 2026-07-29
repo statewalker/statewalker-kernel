@@ -1,7 +1,10 @@
+import { LayoutStore } from "@statewalker/render.core";
+import type { Workspace } from "@statewalker/workspace.core";
 import type { DockviewApi } from "dockview-react";
 import type { ShowDockPanelPayload } from "./commands.js";
 
-const LAYOUT_KEY = "chat-mini:dock-layout";
+/** The dockview serialized-layout shape, as accepted by `api.fromJSON`. */
+type DockLayout = Parameters<DockviewApi["fromJSON"]>[0];
 
 interface PendingPanel {
   options: ShowDockPanelPayload;
@@ -22,15 +25,18 @@ interface PendingPanel {
  * queue drains synchronously on `setApi`. After the api is set,
  * calls are dispatched directly.
  *
- * Layout persistence is currently localStorage-keyed; this moves
- * to `SystemFiles/dock-layout.json` once the workspace lifecycle
- * (ADR 0001) is wired up by `workspace-bridge` (Wave 3).
+ * Layout persistence is file-backed via the `LayoutStore` workspace
+ * adapter (`render.core`), which owns the `dock-layout.json` file.
+ * DockHost never touches `localStorage`: it reads/writes the layout
+ * only through `LayoutStore.get()` / `set()`, and re-applies the saved
+ * layout on `workspace.onLoad` (see `_onWorkspaceLoad`).
  */
 export class DockHost {
   private _api: DockviewApi | null = null;
   private _pending: PendingPanel[] = [];
   private _layoutSaveScheduled = false;
   private _disposeApiListeners: (() => void) | null = null;
+  private _disposeOnLoad: (() => void) | null = null;
   private _activeListeners = new Set<(panelId: string | undefined) => void>();
   private _activePanelId: string | undefined = undefined;
   private _layoutListeners = new Set<() => void>();
@@ -43,7 +49,27 @@ export class DockHost {
   private _inMemoryLayout: object | null = null;
 
   declare init?: () => void | Promise<void>;
-  declare close?: () => void | Promise<void>;
+
+  /**
+   * @param workspace The host workspace. Optional so pure command/queue
+   *   mechanics can be unit-tested without a workspace; when present,
+   *   DockHost resolves the `LayoutStore` adapter through it and restores
+   *   the saved layout on `onLoad`.
+   */
+  constructor(private readonly workspace?: Workspace) {
+    if (workspace) {
+      this._disposeOnLoad = workspace.onLoad(() => this._onWorkspaceLoad());
+    }
+  }
+
+  close(): void {
+    this._disposeOnLoad?.();
+    this._disposeOnLoad = null;
+  }
+
+  private _layoutStore(): LayoutStore | null {
+    return this.workspace ? this.workspace.getAdapter(LayoutStore) : null;
+  }
 
   setApi(api: DockviewApi): void {
     if (this._api === api) return;
@@ -52,10 +78,12 @@ export class DockHost {
     // Restoration order: prefer the in-memory snapshot from a recent
     // detach (covers StrictMode / HMR remount where the persisted
     // layout is older than what was on the previous api). Fall back
-    // to localStorage on cold start.
+    // to the LayoutStore's in-memory layout, which is `null` on cold
+    // mount (the file has not connected yet) — so cold load renders the
+    // DEFAULT layout and the saved one re-applies later, on `onLoad`.
     if (this._inMemoryLayout) {
       try {
-        api.fromJSON(this._inMemoryLayout);
+        api.fromJSON(this._inMemoryLayout as DockLayout);
       } catch (error) {
         console.warn("[chat-mini:dock] failed to restore in-memory layout", error);
         this._restoreLayout();
@@ -237,8 +265,7 @@ export class DockHost {
   private _persistLayout(): void {
     if (!this._api) return;
     try {
-      const json = JSON.stringify(this._api.toJSON());
-      globalThis.localStorage?.setItem(LAYOUT_KEY, json);
+      this._layoutStore()?.set(this._api.toJSON());
     } catch (error) {
       console.warn("[chat-mini:dock] failed to persist layout", error);
     }
@@ -247,12 +274,43 @@ export class DockHost {
   private _restoreLayout(): void {
     if (!this._api) return;
     try {
-      const raw = globalThis.localStorage?.getItem(LAYOUT_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      this._api.fromJSON(data);
+      const layout = this._layoutStore()?.get();
+      if (!layout) return;
+      this._api.fromJSON(layout as DockLayout);
     } catch (error) {
       console.warn("[chat-mini:dock] failed to restore layout", error);
+    }
+  }
+
+  /**
+   * On workspace-connect, re-apply the saved layout the `LayoutStore`
+   * loaded from `dock-layout.json`.
+   *
+   * The apply is deferred to a MACROTASK, not applied inline, so every
+   * panel fragment's own synchronous `onLoad` pre-alloc (which registers
+   * its `SpecStore` entries from the same adapter-held layout) completes
+   * FIRST — otherwise a restored panel would render `PanelMissing`.
+   *
+   * A macrotask (not a `queueMicrotask`) is required: `Workspace.open()`
+   * awaits each `onLoad` listener in turn, which drains the microtask
+   * queue BETWEEN listeners. A microtask-deferred apply would therefore
+   * run before a fragment whose `onLoad` was registered AFTER DockHost's.
+   * A macrotask runs only after the whole awaited `onLoad` loop settles,
+   * so all fragment pre-allocs are guaranteed done regardless of the
+   * (insertion-order, non-guaranteed) registration order.
+   */
+  private _onWorkspaceLoad(): void {
+    setTimeout(() => this._applyPersistedLayout(), 0);
+  }
+
+  private _applyPersistedLayout(): void {
+    if (!this._api) return;
+    const layout = this._layoutStore()?.get();
+    if (!layout) return;
+    try {
+      this._api.fromJSON(layout as DockLayout);
+    } catch (error) {
+      console.warn("[chat-mini:dock] failed to apply restored layout", error);
     }
   }
 }
