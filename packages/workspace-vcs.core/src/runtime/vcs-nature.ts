@@ -1,4 +1,4 @@
-import type { Git } from "@statewalker/vcs-commands";
+import type { Git, Status } from "@statewalker/vcs-commands";
 import { joinPath as concatPath, tryReadText, writeText } from "@statewalker/webrun-files";
 import {
   DEFAULT_SYSTEM_FOLDER,
@@ -55,6 +55,44 @@ export interface VcsDeps {
   /** Where credentials live. Defaults to the workspace's own `Secrets` adapter; they
    * are never written to `nature.vcs.json`, `.git/config`, or any committed tree. */
   secrets?: Secrets;
+}
+
+/** A commit identity — a display name, never a credential. */
+export interface Author {
+  name: string;
+  email: string;
+}
+
+/** One entry of {@link VcsNature.log}. */
+export interface CommitInfo {
+  /** The commit's object id. */
+  id: string;
+  message: string;
+  author: Author;
+  /** Author time, in seconds since the epoch — git's own unit. */
+  timestamp: number;
+  /** Parent commit ids; empty for the initial commit. */
+  parents: string[];
+}
+
+/** Arguments to {@link VcsNature.commit}. */
+export interface CommitOptions {
+  message: string;
+  /** Overrides the project's configured author for this one commit. */
+  author?: Author;
+}
+
+/**
+ * What {@link VcsNature.commit} reports.
+ *
+ * `id` is present exactly when `changed` is `true`. The pair exists because
+ * "nothing to commit" is a normal outcome of a manual commit, not an error — the
+ * porcelain signals it by throwing `EmptyCommitError`, and a nature whose result
+ * type were `{commit: string}` could not express it at all.
+ */
+export interface CommitOutcome {
+  changed: boolean;
+  id?: string;
 }
 
 /**
@@ -131,6 +169,26 @@ export class VcsNature extends ProjectAdapter {
         openGitRepo(repoFilesOf(this.project), { create: !(await this.exists()) }))();
     }
     return this.#git;
+  }
+
+  /** Stage everything matching `pathspec` (default: the whole worktree). */
+  async add(_pathspec = "."): Promise<void> {
+    throw new Error("not implemented");
+  }
+
+  /** Record the staged tree as a commit. */
+  async commit(_opts: CommitOptions): Promise<CommitOutcome> {
+    throw new Error("not implemented");
+  }
+
+  /** The commits reachable from HEAD, newest first. */
+  async log(_opts: { max?: number } = {}): Promise<CommitInfo[]> {
+    throw new Error("not implemented");
+  }
+
+  /** The staging index compared against HEAD. */
+  async status(): Promise<Status> {
+    throw new Error("not implemented");
   }
 
   /** Append the `.project` exclude, once, preserving anything already in the file. */
