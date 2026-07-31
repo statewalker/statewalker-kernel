@@ -75,6 +75,72 @@ describe("VcsConfiguration", () => {
       expect(names).toEqual([VCS_NATURE_FILE]);
     });
 
+    it("keeps the previous file and leaves no debris when the rename fails", async () => {
+      // The whole point of the temp-then-rename dance: a failed write must not
+      // half-replace the marker. Asserting "one entry in the directory" after a
+      // SUCCESSFUL write is equally true of a plain `writeText`, which is why that
+      // assertion alone left this entire path untested.
+      await config.write({ version: 1, defaultRemote: "origin" });
+      const path = `/a/.project/${VCS_NATURE_FILE}`;
+
+      const failingRename = new Proxy(files, {
+        get(target, prop, receiver) {
+          if (prop === "move") return async () => false;
+          const value = Reflect.get(target, prop, target) as unknown;
+          if (typeof value !== "function") return Reflect.get(target, prop, receiver);
+          return (...args: unknown[]) =>
+            (value as (...a: unknown[]) => unknown).apply(target, args);
+        },
+      }) as MemFilesApi;
+      const stuck = new VcsConfiguration(
+        (await new Workspace().setFileSystem(failingRename).getProject("a")) as Project,
+      );
+
+      await expect(stuck.write({ version: 1, defaultRemote: "replacement" })).rejects.toThrow(
+        /failed to rename/,
+      );
+
+      // The previous marker is intact, byte for byte …
+      expect(JSON.parse(await readText(files, path))).toEqual({
+        version: 1,
+        defaultRemote: "origin",
+      });
+      // … and the temp file was cleaned up rather than left beside it.
+      const names: string[] = [];
+      for await (const entry of files.list("/a/.project")) names.push(entry.name);
+      expect(names).toEqual([VCS_NATURE_FILE]);
+    });
+
+    it("gives concurrent writers distinct temp paths", async () => {
+      // Two tabs, or the CLI and the app, over one folder. A constant `${path}.tmp`
+      // would have them clobber each other's temp file and race the rename — the
+      // one thing a collision-safe name exists to prevent, and nothing observed it.
+      const written: string[] = [];
+      const recording = new Proxy(files, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, target) as unknown;
+          if (typeof value !== "function") return Reflect.get(target, prop, receiver);
+          return (...args: unknown[]) => {
+            if (prop === "write" && typeof args[0] === "string" && args[0].endsWith(".tmp")) {
+              written.push(args[0]);
+            }
+            return (value as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      }) as MemFilesApi;
+      const workspace2 = new Workspace().setFileSystem(recording);
+      const found = await workspace2.getProject("a");
+      if (!found) throw new Error("no project: a");
+
+      await Promise.all([
+        new VcsConfiguration(found).write({ version: 1, defaultRemote: "one" }),
+        new VcsConfiguration(found).write({ version: 1, defaultRemote: "two" }),
+      ]);
+
+      expect(written).toHaveLength(2);
+      expect(new Set(written).size).toBe(2);
+    });
+
     it("is idempotent to load() and reflects the latest write()", async () => {
       await config.write({ version: 1 });
       await config.load();
