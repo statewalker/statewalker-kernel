@@ -490,6 +490,61 @@ describe("HTTP remotes", () => {
       );
     });
 
+    it("names the missing Secrets adapter instead of dying inside a push", async () => {
+      // `Secrets` is abstract only in TypeScript: `getAdapter(Secrets)` on a
+      // workspace that never ran `initWorkspace` self-hosts the token and hands back
+      // an instance with NO method bodies, so `secrets.get` is `undefined`. Without
+      // the duck-type check that instance is treated as a store and the failure is a
+      // `TypeError: ... is not a function` from somewhere inside a push.
+      const bare = new Workspace().setFileSystem(files);
+      registerVcs(bare, { fetch: server.fetch });
+      const project = await bare.getProject("a");
+      if (!project) throw new Error("no project: a");
+      const nature = vcsNatureOf(project);
+      await nature.init();
+
+      const error = await nature.remotes
+        .addHttp("origin", server.url, {
+          credentials: { username: "gitnature", password: SENTINEL },
+        })
+        .catch((thrown: unknown) => thrown);
+
+      expect((error as Error).message).toMatch(/Secrets adapter/);
+      expect((error as Error).message).not.toMatch(/is not a function/);
+    });
+
+    it("ignores a malformed stored credential rather than putting it on the wire", async () => {
+      const { nature } = await committed("a");
+      await nature.remotes.addHttp("origin", server.url);
+      // Something else wrote this key — a older format, a hand edit, another tool.
+      await workspace
+        .requireAdapter(Secrets)
+        .set(remoteCredentialsKey(nature.path, "origin"), { username: 42, password: SENTINEL });
+
+      await nature.push();
+
+      // Anonymous, not `42:<token>` — and certainly not a crash.
+      expect(server.requests.length).toBeGreaterThan(0);
+      expect(server.requests.filter((request) => request.authorization)).toEqual([]);
+    });
+
+    it("leaves no dangling secret when the URL is refused", async () => {
+      const nature = await natureOf("a");
+      await nature.init();
+
+      await expect(
+        nature.remotes.addHttp("origin", "not-a-url", {
+          credentials: { username: "gitnature", password: SENTINEL },
+        }),
+      ).rejects.toThrow(/invalid HTTP remote URL/);
+
+      // The URL goes to disk BEFORE the credential goes to Secrets, precisely so a
+      // rejected URL cannot leave a credential behind for a remote that does not
+      // exist. Storing first would strand a live token under a name nothing reads.
+      const secrets = workspace.requireAdapter(Secrets);
+      expect(await secrets.get(remoteCredentialsKey(nature.path, "origin"))).toBeUndefined();
+    });
+
     it("stores them through the Secrets adapter, not beside the URL", async () => {
       const nature = await natureOf("a");
       await nature.init();
