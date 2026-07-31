@@ -10,7 +10,5 @@ import { CompositeFilesApi } from "@statewalker/webrun-files-composite";
  * tests real GitNature behaviour instead.
  */
 export function vcsScaffoldCheck(): string[] {
-  void Git;
-  void CompositeFilesApi;
-  throw new Error("not implemented");
+  return [CompositeFilesApi.name, Git.name];
 }
