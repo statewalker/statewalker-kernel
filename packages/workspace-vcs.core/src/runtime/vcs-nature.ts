@@ -498,14 +498,14 @@ export class VcsNature extends ProjectAdapter {
           "Credentials are never written to .git/config.",
       );
     }
-    await secrets.set(remoteCredentialsKey(this.project.projectName, remote), credentials);
+    await secrets.set(remoteCredentialsKey(this.path, remote), credentials);
   }
 
   /** A remote's credentials from `Secrets`, or `undefined` for an anonymous remote. */
   private async credentialsFor(remote: string): Promise<RemoteCredentials | undefined> {
     const secrets = this.secretsStore();
     if (!secrets) return undefined;
-    const stored = await secrets.get(remoteCredentialsKey(this.project.projectName, remote));
+    const stored = await secrets.get(remoteCredentialsKey(this.path, remote));
     if (!stored || typeof stored !== "object") return undefined;
     const { username, password } = stored as Partial<RemoteCredentials>;
     if (typeof username !== "string" || typeof password !== "string") return undefined;

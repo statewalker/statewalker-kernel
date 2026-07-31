@@ -343,8 +343,10 @@ describe("HTTP remotes", () => {
 
       // Ground rule 6, stated as a fact rather than a hope: the sentinel IS on disk,
       // in plaintext, inside the `Secrets` store — which lives outside the project.
+      // Keyed on the project PATH, not its name: `projectName` is the last path
+      // segment, so nested projects sharing one would share a credentials entry.
       const secretsPath = `/.settings/secrets/${encodeURIComponent(
-        remoteCredentialsKey("a", "origin"),
+        remoteCredentialsKey(nature.path, "origin"),
       )}.json`;
       expect(await readText(files, secretsPath)).toContain(SENTINEL);
       expect(secretsPath.startsWith("/a/")).toBe(false);
@@ -389,6 +391,64 @@ describe("HTTP remotes", () => {
       expect((error as Error).stack ?? "").not.toContain(SENTINEL);
     });
 
+    it("finds them again when the remote was added under a differently-cased name", async () => {
+      // `remoteUrlKey` lower-cases (GitWorkingCopyConfig lower-cases every key it
+      // parses), so `addHttp("Origin", …)` is stored and listed as `origin`. A
+      // credentials key that did NOT lower-case put the secret somewhere `push`
+      // could never look — an anonymous push and a bare 401.
+      const { nature } = await committed("a");
+      await nature.remotes.addHttp("Origin", server.url, {
+        credentials: { username: "gitnature", password: SENTINEL },
+      });
+
+      expect((await nature.remotes.list()).map((r) => r.name)).toEqual(["origin"]);
+      await nature.push("origin");
+
+      const authorized = server.requests.filter((request) => request.authorization);
+      expect(authorized.length).toBeGreaterThan(0);
+      expect(atob((authorized[0]?.authorization ?? "").replace(/^Basic /, ""))).toBe(
+        `gitnature:${SENTINEL}`,
+      );
+    });
+
+    it("scopes them by project path, so two nested projects do not share a key", async () => {
+      // `projectName` is the LAST path segment, so `x/inner` and `y/inner` are both
+      // "inner" — one project's credentials would silently overwrite the other's.
+      const nested = new MemFilesApi({
+        initialFiles: { "x/inner/README.md": "x", "y/inner/README.md": "y" },
+      });
+      const nestedWorkspace = initWorkspace({ workspace: new Workspace(), filesApi: nested });
+      registerVcs(nestedWorkspace, { fetch: server.fetch });
+
+      const natures: VcsNature[] = [];
+      for (const name of ["x/inner", "y/inner"]) {
+        const project = await nestedWorkspace.getProject(name);
+        if (!project) throw new Error(`no project: ${name}`);
+        natures.push(vcsNatureOf(project));
+      }
+      const [first, second] = natures as [VcsNature, VcsNature];
+
+      await first.init({ author: AUTHOR });
+      await first.add();
+      await first.commit({ message: "x" });
+      await first.remotes.addHttp("origin", server.url, {
+        credentials: { username: "x-user", password: `${SENTINEL}-x` },
+      });
+
+      await second.init({ author: AUTHOR });
+      await second.remotes.addHttp("origin", server.url, {
+        credentials: { username: "y-user", password: `${SENTINEL}-y` },
+      });
+
+      // The second project's write must not have replaced the first's credentials.
+      await first.push();
+      const authorized = server.requests.filter((request) => request.authorization);
+      expect(authorized.length).toBeGreaterThan(0);
+      expect(atob((authorized[0]?.authorization ?? "").replace(/^Basic /, ""))).toBe(
+        `x-user:${SENTINEL}-x`,
+      );
+    });
+
     it("stores them through the Secrets adapter, not beside the URL", async () => {
       const nature = await natureOf("a");
       await nature.init();
@@ -397,7 +457,7 @@ describe("HTTP remotes", () => {
       });
 
       const secrets = workspace.requireAdapter(Secrets);
-      expect(await secrets.get(remoteCredentialsKey("a", "origin"))).toEqual({
+      expect(await secrets.get(remoteCredentialsKey(nature.path, "origin"))).toEqual({
         username: "gitnature",
         password: SENTINEL,
       });

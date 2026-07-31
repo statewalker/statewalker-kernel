@@ -151,20 +151,36 @@ const REMOTE_NAME_DESCRIPTION =
   "letters, digits, '.', '_', '/' and '-', starting with a letter or digit";
 
 /**
- * The `.git/config` key holding a remote's URL.
+ * The single spelling of a remote name that this package stores anything under.
  *
  * Lower-cased because `GitWorkingCopyConfig` lower-cases every key it parses or
  * sets. Real git treats the section and key as case-insensitive but the
  * **subsection** (the remote name) as case-sensitive, so `addHttp("Origin", …)`
  * and `addHttp("origin", …)` are one remote here and two in git.
+ *
+ * **Both keys go through this.** They used to disagree: the URL key lower-cased and
+ * the credentials key did not, so `addHttp("Origin", url, {credentials})` stored the
+ * secret under `Origin` while `list()` reported `origin` — and the `push("origin")`
+ * that followed went out anonymously and came back 401 with nothing to explain it.
  */
-export function remoteUrlKey(name: string): string {
-  return `remote.${name.toLowerCase()}.url`;
+function canonicalRemoteName(name: string): string {
+  return name.toLowerCase();
 }
 
-/** The `Secrets` key holding one remote's credentials, scoped per project. */
-export function remoteCredentialsKey(projectName: string, remote: string): string {
-  return `vcs.remote.${projectName}.${remote}`;
+/** The `.git/config` key holding a remote's URL. */
+export function remoteUrlKey(name: string): string {
+  return `remote.${canonicalRemoteName(name)}.url`;
+}
+
+/**
+ * The `Secrets` key holding one remote's credentials, scoped per project.
+ *
+ * Keyed on the project's **path**, not its name: `Project.projectName` is the last
+ * path segment, so `x/inner` and `y/inner` are both `inner` and would share one
+ * credentials entry — the second project silently overwriting the first's token.
+ */
+export function remoteCredentialsKey(projectPath: string, remote: string): string {
+  return `vcs.remote.${projectPath}.${canonicalRemoteName(remote)}`;
 }
 
 /**
