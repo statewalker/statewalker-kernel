@@ -97,7 +97,10 @@ async function loadSources(): Promise<SourceFile[]> {
 function importSpecifiers(file: SourceFile): string[] {
   const specifiers: string[] = [];
   const pattern = /(?:\bfrom|\bimport|\brequire)\s*\(?\s*["']([^"']+)["']/g;
-  for (const match of file.code.matchAll(pattern)) specifiers.push(match[1]);
+  for (const match of file.code.matchAll(pattern)) {
+    const specifier = match[1];
+    if (specifier) specifiers.push(specifier);
+  }
   return specifiers;
 }
 
