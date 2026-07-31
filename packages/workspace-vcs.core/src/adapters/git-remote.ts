@@ -24,14 +24,44 @@ import { historyOf, repositoryFacadeOf } from "./repository-facade.js";
  * consulted for exactly one thing: did it succeed.
  */
 export interface PushTarget {
-  /** The refspec as handed to the transport, after canonicalisation. */
-  refspec: string;
   /** Local ref, e.g. `refs/heads/main`. */
   source: string;
   /** Remote ref, e.g. `refs/heads/main`. */
   destination: string;
+  /** Whether the caller asked for a non-fast-forward update (`+`). */
+  force: boolean;
   /** The commit `source` resolved to **before** the push. */
   commit: string;
+}
+
+/**
+ * The refspec for the **duplex** transport: `[+]<source>:<destination>`.
+ *
+ * The `+` is kept because `pushOverDuplex`'s FSM reads it for its local
+ * non-fast-forward check (`fsm/push/client-push-fsm.ts`).
+ */
+export function duplexRefspecOf(target: PushTarget): string {
+  return `${target.force ? "+" : ""}${target.source}:${target.destination}`;
+}
+
+/**
+ * The refspec for the **HTTP** transport: `<source>:<destination>`, never a `+`.
+ *
+ * The prefix is stripped, and that is a fix rather than a simplification.
+ * `httpPush`'s `resolveRefspecs` (`http-client.ts:572-608`) does **not** strip it
+ * before looking the source ref up, so a `+`-prefixed refspec made it look for a
+ * local ref literally named `+refs/heads/main`, find nothing, and **silently skip
+ * the refspec** — while still answering `{success: true}` with an empty
+ * `refStatus`. Every force-push therefore threw ({@link httpPushOutcome} case 3)
+ * and none ever landed.
+ *
+ * Nothing is lost by dropping it: on the smart-HTTP wire the force decision is
+ * carried by the update command itself, not by the refspec text, so `+` is inert
+ * there. Whether the server accepts a non-fast-forward update is the server's
+ * call either way.
+ */
+export function httpRefspecOf(target: PushTarget): string {
+  return `${target.source}:${target.destination}`;
 }
 
 /** Raised when a push did not put the requested refspecs on the remote. */
@@ -45,18 +75,25 @@ export class RemotePushError extends Error {
 /**
  * Canonicalise the refspecs and resolve each source ref locally — or throw.
  *
- * Canonicalisation is `[+]<source>:<destination>` with the destination defaulted
- * to the source. It is not cosmetic: `pushOverDuplex`'s FSM uses
- * `destination ?? ""` (`fsm/push/client-push-fsm.ts:123-160`), so a bare
- * `refs/heads/main` would be pushed to the ref named `""`. The `+` is preserved
- * because the duplex FSM reads it for its local non-fast-forward check; on HTTP
- * it is inert on the wire but `resolveRefspecs` does not strip it either, which
- * is why a force refspec there ends up caught by {@link httpPushOutcome}'s case 3
- * rather than silently doing nothing.
+ * Canonicalisation splits `[+]<source>[:<destination>]` into its parts, with the
+ * destination defaulted to the source. It is not cosmetic: `pushOverDuplex`'s FSM
+ * uses `destination ?? ""` (`fsm/push/client-push-fsm.ts:123-160`), so a bare
+ * `refs/heads/main` would be pushed to the ref named `""`. The `+` is carried as
+ * a **flag** rather than as text, because the two transports want different
+ * spellings of it — {@link duplexRefspecOf} keeps it, {@link httpRefspecOf} drops
+ * it, and each says why.
  *
- * Deletion refspecs (`:refs/heads/x`) are refused: `GitRemote.push` must answer
- * with a commit id and a deletion has none. Refusing is the only shape of that
- * contract that is not a lie.
+ * Two shapes are refused outright:
+ *
+ * - **Deletions** (`:refs/heads/x`). `GitRemote.push` must answer with a commit id
+ *   and a deletion has none. Refusing is the only shape of that contract that is
+ *   not a lie.
+ * - **Negative refspecs** (`^refs/heads/x`). They mean *exclude*, and there is
+ *   nothing here to exclude them from — this remote pushes exactly what it is
+ *   given. Refusing matters because the alternative was measured: reading only
+ *   `parsed.force` canonicalised `^refs/heads/main` into
+ *   `refs/heads/main:refs/heads/main` and **pushed** it, the exact inverse of the
+ *   request.
  */
 export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise<PushTarget[]> {
   if (refspecs.length === 0) {
@@ -66,6 +103,12 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
   const targets: PushTarget[] = [];
   for (const spec of refspecs) {
     const parsed = parseRefSpec(spec);
+    if (parsed.negative) {
+      throw new RemotePushError(
+        `refspec '${spec}' is negative: '^' means exclude, and this remote pushes ` +
+          "exactly the refspecs it is given. Drop the refspec instead of negating it.",
+      );
+    }
     if (!parsed.source) {
       throw new RemotePushError(
         `refspec '${spec}' deletes a remote ref; this remote pushes commits only, ` +
@@ -84,12 +127,7 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
       );
     }
 
-    targets.push({
-      refspec: `${parsed.force ? "+" : ""}${source}:${destination}`,
-      source,
-      destination,
-      commit,
-    });
+    targets.push({ source, destination, force: parsed.force, commit });
   }
   return targets;
 }
@@ -107,11 +145,14 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
  *    `ok` whenever any ref fails, and `httpPush` returns `success: ok`), but a
  *    partial failure reading as success is precisely what `publish` would
  *    checkpoint as a completed push, so the guard stays.
- * 3. **A requested destination is absent from `refStatus`** — throw. This one is
- *    reachable: `resolveRefspecs` **silently skips** any refspec whose local ref
- *    does not resolve and `httpPush` still answers `{success: true}` with an
- *    empty `refStatus`. A `+`-prefixed refspec triggers it every time, because
- *    that parser does not strip the force prefix before looking the ref up.
+ * 3. **A requested destination is absent from `refStatus`** — throw.
+ *    `resolveRefspecs` **silently skips** any refspec whose local ref does not
+ *    resolve and `httpPush` still answers `{success: true}` with an empty
+ *    `refStatus`. No caller input reaches this today — {@link pushTargetsOf}
+ *    resolves every source ref before the wire, and {@link httpRefspecOf} strips
+ *    the `+` that used to trigger it on every force-push — so, like case 2, it is
+ *    a guard against a partial failure that reads as success, which is precisely
+ *    what `publish` would checkpoint as a completed push.
  *
  * On success the commit returned is the **first refspec's** — the locally
  * resolved id of its source ref. For a multi-refspec push the other refspecs
@@ -124,23 +165,29 @@ export function httpPushOutcome(result: PushResult, targets: PushTarget[]): { co
     throw new RemotePushError("push requires at least one refspec; none were given");
   }
 
-  if (!result.success) {
-    throw new RemotePushError(`push failed: ${result.error ?? "no reason reported"}`);
-  }
-
   const refStatus = result.refStatus ?? new Map();
+
+  if (!result.success) {
+    // `result.error` is the generic "Some refs failed to update"; the reason the
+    // caller can act on — `non-fast-forward`, say — is only in `refStatus`. A
+    // rejected force-push is exactly this case, so surfacing it is not cosmetic.
+    const rejected = [...refStatus]
+      .filter(([, status]) => !status.success)
+      .map(([name, status]) => `${name}: ${status.error ?? "no reason reported"}`);
+    const detail = rejected.length ? rejected.join("; ") : (result.error ?? "no reason reported");
+    throw new RemotePushError(`push failed: ${detail}`);
+  }
   for (const t of targets) {
     const status = refStatus.get(t.destination);
     if (!status) {
       throw new RemotePushError(
         `push reported success but said nothing about '${t.destination}' ` +
-          `(refspec '${t.refspec}'): the transport skipped it and nothing was written. ` +
-          "Note that its refspec parser does not strip a '+' force prefix.",
+          `(refspec '${httpRefspecOf(t)}'): the transport skipped it and nothing was written.`,
       );
     }
     if (!status.success) {
       throw new RemotePushError(
-        `push rejected '${t.destination}' (refspec '${t.refspec}'): ${status.error ?? "no reason reported"}`,
+        `push rejected '${t.destination}' (refspec '${httpRefspecOf(t)}'): ${status.error ?? "no reason reported"}`,
       );
     }
   }
@@ -224,7 +271,7 @@ export function createHttpGitRemote(git: Git, options: HttpGitRemoteOptions): Gi
     async push(refspecs: string[]): Promise<{ commit: string }> {
       const targets = await pushTargetsOf(refspecs, refs);
       const result = await httpPush(options.url, repositoryFacadeOf(git), refs, {
-        refspecs: targets.map((t) => t.refspec),
+        refspecs: targets.map(httpRefspecOf),
         credentials: options.credentials,
         headers: options.headers,
         fetchFn: options.fetchFn,
@@ -253,7 +300,7 @@ export function createDuplexGitRemote(git: Git, options: DuplexGitRemoteOptions)
         duplex: await options.connect(),
         repository: repositoryFacadeOf(git),
         refStore: refs,
-        refspecs: targets.map((t) => t.refspec),
+        refspecs: targets.map(duplexRefspecOf),
         atomic: options.atomic,
       });
       return duplexPushOutcome(result, targets);

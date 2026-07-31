@@ -314,12 +314,6 @@ describe("createHttpGitRemote", () => {
   });
 
   describe("force refspecs", () => {
-    /** A server already holding `oid` on `refs/heads/main`. */
-    async function serverHolding(oid: string): Promise<void> {
-      await server.refStore.update("refs/heads/main", oid);
-      expect(await serverRefs(server)).toEqual({ "refs/heads/main": oid });
-    }
-
     it("a '+' refspec LANDS, rather than throwing on a push that never happened", async () => {
       // This is the case the suite used to pin the wrong way round. `+` was passed
       // through to `httpPush`, whose `resolveRefspecs` does not strip it — so the
@@ -337,17 +331,63 @@ describe("createHttpGitRemote", () => {
       expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
     });
 
-    it("a '+' refspec overwrites a server ref that is not an ancestor", async () => {
-      // The reason `+` exists at all: the destination holds something the local
-      // history knows nothing about. Without a landing force-push this is simply
-      // unreachable through this adapter.
-      const { git, ids } = await localRepo([{ "README.md": "hello" }]);
-      await serverHolding("9".repeat(40));
+    it("a fast-forward '+' push lands on top of what the server already holds", async () => {
+      const { git, history, ids } = await localRepo([{ "a.txt": "one" }, { "b.txt": "two" }]);
       const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      // Push the parent first — through the wire, so the server holds its objects
+      // and can decide ancestry — then `+`-push the child over it. A real ref
+      // update, not a no-op against an empty server.
+      await history.refs.set("refs/heads/base", commitId(ids, 0));
+      await remote.push(["refs/heads/base:refs/heads/main"]);
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
 
       await remote.push(["+refs/heads/main:refs/heads/main"]);
 
-      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 1) });
+    });
+
+    /**
+     * **The limit `+` does NOT lift on this transport, stated as a fact.**
+     *
+     * A non-fast-forward update is refused by the RECEIVER: `createFetchHandler`'s
+     * receive-pack path hard-codes `allowNonFastForward: false`
+     * (`transport/src/adapters/http/http-server.ts:389`) and exposes no option for
+     * it, and smart HTTP carries no client-side force signal — measured, all three
+     * spellings against a divergent server ref:
+     *
+     *   refspecs: ["refs/heads/main:…"]   -> {success:false, "non-fast-forward"}
+     *   refspecs: ["+refs/heads/main:…"]  -> {success:true,  refStatus:{}}  (SKIPPED, nothing written)
+     *   force: true + plain refspec       -> {success:false, "non-fast-forward"}
+     *
+     * So stripping the `+` does not lose force semantics — there were none to
+     * lose. What it fixes is the middle line: a `+` push used to be silently
+     * skipped and then reported as "the transport said nothing about this ref",
+     * whether or not it was a fast-forward. Now it behaves as a push, and a
+     * genuine non-fast-forward is refused with the reason the server gave.
+     * Lifting the limit is upstream work in `vcs/packages/transport`.
+     */
+    it("a divergent '+' push is refused with the RECEIVER's reason, not a phantom skip", async () => {
+      const other = await localRepo([{ "other.txt": "theirs" }]);
+      await createHttpGitRemote(other.git, { url: server.url, fetchFn: server.fetch }).push([
+        "refs/heads/main:refs/heads/main",
+      ]);
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(other.ids, 0) });
+
+      const { git } = await localRepo([{ "README.md": "hello" }]);
+      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      const error = await remote
+        .push(["+refs/heads/main:refs/heads/main"])
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(RemotePushError);
+      // The actionable half: the caller learns WHY, rather than reading that the
+      // transport "said nothing about" a ref it never looked at.
+      expect((error as Error).message).toContain("non-fast-forward");
+      expect((error as Error).message).not.toContain("skipped it");
+      // And the server still holds what it held.
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(other.ids, 0) });
     });
 
     it("a '+' refspec with no destination lands on the same name", async () => {
