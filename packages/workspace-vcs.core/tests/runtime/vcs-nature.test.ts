@@ -160,6 +160,48 @@ describe("VcsNature", () => {
       });
     });
 
+    it("keeps an earlier init()'s configuration when init() is called again", async () => {
+      const project = await projectOf("a");
+      const nature = vcsNatureOf(project);
+      await nature.init({
+        author: { name: "Ada", email: "ada@example.com" },
+        defaultRemote: "upstream",
+      });
+
+      // The docstring calls this safe on a project that already has a repository, so a
+      // caller re-running setup passes no arguments — and must not lose what is there.
+      await nature.init();
+
+      // Read the marker back through a fresh workspace: the adapter's in-memory cache
+      // must not be able to hide a wipe that already happened on disk.
+      const reopened = new Workspace().setFileSystem(files);
+      registerVcs(reopened, deps);
+      const again = await reopened.getProject("a");
+      if (!again) throw new Error("no project: a");
+      expect((await vcsConfigOf(again).load()).data).toEqual({
+        version: 1,
+        defaultRemote: "upstream",
+        author: { name: "Ada", email: "ada@example.com" },
+      });
+    });
+
+    it("lets a later init() replace only the fields it names", async () => {
+      const project = await projectOf("a");
+      const nature = vcsNatureOf(project);
+      await nature.init({
+        author: { name: "Ada", email: "ada@example.com" },
+        defaultRemote: "upstream",
+      });
+
+      await nature.init({ defaultRemote: "fork" });
+
+      expect((await vcsConfigOf(project).load()).data).toEqual({
+        version: 1,
+        defaultRemote: "fork",
+        author: { name: "Ada", email: "ada@example.com" },
+      });
+    });
+
     it("registers VcsConfiguration alongside VcsNature", async () => {
       const project = await projectOf("a");
       expect(project.requireAdapter(VcsConfiguration)).toBeInstanceOf(VcsConfiguration);

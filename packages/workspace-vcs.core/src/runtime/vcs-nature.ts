@@ -204,10 +204,19 @@ export class VcsNature extends ProjectAdapter {
    * state from it — see {@link git}) and write the `nature.vcs.json` marker. Safe to
    * call on a project that already has a repository — the repository is then opened,
    * not overwritten.
+   *
+   * **Safe for the marker too: a second `init()` merges, it does not replace.** An
+   * existing configuration is loaded first and `config` is layered over it, so
+   * `init()` with no arguments is a no-op on the marker rather than a wipe of the
+   * author and default remote a previous call stored. Naming a field replaces that
+   * field only. A marker already on disk carrying a key the closed schema does not
+   * declare makes this throw instead of silently repairing the file — the same
+   * validation any other write goes through.
    */
   async init(config: Omit<VcsConfigData, "version"> = {}): Promise<void> {
     await this.git();
-    await this.config.write({ version: 1, ...config });
+    const previous = (await this.config.exists()) ? (await this.config.load()).data : undefined;
+    await this.config.write({ ...previous, ...config, version: 1 });
   }
 
   /**
