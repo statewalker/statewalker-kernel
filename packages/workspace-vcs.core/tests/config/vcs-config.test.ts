@@ -4,8 +4,8 @@ import { type Project, Workspace } from "@statewalker/workspace.core";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   VCS_NATURE_FILE,
-  VcsConfiguration,
   type VcsConfigData,
+  VcsConfiguration,
   vcsConfigOf,
 } from "../../src/config/vcs-config.js";
 
