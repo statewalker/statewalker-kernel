@@ -133,6 +133,38 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
 }
 
 /**
+ * Re-resolve every target's source ref and throw if it moved — call after the
+ * transport returns, before reporting a commit.
+ *
+ * {@link pushTargetsOf} resolves the source ref **before** the transport runs and
+ * the transport **re-reads** it when it builds the update, so a single `await` in
+ * that window is enough for the reported id and the pushed id to differ. Any real
+ * network opens that window on every push, and `publish` writes whatever is reported
+ * into `historyRemotes` — so a stale id becomes a checkpoint claiming a commit the
+ * remote does not have, and a resume that skips a push it never performed.
+ *
+ * It throws rather than reporting the re-resolved value. The later read is no more
+ * trustworthy than the earlier one — the ref can move again between the transport's
+ * read and this one — so re-reporting would swap a detectable lie for an undetectable
+ * one. Equal before and after is the only state in which the reported id is known to
+ * be what the transport sent. The push itself may well have landed; the caller is
+ * told exactly that, and a retry converges.
+ */
+export async function assertNoRefDrift(targets: PushTarget[], refs: RefStore): Promise<void> {
+  for (const t of targets) {
+    const now = await refs.get(t.source);
+    if (now !== t.commit) {
+      throw new RemotePushError(
+        `push: local ref '${t.source}' moved while the push was in flight — it was ` +
+          `${t.commit} when the push started and is ${now ?? "(gone)"} now. The transport ` +
+          "re-reads the ref when it builds its update, so what landed on the remote cannot " +
+          "be named with certainty. The push may well have succeeded; retry to find out.",
+      );
+    }
+  }
+}
+
+/**
  * `httpPush`'s status-shaped result → the exception-shaped `GitRemote` contract.
  *
  * `httpPush` returns `PushResult {success, error?, refStatus?}`, and `refStatus`
@@ -276,6 +308,7 @@ export function createHttpGitRemote(git: Git, options: HttpGitRemoteOptions): Gi
         headers: options.headers,
         fetchFn: options.fetchFn,
       });
+      await assertNoRefDrift(targets, refs);
       return httpPushOutcome(result, targets);
     },
   };
@@ -303,6 +336,7 @@ export function createDuplexGitRemote(git: Git, options: DuplexGitRemoteOptions)
         refspecs: targets.map(duplexRefspecOf),
         atomic: options.atomic,
       });
+      await assertNoRefDrift(targets, refs);
       return duplexPushOutcome(result, targets);
     },
   };

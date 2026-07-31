@@ -195,6 +195,47 @@ describe("createHttpGitRemote", () => {
     });
   });
 
+  it("refuses to name a commit when the source ref moved while the push was in flight", async () => {
+    // The commit id is resolved BEFORE the transport runs, and `httpPush` RE-READS
+    // the ref when it builds the update — so one `await` in that window is enough
+    // for the two to disagree. `publish` writes the reported id into
+    // `historyRemotes`, so a wrong id here means a checkpoint claiming a commit the
+    // remote does not have, and a resume that skips a push it never did. Any real
+    // network opens this window on every push.
+    const { git, files, ids } = await localRepo([{ "a.txt": "one" }]);
+    let raced = false;
+    const racingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (!raced) {
+        raced = true;
+        await files.write("b.txt", [new TextEncoder().encode("two")]);
+        await git.add().addFilepattern(".").call();
+        await git
+          .commit()
+          .setMessage("mid-push")
+          .setAuthor(AUTHOR.name, AUTHOR.email)
+          .call();
+      }
+      return server.fetch(input as string, init);
+    }) as typeof fetch;
+
+    const remote = createHttpGitRemote(git, { url: server.url, fetchFn: racingFetch });
+
+    // ONE push, and the error is captured rather than re-thrown by a second call:
+    // the race is armed once, so a second push would find the ref settled and
+    // legitimately succeed.
+    const error = await remote
+      .push(["refs/heads/main:refs/heads/main"])
+      .catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(RemotePushError);
+    expect((error as Error).message).toMatch(/moved while the push was in flight/);
+
+    // And the drift was real, not theoretical: the server holds the LATER commit,
+    // so reporting the pre-push id would have been a lie about what landed.
+    expect(raced).toBe(true);
+    expect((await serverRefs(server))["refs/heads/main"]).not.toBe(commitId(ids, 0));
+  });
+
   it("sends Authorization: Basic on every request when credentials are given", async () => {
     const { git } = await localRepo([{ "README.md": "hello" }]);
     const remote = createHttpGitRemote(git, {
