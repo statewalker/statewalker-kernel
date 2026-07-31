@@ -11,3 +11,4 @@ export * from "./adapters/index.js";
 export * from "./config/index.js";
 export * from "./remotes/index.js";
 export * from "./runtime/index.js";
+export { type ByteStream, type HashContent, hashContentSha256 } from "./util/hash-content.js";

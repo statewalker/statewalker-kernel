@@ -1,4 +1,4 @@
-import { type Repository, manifestOf } from "@statewalker/vcs-workspace";
+import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
 import type { FilesApi } from "@statewalker/webrun-files";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
 import { type Project, Workspace } from "@statewalker/workspace.core";
