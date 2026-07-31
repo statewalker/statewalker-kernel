@@ -4,6 +4,7 @@ import type { Checkout, Worktree } from "@statewalker/vcs-working-tree";
 import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
 import type { FilesApi } from "@statewalker/webrun-files";
 import { FilteredFilesApi, newRegexpPathFilter } from "@statewalker/webrun-files-composite";
+import { DEFAULT_SYSTEM_FOLDER } from "@statewalker/workspace.core";
 import type { HashContent } from "../util/hash-content.js";
 import { historyOf } from "./repository-facade.js";
 import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entries.js";
@@ -28,8 +29,17 @@ import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entrie
  *
  * Segment-anchored and boundary-aware: `.gitignore`, `.gitmodules` and `.projectile`
  * are ordinary files and stay visible.
+ *
+ * The workbench folder is **derived** from `DEFAULT_SYSTEM_FOLDER` rather than
+ * spelled out, for the same reason `VcsNature`'s exclude pattern is: a literal here
+ * would go on hiding `.project` after the constant moved.
  */
-const HIDDEN_SEGMENTS = [/(^|\/)\.git(\/|$)/, /(^|\/)\.project(\/|$)/];
+const HIDDEN_SEGMENTS = [segmentPattern(".git"), segmentPattern(DEFAULT_SYSTEM_FOLDER)];
+
+/** A regexp matching `name` as a whole path segment, at any depth. */
+function segmentPattern(name: string): RegExp {
+  return new RegExp(`(^|/)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`);
+}
 
 /** What a commit is called when `Repository.commit` is given no message. */
 const DEFAULT_COMMIT_MESSAGE = "workspace checkpoint";

@@ -8,7 +8,7 @@ import {
   type Workspace,
 } from "@statewalker/workspace.core";
 import { assertSupportedIndex } from "../adapters/unsupported-entries.js";
-import { type VcsConfigData, VcsConfiguration } from "../config/index.js";
+import { type VcsConfigData, VcsConfiguration, validateVcsConfig } from "../config/index.js";
 import {
   addHttpRemote,
   DEFAULT_REMOTE,
@@ -40,8 +40,14 @@ const INFO_EXCLUDE = ".git/info/exclude";
  * path under an ignored directory while `isIgnored` only reports `IGNORED`, and the
  * worktree walk recurses into the directory regardless. So `.project/` would leave
  * `.project/nature.vcs.json` and everything below it staged by `add(".")`.
+ *
+ * **Derived, not spelled out.** As a literal it was structurally independent of
+ * `DEFAULT_SYSTEM_FOLDER` — which this file already imports, which
+ * `VcsConfiguration.configPath()` uses, and which the generated comment below
+ * interpolates. Change the constant and the comment inside `.git/info/exclude`
+ * would have claimed one folder was excluded while the pattern excluded another.
  */
-const PROJECT_EXCLUDE = ".project";
+const PROJECT_EXCLUDE = DEFAULT_SYSTEM_FOLDER;
 
 const EXCLUDE_BLOCK = `# Written by GitNature (@statewalker/workspace-vcs.core).
 # '${DEFAULT_SYSTEM_FOLDER}' is the workbench's own per-project state — this nature's
@@ -212,11 +218,18 @@ export class VcsNature extends ProjectAdapter {
    * field only. A marker already on disk carrying a key the closed schema does not
    * declare makes this throw instead of silently repairing the file — the same
    * validation any other write goes through.
+   *
+   * **Nothing is created until the configuration has passed validation.** Opening
+   * the repository first meant a rejected config left `.git/HEAD` behind, so
+   * {@link exists} answered `true` while {@link VcsConfiguration.exists} — the file
+   * this code calls the nature marker — answered `false`.
    */
   async init(config: Omit<VcsConfigData, "version"> = {}): Promise<void> {
-    await this.git();
     const previous = (await this.config.exists()) ? (await this.config.load()).data : undefined;
-    await this.config.write({ ...previous, ...config, version: 1 });
+    const merged: VcsConfigData = { ...previous, ...config, version: 1 };
+    validateVcsConfig(merged);
+    await this.git();
+    await this.config.write(merged);
   }
 
   /**

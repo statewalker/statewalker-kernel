@@ -1,6 +1,6 @@
 import type { FilesApi } from "@statewalker/webrun-files";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
-import { type Project, Workspace } from "@statewalker/workspace.core";
+import { DEFAULT_SYSTEM_FOLDER, type Project, Workspace } from "@statewalker/workspace.core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { VcsConfiguration, vcsConfigOf } from "../../src/config/index.js";
 import { registerVcs, VcsNature, vcsNatureOf } from "../../src/runtime/vcs-nature.js";
@@ -308,6 +308,22 @@ describe("VcsNature", () => {
       });
     });
 
+    it("creates nothing when the configuration is rejected", async () => {
+      // Validation ran AFTER the repository was opened, so a rejected config left
+      // `.git/HEAD` on disk: `VcsNature.exists()` said true while
+      // `VcsConfiguration.exists()` — the file this code calls the nature marker —
+      // said false. Two competing definitions of "has the VCS nature", disagreeing
+      // visibly, with no way for the caller to know which one anything reads.
+      const project = await projectOf("a");
+      const nature = vcsNatureOf(project);
+
+      await expect(nature.init({ token: "ghp_live" } as never)).rejects.toThrow(/unknown key/);
+
+      expect(await nature.exists()).toBe(false);
+      expect(await vcsConfigOf(project).exists()).toBe(false);
+      expect(await files.exists("/a/.git/HEAD")).toBe(false);
+    });
+
     it("registers VcsConfiguration alongside VcsNature", async () => {
       const project = await projectOf("a");
       expect(project.requireAdapter(VcsConfiguration)).toBeInstanceOf(VcsConfiguration);
@@ -322,6 +338,10 @@ describe("VcsNature", () => {
       const lines = (await readText(files, "/a/.git/info/exclude"))
         .split("\n")
         .map((line) => line.trim());
+      // The pattern is DERIVED from `DEFAULT_SYSTEM_FOLDER`, not spelled out: a
+      // literal would keep excluding `.project` after the constant moved, while the
+      // generated comment in the same block would name the new folder.
+      expect(lines).toContain(DEFAULT_SYSTEM_FOLDER);
       expect(lines).toContain(".project");
       // `.project/` is the trap: IgnoreManager returns CHECK_PARENT for paths inside an
       // ignored directory and `isIgnored` only reports IGNORED, so the trailing slash
