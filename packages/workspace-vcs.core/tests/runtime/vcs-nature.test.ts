@@ -148,6 +148,46 @@ describe("VcsNature", () => {
       expect(await nature.exists()).toBe(true);
     });
 
+    it("carries staged-but-uncommitted work across a reopen", async () => {
+      // The assembly reads `.git/index` on open. Without that read a reopened
+      // repository starts with an EMPTY staging store, so the user's staged work is
+      // invisible — and the next `add()` writes the index out wholesale over it.
+      const nature = vcsNatureOf(await projectOf("a"));
+      await nature.init();
+      await files.write("/a/src/main.ts", [encoder.encode("export {};")]);
+      await nature.add(".");
+
+      const reopened = new Workspace().setFileSystem(files);
+      registerVcs(reopened, deps);
+      const project = await reopened.getProject("a");
+      if (!project) throw new Error("no project: a");
+
+      expect([...(await vcsNatureOf(project).status()).added].sort()).toEqual([
+        "README.md",
+        "src/main.ts",
+      ]);
+    });
+
+    it("is false for a .git holding only HEAD's directory, and true for a HEAD-only .git", async () => {
+      // The predicate is `.git/HEAD`, and both plausible weakenings are harmful.
+      // `.git` alone: an empty `.git/` directory (a half-made checkout, an
+      // interrupted clone) would report the nature as present. `.git/config`: a
+      // repository with HEAD but no config — which opens and works — would report
+      // ABSENT, so `git()` would take the CREATE path over a live repository and
+      // silently reset a non-main or detached HEAD to `ref: refs/heads/main`.
+      const nature = vcsNatureOf(await projectOf("a"));
+      await files.mkdir("/a/.git");
+      expect(await nature.exists()).toBe(false);
+
+      await files.write("/a/.git/HEAD", [encoder.encode("ref: refs/heads/topic\n")]);
+      expect(await files.exists("/a/.git/config")).toBe(false);
+      expect(await nature.exists()).toBe(true);
+
+      // And it really is a live repository: opening it must not rewrite HEAD.
+      await nature.git();
+      expect(await readText(files, "/a/.git/HEAD")).toBe("ref: refs/heads/topic\n");
+    });
+
     it("opens an existing repository on a second nature rather than clobbering it", async () => {
       const nature = vcsNatureOf(await projectOf("a"));
       await nature.init();
@@ -384,6 +424,47 @@ describe("VcsNature", () => {
       // ignored directory and `isIgnored` only reports IGNORED, so the trailing slash
       // excludes the directory entry and nothing under it.
       expect(lines).not.toContain(".project/");
+    });
+
+    it("writes its own line even when an existing exclude MENTIONS the folder", async () => {
+      // The check is `line.trim() === PROJECT_EXCLUDE`, exactly. Relaxed to
+      // `existing.includes(PROJECT_EXCLUDE)` it still passes every other test here,
+      // because the block GitNature writes mentions `.project` in its own comments —
+      // but then a pre-existing exclude holding `.projectile`, or a comment reading
+      // `# don't ignore .project`, makes GitNature skip writing its pattern
+      // ENTIRELY, and `add(".")` commits `.project/**` into the user's history.
+      const project = await projectOf("a");
+      await files.mkdir("/a/.git/info");
+      await files.write("/a/.git/info/exclude", [encoder.encode("*.log\n.projectile\n")]);
+
+      await vcsNatureOf(project).init();
+
+      const lines = (await readText(files, "/a/.git/info/exclude"))
+        .split("\n")
+        .map((line) => line.trim());
+      expect(lines).toContain(DEFAULT_SYSTEM_FOLDER);
+      // The caller's own rules survive — this appends, it does not rewrite.
+      expect(lines).toContain("*.log");
+      expect(lines).toContain(".projectile");
+    });
+
+    it("appends exactly once however often the repository is opened", async () => {
+      const project = await projectOf("a");
+      await vcsNatureOf(project).init();
+
+      // Four more opens, each through a fresh Workspace so nothing is memoised.
+      for (let i = 0; i < 4; i++) {
+        const reopened = new Workspace().setFileSystem(files);
+        registerVcs(reopened, deps);
+        const again = await reopened.getProject("a");
+        if (!again) throw new Error("no project: a");
+        await vcsNatureOf(again).git();
+      }
+
+      const lines = (await readText(files, "/a/.git/info/exclude"))
+        .split("\n")
+        .map((line) => line.trim());
+      expect(lines.filter((line) => line === DEFAULT_SYSTEM_FOLDER)).toHaveLength(1);
     });
 
     it("actually keeps `.project` out of a commit of the whole tree", async () => {
