@@ -121,10 +121,18 @@ describe("createGitRepository — the vcs-workspace Repository adapter", () => {
       const before = await repository.manifest();
       await files.write("/a/src/deep/nested.txt", [encoder.encode("changed")]);
 
-      // `buildAnchor` passes `{recursive: true}` to `FilesApi.list`. Before D1 the
-      // interface took ONE parameter, so the option was silently dropped and the
-      // manifest saw root-level entries only — a nested edit would have been
-      // invisible here.
+      // `buildAnchor` passes `{recursive: true}` to `FilesApi.list`, so the manifest
+      // must fold in nested files; a wrapper that dropped the argument would flatten
+      // it to root level and this edit would be invisible.
+      //
+      // NOT a test of D1, and an earlier comment here said otherwise. The `FilesApi`
+      // on the `manifestOf` → `buildAnchor` path is **webrun's**
+      // (`files-sync/src/types.ts` imports it from `@statewalker/webrun-files`), not
+      // vcs's, so D1's widening of the *vcs* declaration never appears here. Nor
+      // could a TypeScript declaration have "silently dropped" a runtime argument:
+      // every implementation always honoured `recursive`, and pre-D1 the mismatch
+      // was a compile error at most. What this pins is `FilteredFilesApi` forwarding
+      // `ListOptions` — see `trackedFilesOf`.
       expect(await repository.manifest()).not.toBe(before);
     });
 

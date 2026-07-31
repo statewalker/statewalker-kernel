@@ -22,12 +22,13 @@
  * exclude file *we* wrote, so that test cannot distinguish "excluded" from "our reader agrees with
  * our writer". Real git resolving `.git/info/exclude` on its own is what turns it into a fact —
  * **via `ls-tree`, not `status --porcelain`**, for the measured reason recorded on that suite
- * below. Note the scope: `init()` writes that exclude, so this holds for repositories this nature
- * created — a `.git` made by native `git init` and adopted later has no such file, which is a
- * known, separate gap.
+ * below. Note the scope: the exclude is ensured on every OPEN, not only by `init()`, so it covers
+ * an adopted `.git` made by native `git init` as well — see `VcsNature.git`.
  *
- * **Skip discipline.** If `git` is not runnable, every test here skips with the reason printed —
- * loudly, never silently. A silent skip would report green for the one claim nothing else covers.
+ * **Absent git FAILS, it does not skip.** This suite is the only evidence for contract invariant 6,
+ * so a machine without `git` must not report green for it. A single always-present test asserts
+ * `git` is runnable and fails with the probe's reason; the rest are skipped so the output names the
+ * cause once instead of once per case.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -47,12 +48,20 @@ const AUTHOR = { name: "GitNature Conformance", email: "conformance@statewalker.
 /** Probed once. `available === false` carries the reason the skips report. */
 const git = detectNativeGit();
 
-if (!git.available) {
-  console.warn(
-    `[T12 native-git conformance] SKIPPED — ${git.reason}. ` +
-      "Contract invariant 6 (native-git compatibility) is UNVERIFIED in this run.",
-  );
-}
+/**
+ * The gate itself: not `skipIf`, so a machine without `git` FAILS rather than
+ * reporting green for the one invariant nothing else covers.
+ */
+describe("native-git conformance — prerequisite", () => {
+  it("has a runnable git", () => {
+    expect(
+      git.available
+        ? "git is available"
+        : `git is NOT runnable — ${git.reason}. Contract invariant 6 (native-git ` +
+            "compatibility) cannot be verified in this run, so this fails rather than skips.",
+    ).toBe("git is available");
+  });
+});
 
 /** A `fetch` that must never be called: this suite is entirely local. */
 const deps = {
@@ -132,6 +141,25 @@ describe.skipIf(!git.available)(
 
       // Order included: both are newest-first, so this pins the parent chain as well as the set.
       expect(theirs).toEqual(ours);
+    });
+
+    it("git config --get reads back the remote our writer wrote", async () => {
+      // `.git/config` is the one file this feature writes through a class with three
+      // documented round-trip bugs, and until now no test asked GIT what it holds —
+      // only our own parser, which shares the writer's assumptions. `--get` on the
+      // exact key is the discriminating question: it fails (exit 1, empty output) on
+      // any spelling git does not recognise, including the `[remote "origin"]` /
+      // `remote."origin"` confusion the writer is prone to.
+      const url = "https://example.test/demo.git";
+      await buildRepository();
+      await nature.remotes.addHttp("origin", url);
+
+      const result = await nativeGitIn(projectDir).run("config", "--get", "remote.origin.url");
+
+      expect(`code=${result.code} url=${result.stdout.trim()}`).toBe(`code=0 url=${url}`);
+      // …and the whole file still parses, so nothing we wrote broke a later read.
+      const listed = await nativeGitIn(projectDir).run("config", "--list", "--local");
+      expect(`code=${listed.code} stderr=${listed.stderr}`).toBe("code=0 stderr=");
     });
 
     it("git status --porcelain is empty after a commit, and so is status()", async () => {
