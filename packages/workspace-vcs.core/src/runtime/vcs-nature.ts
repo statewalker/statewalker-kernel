@@ -233,16 +233,29 @@ export class VcsNature extends ProjectAdapter {
    * nature's marker, the scanner's indexes, transaction state) into the user's own
    * history. Ensuring it on every open costs one `tryReadText`, is append-idempotent
    * (see {@link writeInfoExclude}), and `init()` simply inherits it.
+   *
+   * **The memo caches a success, never a failure.** The promise is stored before it
+   * settles — that is deliberate, and it is what makes concurrent callers share one
+   * assembly rather than race two — but a rejection is then dropped from the memo, so
+   * one transient `EIO` does not permanently kill an adapter that is itself cached on
+   * a Project cached on the Workspace. The next call retries.
    */
   git(): Promise<Git> {
     if (!this.#git) {
-      this.#git = (async () => {
+      const opening = (async () => {
         const git = await openGitRepo(repoFilesOf(this.project), {
           create: !(await this.exists()),
         });
         await this.writeInfoExclude();
         return git;
       })();
+      this.#git = opening;
+      // Not `.catch(...)` on the memoised value: the caller's rejection must stay the
+      // original one, and this handler only evicts. The identity check keeps a slow
+      // failure from evicting a later, successful open.
+      opening.catch(() => {
+        if (this.#git === opening) this.#git = undefined;
+      });
     }
     return this.#git;
   }

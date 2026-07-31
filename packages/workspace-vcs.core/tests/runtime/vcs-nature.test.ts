@@ -112,6 +112,42 @@ describe("VcsNature", () => {
       expect(await nature.git()).toBe(await nature.git());
     });
 
+    it("does not poison the memo when opening the repository fails once", async () => {
+      // A filesystem that fails exactly the next call and is healthy after it. The
+      // memo stores the in-flight promise before it settles, so a rejection that is
+      // never cleared would make one transient EIO permanent for the whole cached
+      // lifetime of the adapter — and adapters are cached on the Project, which is
+      // cached on the Workspace.
+      let failNext = false;
+      const flaky = new Proxy(files, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, target) as unknown;
+          if (typeof value !== "function") return Reflect.get(target, prop, receiver);
+          return (...args: unknown[]) => {
+            if (failNext) {
+              failNext = false;
+              throw new Error("EIO: simulated transient failure");
+            }
+            return (value as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      }) as MemFilesApi;
+
+      const flakyWorkspace = new Workspace().setFileSystem(flaky);
+      registerVcs(flakyWorkspace, deps);
+      const project = await flakyWorkspace.getProject("a");
+      if (!project) throw new Error("no project: a");
+      const nature = vcsNatureOf(project);
+
+      failNext = true;
+      await expect(nature.git()).rejects.toThrow(/simulated transient failure/);
+
+      // The filesystem is healthy again; the same adapter must be able to open.
+      await expect(nature.git()).resolves.toBeDefined();
+      await nature.init();
+      expect(await nature.exists()).toBe(true);
+    });
+
     it("opens an existing repository on a second nature rather than clobbering it", async () => {
       const nature = vcsNatureOf(await projectOf("a"));
       await nature.init();
