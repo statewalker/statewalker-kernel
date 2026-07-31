@@ -260,6 +260,32 @@ describe("HTTP remotes", () => {
       expect(server.requests).toEqual([]);
     });
 
+    it("targets the configured defaultRemote when the caller names none", async () => {
+      // `VcsConfigData.defaultRemote` is documented as "used by push/fetch when the
+      // caller names none", is validated by the closed schema and is persisted — and
+      // both methods used the hardcoded "origin" regardless, so a project configured
+      // this way got `unknown remote 'origin'` for a remote it never declared.
+      const nature = await natureOf("a");
+      await nature.init({ author: AUTHOR, defaultRemote: "upstream" });
+      await nature.add();
+      const { id } = await nature.commit({ message: "first" });
+      await nature.remotes.addHttp("upstream", server.url);
+
+      const outcome = await nature.push();
+
+      expect(outcome.ok).toBe(true);
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": id });
+    });
+
+    it("still defaults to origin when no defaultRemote is configured", async () => {
+      const { nature, id } = await committed("b");
+      await nature.remotes.addHttp("origin", server.url);
+
+      await nature.push();
+
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": id });
+    });
+
     it("refuses to push a branch that has no commit yet", async () => {
       const nature = await natureOf("a");
       await nature.init();
@@ -303,6 +329,21 @@ describe("HTTP remotes", () => {
       await nature.init();
       await expect(nature.fetch("nope")).rejects.toThrow(UnknownRemoteError);
       expect(server.requests).toEqual([]);
+    });
+
+    it("targets the configured defaultRemote when the caller names none", async () => {
+      const { nature: a, id } = await committed("a");
+      await a.remotes.addHttp("origin", server.url);
+      await a.push();
+
+      const b = await natureOf("b");
+      await b.init({ author: AUTHOR, defaultRemote: "upstream" });
+      await b.remotes.addHttp("upstream", server.url);
+
+      const outcome = await b.fetch();
+
+      // Tracking refs named after the remote that was actually used.
+      expect(Object.fromEntries(outcome.updated)).toEqual({ "refs/remotes/upstream/main": id });
     });
   });
 

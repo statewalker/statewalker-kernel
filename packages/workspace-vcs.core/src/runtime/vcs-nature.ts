@@ -418,7 +418,8 @@ export class VcsNature extends ProjectAdapter {
   }
 
   /**
-   * Send a branch to `remote` — by default the branch HEAD is on.
+   * Send a branch to `remote` — by default the branch HEAD is on, to the project's
+   * configured `defaultRemote` (or `origin` when it declares none).
    *
    * `remote` is a **name**, resolved here against this repository's own
    * `.git/config`. That resolution is the reason the porcelain is not used:
@@ -427,9 +428,10 @@ export class VcsNature extends ProjectAdapter {
    * and dies with `TypeError: Failed to parse URL`. An unknown name here raises
    * {@link UnknownRemoteError} before any request exists.
    */
-  async push(remote = DEFAULT_REMOTE, options: PushOptions = {}): Promise<PushOutcome> {
+  async push(remote?: string, options: PushOptions = {}): Promise<PushOutcome> {
     const git = await this.requireRepository("push");
-    const url = await this.requireRemoteUrl(remote);
+    const name = remote ?? (await this.defaultRemote());
+    const url = await this.requireRemoteUrl(name);
 
     const ref = options.ref ?? (await currentBranchRef(git));
     if (!(await headCommitOf(git, ref))) {
@@ -441,7 +443,7 @@ export class VcsNature extends ProjectAdapter {
       url,
       ref,
       force: options.force,
-      auth: await this.credentialsFor(remote),
+      auth: await this.credentialsFor(name),
       fetchImpl: fetchImplOf(this.requireDeps().fetch),
     });
   }
@@ -452,15 +454,16 @@ export class VcsNature extends ProjectAdapter {
    * Objects are imported, not merely advertised — and nothing on the local branch
    * moves. Fetch is not merge; this nature has no merge surface.
    */
-  async fetch(remote = DEFAULT_REMOTE): Promise<FetchOutcome> {
+  async fetch(remote?: string): Promise<FetchOutcome> {
     const git = await this.requireRepository("fetch");
-    const url = await this.requireRemoteUrl(remote);
+    const name = remote ?? (await this.defaultRemote());
+    const url = await this.requireRemoteUrl(name);
 
     return fetchFromHttpRemote({
       git,
       url,
-      remote,
-      auth: await this.credentialsFor(remote),
+      remote: name,
+      auth: await this.credentialsFor(name),
       fetchImpl: fetchImplOf(this.requireDeps().fetch),
     });
   }
@@ -477,6 +480,22 @@ export class VcsNature extends ProjectAdapter {
       throw new Error(`${operation}: no repository at '${this.path}' — call init() first`);
     }
     return this.git();
+  }
+
+  /**
+   * The remote {@link push} and {@link fetch} target when the caller names none:
+   * the project's configured `defaultRemote`, or `origin`.
+   *
+   * Read here rather than hardcoded because the field is documented as exactly
+   * this, is validated by the closed schema, and is persisted — and reading it
+   * nowhere meant `init({defaultRemote:"upstream"})` followed by a bare `push()`
+   * failed with `unknown remote 'origin'`, naming a remote the project never
+   * declared.
+   */
+  private async defaultRemote(): Promise<string> {
+    const config = this.config;
+    if (!(await config.exists())) return DEFAULT_REMOTE;
+    return (await config.load()).data.defaultRemote ?? DEFAULT_REMOTE;
   }
 
   /** A remote's URL, or {@link UnknownRemoteError}. */
