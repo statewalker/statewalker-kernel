@@ -1,4 +1,4 @@
-import type { Git, Status } from "@statewalker/vcs-commands";
+import { EmptyCommitError, type Git, type Status } from "@statewalker/vcs-commands";
 import { joinPath as concatPath, tryReadText, writeText } from "@statewalker/webrun-files";
 import {
   DEFAULT_SYSTEM_FOLDER,
@@ -171,24 +171,104 @@ export class VcsNature extends ProjectAdapter {
     return this.#git;
   }
 
-  /** Stage everything matching `pathspec` (default: the whole worktree). */
-  async add(_pathspec = "."): Promise<void> {
-    throw new Error("not implemented");
+  /**
+   * Stage everything matching `pathspec` (default: the whole worktree).
+   *
+   * Paths are relative to the project directory, because the repository lives on
+   * the project-rooted `FilesApi` — `add("src")`, never `add("<project>/src")`.
+   * `.project` is skipped because {@link init} wrote it to `.git/info/exclude`.
+   */
+  async add(pathspec = "."): Promise<void> {
+    const git = await this.git();
+    await git.add().addFilepattern(pathspec).call();
   }
 
-  /** Record the staged tree as a commit. */
-  async commit(_opts: CommitOptions): Promise<CommitOutcome> {
-    throw new Error("not implemented");
+  /**
+   * Record the staged tree as a commit — the **only** place in this nature where
+   * a commit is created. There are no timers, watchers, subscriptions or
+   * autosave anywhere in it; nothing observes the worktree, so nothing can
+   * commit behind the caller's back.
+   *
+   * "Nothing to commit" is reported as `{changed: false}`, not raised, because
+   * on a manually committed repository it is an ordinary outcome. Two distinct
+   * cases produce it, and the porcelain only covers one:
+   *
+   * - **With history** — `CommitCommand` compares the staged tree to the parent's
+   *   and throws `EmptyCommitError`, which is caught here.
+   * - **Without history** — that guard is gated on `parents.length > 0`, so on a
+   *   repository straight out of {@link init} an empty index would commit
+   *   happily. The pre-check below is what closes that.
+   *
+   * The pre-check asks both questions ("no HEAD commit" *and* "empty index")
+   * rather than "empty index" alone: an empty index against a non-empty HEAD is
+   * a staged deletion of the whole tree, which is a real change and must commit.
+   */
+  async commit(opts: CommitOptions): Promise<CommitOutcome> {
+    const git = await this.git();
+    if (!(await headCommitOf(git)) && (await stagedEntryCount(git)) === 0) {
+      return { changed: false };
+    }
+
+    const command = git.commit().setMessage(opts.message);
+    const author = opts.author ?? (await this.configuredAuthor());
+    if (author) command.setAuthor(author.name, author.email);
+
+    try {
+      const { id } = await command.call();
+      return { changed: true, id };
+    } catch (error) {
+      if (error instanceof EmptyCommitError) return { changed: false };
+      throw error;
+    }
   }
 
-  /** The commits reachable from HEAD, newest first. */
-  async log(_opts: { max?: number } = {}): Promise<CommitInfo[]> {
-    throw new Error("not implemented");
+  /**
+   * The commits reachable from HEAD, newest first.
+   *
+   * Empty — not an error — on a repository with no commits. `LogCommand`
+   * resolves HEAD first and throws `NoHeadError` there, but "no history yet" is
+   * a state a freshly initialized project is legitimately in.
+   */
+  async log(opts: { max?: number } = {}): Promise<CommitInfo[]> {
+    const git = await this.git();
+    if (!(await headCommitOf(git))) return [];
+
+    const command = git.log();
+    if (opts.max !== undefined) command.setMaxCount(opts.max);
+
+    const commits: CommitInfo[] = [];
+    for await (const commit of await command.call()) {
+      commits.push({
+        id: commit.id,
+        message: commit.message,
+        author: { name: commit.author.name, email: commit.author.email },
+        timestamp: commit.author.timestamp,
+        parents: [...commit.parents],
+      });
+    }
+    return commits;
   }
 
-  /** The staging index compared against HEAD. */
+  /**
+   * The staging index compared against HEAD — `added` / `changed` / `removed` /
+   * `conflicting`.
+   *
+   * **Not the worktree.** `StatusCommand` reads the index and the HEAD tree and
+   * nothing else, and `Status` has no `untracked` field, so a file written
+   * through the `FilesApi` and never staged does not appear here. Surfacing
+   * untracked files would mean a `StatusCalculator` with `includeUntracked`,
+   * which this nature deliberately does not do.
+   */
   async status(): Promise<Status> {
-    throw new Error("not implemented");
+    const git = await this.git();
+    return git.status().call();
+  }
+
+  /** The project's declared commit identity, if it has one. */
+  private async configuredAuthor(): Promise<Author | undefined> {
+    const config = this.config;
+    if (!(await config.exists())) return undefined;
+    return (await config.load()).author;
   }
 
   /** Append the `.project` exclude, once, preserving anything already in the file. */
@@ -200,6 +280,26 @@ export class VcsNature extends ProjectAdapter {
     await files.mkdir(".git/info");
     await writeText(files, INFO_EXCLUDE, `${prefix}${EXCLUDE_BLOCK}`);
   }
+}
+
+/**
+ * The commit HEAD points at, or `undefined` when the repository has no commits.
+ *
+ * The same resolution the porcelain does before it raises `NoHeadError`, asked as
+ * a question instead: `.git/HEAD` names a branch from the moment the repository is
+ * created, but that branch ref does not exist until the first commit writes it.
+ */
+async function headCommitOf(git: Git): Promise<string | undefined> {
+  const history = git.history;
+  if (!history) throw new Error("no history on the Git façade");
+  return (await history.refs.resolve("HEAD"))?.objectId;
+}
+
+/** How many entries the staging index holds, across all merge stages. */
+async function stagedEntryCount(git: Git): Promise<number> {
+  const checkout = git.checkoutState;
+  if (!checkout) throw new Error("no checkout on the Git façade");
+  return checkout.staging.getEntryCount();
 }
 
 /** Resolve the VCS nature from a project (mirrors `vcsConfigOf`). */
