@@ -1,1 +1,1 @@
-export { vcsScaffoldCheck } from "./scaffold.js";
+export { repoFilesOf } from "./repo-files.js";
