@@ -286,6 +286,15 @@ describe("architecture — behaviourally, nothing commits on its own", () => {
     await nature.init();
     await nature.add(".");
 
+    // A macrotask tick BEFORE anything is read. Registration does not have to be
+    // synchronous: `void (async () => { (await import("@statewalker/workspace.core"))
+    // .ProjectBuilder … })()` fired from an adapter factory lands a builder some turns
+    // after `registerVcs`, `init()` and `add()` have all returned. Without this tick
+    // the map below is read too early — it is empty, the assertion passes, and the
+    // drain that follows runs an engine that has nothing registered YET. Both halves
+    // of this test would sail over a live vector.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
     // `registerVcs` ran in `beforeEach`; `init()` and `add()` are the whole surface a
     // caller touches. Nothing along that path may have contributed a builder.
     const builder = (await projectOf("a")).requireAdapter(ProjectBuilder);
@@ -296,7 +305,14 @@ describe("architecture — behaviourally, nothing commits on its own", () => {
     for await (const _ of builder.run()) {
       /* drain */
     }
+
+    // Tick, then drive it AGAIN: the first drain is not the last word either, since a
+    // registration that lands while it is running joins a graph the run already built.
     await new Promise((resolve) => setTimeout(resolve, 20));
+    for await (const _ of builder.run()) {
+      /* re-drain */
+    }
+    expect((await builder.status()).builders).toEqual([]);
     expect(await nature.log()).toEqual([]);
   });
 });

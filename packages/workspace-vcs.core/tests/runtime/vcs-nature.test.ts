@@ -161,11 +161,22 @@ describe("VcsNature", () => {
       registerVcs(reopened, deps);
       const project = await reopened.getProject("a");
       if (!project) throw new Error("no project: a");
+      const again = vcsNatureOf(project);
 
-      expect([...(await vcsNatureOf(project).status()).added].sort()).toEqual([
-        "README.md",
-        "src/main.ts",
-      ]);
+      // Read the staging store the INSTANT the repository is open, through a handle
+      // that has called nothing else. This is what makes the test about the open-time
+      // read: `add`, `commit` and `status` each re-read `.git/index` themselves before
+      // they answer (`refreshStaging`), so asking any of them cannot distinguish an
+      // open-time read from a call-time one — with `git()` the only call made, the
+      // entries below can only have come from the assembly's own `staging.read()`.
+      const checkout = (await again.git()).checkoutState;
+      if (!checkout) throw new Error("no checkout on the Git façade");
+      expect(await checkout.staging.getEntryCount()).toBe(2);
+      expect(await checkout.staging.hasEntry("README.md")).toBe(true);
+      expect(await checkout.staging.hasEntry("src/main.ts")).toBe(true);
+
+      // And the porcelain agrees — the assertion this test has always made.
+      expect([...(await again.status()).added].sort()).toEqual(["README.md", "src/main.ts"]);
     });
 
     it("is false for a .git holding only HEAD's directory, and true for a HEAD-only .git", async () => {
