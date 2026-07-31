@@ -1,3 +1,4 @@
+import type { Git } from "@statewalker/vcs-commands";
 import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
 import type { FilesApi } from "@statewalker/webrun-files";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
@@ -378,6 +379,65 @@ describe("createGitRepository — the vcs-workspace Repository adapter", () => {
       // empty root commit and hand back an id for a state that has none.
       await expect(repository.commit({ message: "nothing" })).rejects.toThrow(/nothing to commit/i);
       expect(await repository.head()).toBeUndefined();
+    });
+  });
+
+  describe("commit() error discrimination", () => {
+    /** The same `Git`, with `commit()` replaced by a builder that throws `error`. */
+    function gitWhoseCommitThrows(git: Git, error: unknown): Git {
+      const builder = {
+        setMessage() {
+          return builder;
+        },
+        setAuthor() {
+          return builder;
+        },
+        call() {
+          return Promise.reject(error);
+        },
+      };
+      return new Proxy(git, {
+        get(target, prop, receiver) {
+          if (prop === "commit") return () => builder;
+          const value = Reflect.get(target, prop, receiver) as unknown;
+          return typeof value === "function" ? (value as CallableFunction).bind(target) : value;
+        },
+      }) as Git;
+    }
+
+    it("treats a FOREIGN EmptyCommitError as 'nothing to commit'", async () => {
+      // Nine `@statewalker/vcs-*` packages resolve to `dist/` while others resolve
+      // to `src/`, so two copies of `vcs-commands` can be live at once and the error
+      // a command throws need not be the class this package imported. `instanceof`
+      // alone would call this a hard failure.
+      const { nature, project } = await repositoryOf();
+      await nature.add(".");
+      const head = await nature.commit({ message: "first" });
+
+      const foreign = Object.assign(new Error("nothing to commit"), {
+        name: "EmptyCommitError",
+      });
+      const repository = createGitRepository(
+        gitWhoseCommitThrows(await nature.git(), foreign),
+        repoFilesOf(project),
+        hashContentSha256,
+      );
+
+      expect(await repository.commit({})).toEqual({ commit: head.id, changed: false });
+    });
+
+    it("rethrows anything that is not 'nothing to commit'", async () => {
+      const { nature, project } = await repositoryOf();
+      await nature.add(".");
+      await nature.commit({ message: "first" });
+
+      const repository = createGitRepository(
+        gitWhoseCommitThrows(await nature.git(), new Error("ENOSPC: no space left on device")),
+        repoFilesOf(project),
+        hashContentSha256,
+      );
+
+      await expect(repository.commit({})).rejects.toThrow(/ENOSPC/);
     });
   });
 

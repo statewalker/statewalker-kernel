@@ -243,6 +243,43 @@ describe("VcsNature", () => {
     });
   });
 
+  describe("commit() error handling", () => {
+    it("rethrows a failure that is not 'nothing to commit'", async () => {
+      // "Nothing to commit" is reported as `{changed: false}`. Everything else must
+      // NOT be: a regression that swallowed ENOSPC, a corrupt object or an invalid
+      // author and answered "nothing to commit" would be invisible to every caller,
+      // and `publish` would checkpoint it as a completed commit.
+      let failWrites = false;
+      const flaky = new Proxy(files, {
+        get(target, prop, receiver) {
+          const value = Reflect.get(target, prop, target) as unknown;
+          if (typeof value !== "function") return Reflect.get(target, prop, receiver);
+          if (prop !== "write") {
+            return (...args: unknown[]) =>
+              (value as (...a: unknown[]) => unknown).apply(target, args);
+          }
+          return (...args: unknown[]) => {
+            if (failWrites) throw new Error("ENOSPC: no space left on device");
+            return (value as (...a: unknown[]) => unknown).apply(target, args);
+          };
+        },
+      }) as MemFilesApi;
+
+      const flakyWorkspace = new Workspace().setFileSystem(flaky);
+      registerVcs(flakyWorkspace, deps);
+      const project = await flakyWorkspace.getProject("a");
+      if (!project) throw new Error("no project: a");
+      const nature = vcsNatureOf(project);
+      await nature.init();
+      await nature.add(".");
+
+      failWrites = true;
+      await expect(
+        nature.commit({ message: "boom", author: { name: "T", email: "t@e.test" } }),
+      ).rejects.toThrow(/ENOSPC/);
+    });
+  });
+
   describe("the nature marker", () => {
     it("writes nature.vcs.json, so vcsConfigOf() round-trips it", async () => {
       const project = await projectOf("a");

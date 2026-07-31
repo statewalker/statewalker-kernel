@@ -1,4 +1,4 @@
-import { EmptyCommitError, type Git, type Status } from "@statewalker/vcs-commands";
+import type { Git, Status } from "@statewalker/vcs-commands";
 import { joinPath as concatPath, tryReadText, writeText } from "@statewalker/webrun-files";
 import {
   DEFAULT_SYSTEM_FOLDER,
@@ -24,6 +24,7 @@ import {
   remoteCredentialsKey,
   UnknownRemoteError,
 } from "../remotes/index.js";
+import { isEmptyCommitError } from "../util/empty-commit.js";
 import { openGitRepo } from "./git-assembly.js";
 import { repoFilesOf } from "./repo-files.js";
 
@@ -347,7 +348,7 @@ export class VcsNature extends ProjectAdapter {
       const { id } = await command.call();
       return { changed: true, id };
     } catch (error) {
-      if (error instanceof EmptyCommitError) return { changed: false };
+      if (isEmptyCommitError(error)) return { changed: false };
       throw error;
     }
   }

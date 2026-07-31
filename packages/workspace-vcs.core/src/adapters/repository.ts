@@ -1,10 +1,11 @@
-import { CheckoutStatus, EmptyCommitError, type Git } from "@statewalker/vcs-commands";
+import { CheckoutStatus, type Git } from "@statewalker/vcs-commands";
 import { FileMode } from "@statewalker/vcs-core";
 import type { Checkout, Worktree } from "@statewalker/vcs-working-tree";
 import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
 import type { FilesApi } from "@statewalker/webrun-files";
 import { FilteredFilesApi, newRegexpPathFilter } from "@statewalker/webrun-files-composite";
 import { DEFAULT_SYSTEM_FOLDER } from "@statewalker/workspace.core";
+import { isEmptyCommitError } from "../util/empty-commit.js";
 import type { HashContent } from "../util/hash-content.js";
 import { historyOf } from "./repository-facade.js";
 import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entries.js";
@@ -243,7 +244,7 @@ async function commitWorktree(
       .call();
     return { commit: id, changed: true };
   } catch (error) {
-    if (!(error instanceof EmptyCommitError)) throw error;
+    if (!isEmptyCommitError(error)) throw error;
     const head = await headOf(git);
     // Unreachable: EmptyCommitError is only raised when a parent commit exists.
     if (!head) throw error;
