@@ -5,6 +5,8 @@ import { MemFilesApi } from "@statewalker/webrun-files-mem";
 import { type Project, Workspace } from "@statewalker/workspace.core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { vcsConfigOf } from "../../src/config/index.js";
+import { openGitRepo } from "../../src/runtime/git-assembly.js";
+import { repoFilesOf } from "../../src/runtime/repo-files.js";
 import { registerVcs, type VcsNature, vcsNatureOf } from "../../src/runtime/vcs-nature.js";
 
 const encoder = new TextEncoder();
@@ -270,6 +272,38 @@ describe("VcsNature: add / commit / log / status", () => {
       expect(paths.filter((p) => p.startsWith(".git"))).toEqual([]);
       // And the marker really is on disk — the commit excluded it, it is not missing.
       expect(await vcsConfigOf(await projectOf("a")).exists()).toBe(true);
+    });
+
+    it("stays out even when the repository was never created through init()", async () => {
+      const project = await projectOf("a");
+      // What a repository made by **native `git init`** — or one predating GitNature —
+      // looks like to us: a real `.git` on disk that never passed through
+      // `VcsNature.init()`, so nothing on that path wrote `.git/info/exclude`. We
+      // advertise native-git compatibility (T12), so this is a state users will
+      // genuinely hand us, and committing `.project/**` into their history is not
+      // recoverable by a later fix.
+      await openGitRepo(repoFilesOf(project), { create: true });
+      await files.write("/a/.project/nature.vcs.json", [encoder.encode('{"version":1}')]);
+      await files.write("/a/.project/state/scan.lock", [encoder.encode("x")]);
+
+      const nature = vcsNatureOf(project);
+      expect(await nature.exists()).toBe(true);
+
+      await nature.add(".");
+      const staged = await nature.status();
+      expect([...staged.added].filter((p) => p.split("/")[0] === ".project")).toEqual([]);
+
+      const outcome = await nature.commit({
+        message: "all",
+        author: { name: "Test", email: "test@example.com" },
+      });
+      expect(outcome.changed).toBe(true);
+      if (!outcome.id) throw new Error("expected a commit id");
+
+      // Recursively — the trailing-slash class of bug only leaks on nested paths.
+      const paths = await committedPaths(await nature.git(), outcome.id);
+      expect(paths).toEqual(["README.md"]);
+      expect(paths.filter((p) => p.startsWith(".project"))).toEqual([]);
     });
   });
 
