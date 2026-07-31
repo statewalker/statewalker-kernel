@@ -1,14 +1,35 @@
 import { CheckoutStatus, EmptyCommitError, type Git } from "@statewalker/vcs-commands";
+import { FileMode } from "@statewalker/vcs-core";
 import type { Checkout, Worktree } from "@statewalker/vcs-working-tree";
 import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
 import type { FilesApi } from "@statewalker/webrun-files";
-import { FilteredFilesApi, newPathFilter } from "@statewalker/webrun-files-composite";
+import { FilteredFilesApi, newRegexpPathFilter } from "@statewalker/webrun-files-composite";
 import type { HashContent } from "../util/hash-content.js";
 import { historyOf } from "./repository-facade.js";
 import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entries.js";
 
-/** Where the repository lives inside the project — mirrors `openGitRepo`. */
-const GIT_DIR = "/.git";
+/**
+ * Every path segment the tracked view hides — matched as a **segment**, at any
+ * depth, not as a path prefix.
+ *
+ * `newPathFilter("/.git")` is prefix-anchored, so it hides the root `.git` and
+ * nothing else. A vendored or nested repository at `vendor/lib/.git` stayed in the
+ * manifest, and writing one byte under its `objects/` moved the checkpoint id —
+ * exactly the "no checkpoint could be re-derived from the files alone" failure the
+ * filter exists to prevent.
+ *
+ * `.project` is here for the mirror-image reason: it is the workbench's own
+ * per-project state (this nature's marker, the scanner's indexes, transaction
+ * state), it is in `.git/info/exclude` so no commit ever carries it, and it is
+ * written in the background. Leaving it visible meant a background write moved
+ * `manifest()` while HEAD stood still — so `publish` paired a new manifest with an
+ * old commit that no commit could ever match — and meant `.project/**` was mirrored
+ * to every file remote fed from this same view.
+ *
+ * Segment-anchored and boundary-aware: `.gitignore`, `.gitmodules` and `.projectile`
+ * are ordinary files and stay visible.
+ */
+const HIDDEN_SEGMENTS = [/(^|\/)\.git(\/|$)/, /(^|\/)\.project(\/|$)/];
 
 /** What a commit is called when `Repository.commit` is given no message. */
 const DEFAULT_COMMIT_MESSAGE = "workspace checkpoint";
@@ -33,14 +54,12 @@ const DEFAULT_COMMIT_MESSAGE = "workspace checkpoint";
  * The alternative — a `filter` parameter on `manifestOf` — is contract-forbidden
  * (it edits `vcs/packages/workspace/src/**`) and was not attempted.
  *
- * **Scope note:** only `.git` is hidden. The workbench's own `.project` folder
- * IS part of this manifest even though `.git/info/exclude` keeps it out of every
- * commit, so touching per-project workbench state moves the manifest without
- * moving HEAD. That is the caller's call to make — pass an already-filtered
- * `files` to hide more.
+ * **Scope note:** `.git` and `.project` are hidden, as *segments*, at any depth —
+ * see {@link HIDDEN_SEGMENTS} for what each one costs when it is visible. Pass an
+ * already-filtered `files` to hide more.
  */
 export function trackedFilesOf(files: FilesApi): FilesApi {
-  return new FilteredFilesApi(files, newPathFilter(GIT_DIR));
+  return new FilteredFilesApi(files, newRegexpPathFilter(...HIDDEN_SEGMENTS));
 }
 
 /**
@@ -112,6 +131,16 @@ async function headOf(git: Git): Promise<string | undefined> {
  * Ignored files count only when they are already tracked: `commit()` stages with
  * `add(".")`, which honours `.git/info/exclude`, so an ignored untracked file is
  * something no commit would ever pick up.
+ *
+ * **Index entries the walk cannot reach do not count at all.** `walkDirectory`
+ * prunes any directory that holds a `.git` of its own, and `add(".")` walks exactly
+ * the same way — so once `vendor/lib` becomes a repository, every index entry
+ * beneath it is inert: no commit can add, modify or delete it. Counting those as
+ * changes (which the `matched !== staged.size` deletion check did) made this
+ * permanently `true` while `commit()` reported `{changed: false}` — the
+ * non-convergence that has `commitOnlyWhenChanged` committing forever. The pruned
+ * directories are identified from the same walk: a directory holding a `.git` is
+ * reported with the gitlink mode.
  */
 async function hasWorkingTreeChanges(git: Git): Promise<boolean> {
   const worktree = worktreeOf(git);
@@ -130,8 +159,14 @@ async function hasWorkingTreeChanges(git: Git): Promise<boolean> {
   }
 
   let matched = 0;
-  for await (const entry of worktree.walk({ includeIgnored: true })) {
-    if (entry.isDirectory) continue;
+  const pruned: string[] = [];
+  for await (const entry of worktree.walk({ includeIgnored: true, includeDirectories: true })) {
+    if (entry.isDirectory) {
+      // A directory carrying its own `.git` is reported as a gitlink and NOT
+      // recursed into; everything the index holds beneath it is unreachable.
+      if (entry.mode === FileMode.GITLINK) pruned.push(`${entry.path}/`);
+      continue;
+    }
     const indexed = staged.get(entry.path);
     if (indexed === undefined) {
       if (entry.isIgnored) continue;
@@ -141,8 +176,12 @@ async function hasWorkingTreeChanges(git: Git): Promise<boolean> {
     if ((await worktree.computeHash(entry.path)) !== indexed) return true;
   }
   // Every index entry the walk did not reach is a file deleted from the
-  // worktree — `add(".")` stages deletions, so that is a real change.
-  if (matched !== staged.size) return true;
+  // worktree — `add(".")` stages deletions, so that is a real change. Except
+  // the ones under a pruned directory, which `add(".")` cannot reach either.
+  const unreachable = [...staged.keys()].filter((path) =>
+    pruned.some((prefix) => path.startsWith(prefix)),
+  ).length;
+  if (matched !== staged.size - unreachable) return true;
 
   return (await git.status().call()).hasUncommittedChanges();
 }

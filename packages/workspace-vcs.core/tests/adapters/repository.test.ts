@@ -158,6 +158,48 @@ describe("createGitRepository — the vcs-workspace Repository adapter", () => {
       expect(paths).toContain("/README.md");
       expect(paths).toContain("/src/deep/nested.txt");
     });
+
+    it("hides a NESTED .git too, so a vendored repository cannot move the manifest", async () => {
+      const { project, repository } = await repositoryOf();
+      await files.write("/a/vendor/lib/.git/HEAD", [encoder.encode("ref: refs/heads/main\n")]);
+      await files.write("/a/vendor/lib/README.md", [encoder.encode("vendored")]);
+
+      const before = await repository.manifest();
+      // One byte inside the nested repository's object store. Nothing about the
+      // project's own files changed, so the checkpoint id must not move — that is
+      // exactly the "re-derivable from the files alone" property the filter exists
+      // for, and a prefix-anchored `/.git` only ever protected the ROOT one.
+      await files.write("/a/vendor/lib/.git/objects/ab/cdef", [encoder.encode("x")]);
+
+      expect(await repository.manifest()).toBe(before);
+
+      const tracked = trackedFilesOf(repoFilesOf(project));
+      const paths: string[] = [];
+      for await (const info of tracked.list("/", { recursive: true })) paths.push(info.path);
+      expect(paths.filter((p) => p.split("/").includes(".git"))).toEqual([]);
+      // The nested repository's own working files are still the project's files.
+      expect(paths).toContain("/vendor/lib/README.md");
+    });
+
+    it("hides .project, so workbench state cannot move the manifest either", async () => {
+      const { project, repository } = await repositoryOf();
+
+      const before = await repository.manifest();
+      // A background write under `.project` — the scanner's index, transaction
+      // state, this nature's own marker. HEAD does not move, so `publish` would
+      // pair a NEW manifest with the OLD commit, and no commit could ever match it.
+      await files.write("/a/.project/state/scan.lock", [encoder.encode("x")]);
+
+      expect(await repository.manifest()).toBe(before);
+
+      const tracked = trackedFilesOf(repoFilesOf(project));
+      const paths: string[] = [];
+      for await (const info of tracked.list("/", { recursive: true })) paths.push(info.path);
+      expect(paths.filter((p) => p.split("/").includes(".project"))).toEqual([]);
+      // And nothing under `.project` — `nature.vcs.json` included — is mirrored to
+      // a file remote, which is what the same view feeds.
+      expect(await tracked.exists(".project/nature.vcs.json")).toBe(false);
+    });
   });
 
   describe("head()", () => {
@@ -254,6 +296,27 @@ describe("createGitRepository — the vcs-workspace Repository adapter", () => {
 
       // `.project` is in `.git/info/exclude`, so `commit()` would stage nothing
       // from it — reporting a change here would make `publish` commit forever.
+      expect(await repository.hasChanges()).toBe(false);
+    });
+
+    it("converges on a worktree that grows a NESTED .git after the commit", async () => {
+      // The worktree walk prunes any directory holding a `.git`, and `add(".")`
+      // walks the same way — so once `vendor/lib` becomes a repository, the index
+      // entries beneath it are unreachable: no commit can ever change them.
+      // Counting them as changes made `hasChanges()` permanently true while
+      // `commit()` reported `{changed: false}`, and `commitOnlyWhenChanged` then
+      // committed on every publish, forever.
+      const { nature, repository } = await repositoryOf();
+      await files.write("/a/vendor/lib/README.md", [encoder.encode("vendored")]);
+      await nature.add(".");
+      await nature.commit({ message: "first" });
+      expect(await repository.hasChanges()).toBe(false);
+
+      await files.write("/a/vendor/lib/.git/HEAD", [encoder.encode("ref: refs/heads/main\n")]);
+
+      expect(await repository.hasChanges()).toBe(false);
+      // And the pair really does converge: a commit attempt changes nothing.
+      expect((await repository.commit({})).changed).toBe(false);
       expect(await repository.hasChanges()).toBe(false);
     });
   });

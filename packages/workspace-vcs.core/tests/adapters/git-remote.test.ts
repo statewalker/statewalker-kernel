@@ -209,11 +209,7 @@ describe("createHttpGitRemote", () => {
         raced = true;
         await files.write("b.txt", [new TextEncoder().encode("two")]);
         await git.add().addFilepattern(".").call();
-        await git
-          .commit()
-          .setMessage("mid-push")
-          .setAuthor(AUTHOR.name, AUTHOR.email)
-          .call();
+        await git.commit().setMessage("mid-push").setAuthor(AUTHOR.name, AUTHOR.email).call();
       }
       return server.fetch(input as string, init);
     }) as typeof fetch;
