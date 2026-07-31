@@ -168,7 +168,9 @@ describe.skipIf(!git.available)("addHttp keeps .git/config parseable by real git
     // checked. `//` in the path is a case where the two differ visibly.
     await nature.remotes.addHttp("origin", "https://h.test//a/../r.git");
 
-    const stored = (await nativeGitIn(projectDir).ok("config", "--get", "remote.origin.url")).trim();
+    const stored = (
+      await nativeGitIn(projectDir).ok("config", "--get", "remote.origin.url")
+    ).trim();
     expect(stored).toBe(new URL("https://h.test//a/../r.git").href);
     expect(await nature.remotes.list()).toEqual([{ name: "origin", url: stored }]);
   });

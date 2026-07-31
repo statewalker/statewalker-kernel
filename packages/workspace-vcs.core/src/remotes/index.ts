@@ -8,6 +8,7 @@ export {
   fetchImplOf,
   type HttpRemote,
   httpRemoteUrl,
+  InvalidRemoteNameError,
   InvalidRemoteUrlError,
   listHttpRemotes,
   type PushOutcome,

@@ -126,7 +126,23 @@ export interface PushOptions {
 
 /** The remote namespace of {@link VcsNature}. */
 export interface VcsRemotes {
-  /** Record an HTTP(S) remote in `.git/config`; its credentials go to `Secrets`. */
+  /**
+   * Record an HTTP(S) remote in `.git/config`; its credentials go to `Secrets`.
+   *
+   * `name` must match `[A-Za-z0-9][A-Za-z0-9._/-]*` and `url` must be an absolute
+   * `http(s)` URL with no userinfo and no control characters — anything else raises
+   * `InvalidRemoteNameError` / `InvalidRemoteUrlError` and writes nothing. The rules
+   * are narrower than git's own because the config writer escapes a `"` and nothing
+   * else: a newline in either argument starts a `.git/config` section that git then
+   * honours, and whitespace or a quote in the name comes back renamed.
+   *
+   * **Known limit — a hand-written `.git/config` is rewritten, not edited.** The
+   * writer re-serializes the whole file from a flat map, so on the first `addHttp`
+   * this repository's config loses (a) every `#`/`;` comment, (b) every repeated
+   * key but the last — notably a second `fetch` refspec, and the one dropped is
+   * `+refs/heads/*:refs/remotes/origin/*` — and (c) numeric-looking values are
+   * coerced (`007` becomes `7`). Remotes themselves always survive.
+   */
   addHttp(name: string, url: string, options?: AddHttpRemoteOptions): Promise<void>;
   /** Every remote recorded in this repository's `.git/config`. */
   list(): Promise<HttpRemote[]>;

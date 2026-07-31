@@ -83,6 +83,46 @@ export class InvalidRemoteUrlError extends Error {
   }
 }
 
+/** Raised when a remote name is not safe to write into `.git/config`. */
+export class InvalidRemoteNameError extends Error {
+  constructor(
+    readonly remote: string,
+    reason: string,
+  ) {
+    super(
+      `invalid remote name ${JSON.stringify(remote)}: ${reason}. ` +
+        `Allowed: ${REMOTE_NAME_DESCRIPTION}.`,
+    );
+    this.name = "InvalidRemoteNameError";
+  }
+}
+
+/**
+ * What a remote name may look like.
+ *
+ * Deliberately narrower than git's own rules. The name is interpolated into the
+ * subsection of `[remote "<name>"]`, and `GitWorkingCopyConfig.serializeValue`
+ * escapes a `"` and **nothing else** — never a newline — so anything outside this
+ * set is either an injection or a silent rename:
+ *
+ * - A **newline** ends the header line and starts a new section. The proven
+ *   payload `x"]\n[core]\n\tsshCommand=/tmp/pwn.sh\n[a "b` makes real git report
+ *   `core.sshCommand = /tmp/pwn.sh` — a command it executes on every ssh
+ *   operation — while staying invisible to both `git remote -v` and
+ *   {@link listHttpRemotes}, because neither reads the section it created.
+ * - **Whitespace** survives the write but not the read: `parseGitConfig`
+ *   collapses whitespace inside a section header to a dot, so `up stream` comes
+ *   back as `up.stream`.
+ * - A **quote** is dropped by {@link configEntries}, so `a"b` comes back as `ab`.
+ *
+ * The last two are renames rather than injections, but a remote that cannot be
+ * found under the name it was added with is the same failure to the caller.
+ */
+const REMOTE_NAME = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+const REMOTE_NAME_DESCRIPTION =
+  "letters, digits, '.', '_', '/' and '-', starting with a letter or digit";
+
 /**
  * The `.git/config` key holding a remote's URL.
  *
@@ -128,11 +168,17 @@ export function remoteCredentialsKey(projectName: string, remote: string): strin
  *
  * All three are pinned by tests. None loses a *remote*, which is what this nature
  * stores; a repository that also holds hand-written config is the case to be aware of.
+ *
+ * **Both arguments are validated before either reaches the file**, because the
+ * writer escapes a `"` and nothing else: see {@link REMOTE_NAME} for the name and
+ * {@link assertHttpRemoteUrl} for the URL. Nothing is written when either is
+ * refused — the config is left byte-for-byte as it was.
  */
 export async function addHttpRemote(files: FilesApi, name: string, url: string): Promise<void> {
-  assertHttpRemoteUrl(url);
+  assertRemoteName(name);
+  const href = assertHttpRemoteUrl(url);
   const entries = configEntries(await loadConfig(files));
-  entries.set(remoteUrlKey(name), url);
+  entries.set(remoteUrlKey(name), href);
 
   const next = new GitWorkingCopyConfig(configFilesOf(files), CONFIG_PATH);
   for (const [key, value] of entries) next.set(key, value);
@@ -184,16 +230,47 @@ function configEntries(config: GitWorkingCopyConfig): Map<string, unknown> {
   return entries;
 }
 
+/** Reject a remote name that `.git/config` cannot carry back unchanged. */
+function assertRemoteName(name: string): void {
+  if (name === "") throw new InvalidRemoteNameError(name, "a remote name cannot be empty");
+  if (/[\n\r]/.test(name)) {
+    throw new InvalidRemoteNameError(
+      name,
+      `a newline would close the [remote "…"] header and start a new ${CONFIG_PATH} ` +
+        "section, which git then honours",
+    );
+  }
+  if (!REMOTE_NAME.test(name)) {
+    throw new InvalidRemoteNameError(name, "it holds characters this config writer cannot store");
+  }
+}
+
 /**
  * Reject anything that is not an absolute `http(s)` URL, and anything carrying
- * userinfo.
+ * userinfo. Returns the **parsed** `href` — the string that was actually
+ * inspected, and therefore the only one safe to store.
  *
  * The userinfo check is an invariant-4 guard, not pedantry: `.git/config` is
  * plaintext and world-readable, so `https://user:token@host/repo.git` would persist
  * a credential outside the `Secrets` store the moment it were stored. Credentials
  * go through `addHttp`'s `credentials` option instead.
+ *
+ * **The raw string is refused when it holds a control character, and the `href` is
+ * what gets stored.** The WHATWG parser strips `\t`, `\n` and `\r` *before*
+ * parsing, so validating `parsed` and storing `url` validates a different string
+ * from the one that reaches the file: `https://h.test/r.git\n[core]\n\tsshCommand=…`
+ * parses cleanly and lands as three config lines. Explicit rejection is preferred
+ * to silent sanitisation so the caller learns the URL was not the one they passed.
  */
-function assertHttpRemoteUrl(url: string): void {
+function assertHttpRemoteUrl(url: string): string {
+  if (/[\n\r\t\0]/.test(url)) {
+    throw new InvalidRemoteUrlError(
+      url,
+      `it holds a control character; the URL parser would drop it while ${CONFIG_PATH} ` +
+        "would keep it, and a newline there starts a config section git honours",
+    );
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -213,6 +290,7 @@ function assertHttpRemoteUrl(url: string): void {
         "pass them as addHttp(name, url, { credentials }) instead",
     );
   }
+  return parsed.href;
 }
 
 /**
