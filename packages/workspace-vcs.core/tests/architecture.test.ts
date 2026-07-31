@@ -2,7 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
-import { type Project, Workspace } from "@statewalker/workspace.core";
+import { type Project, ProjectBuilder, Workspace } from "@statewalker/workspace.core";
 import { beforeEach, describe, expect, it } from "vitest";
 import { registerVcs, vcsNatureOf } from "../src/runtime/vcs-nature.js";
 
@@ -138,30 +138,58 @@ describe("architecture — contract invariant 1: no automatic commits", () => {
     expect(adapterImporters).toContain("adapters/repository.ts");
   });
 
-  it("has no change-observation primitive anywhere in src/", () => {
+  it("has no deferred-execution or change-observation primitive anywhere in src/", () => {
     // No trailing boundary: `watcher`, `subscribeAll` and `onUpdated` are banned too.
     // The lookbehind is what keeps `Stopwatch` or `resubscribe` from matching.
-    const banned = /(?<![A-Za-z0-9_$])(setInterval|setTimeout|onUpdate|subscribe|watch)/;
+    //
+    // Every way to run code later belongs here, not just the timers. `setInterval`
+    // and `setTimeout` alone were an incomplete list: `setImmediate(() => …)` inside
+    // `git()` schedules exactly the same autosave and was invisible to this rule.
+    // `queueMicrotask` and `requestIdleCallback` are the remaining schedulers, and
+    // `addEventListener` is the remaining way to be called back by something else.
+    const banned =
+      /(?<![A-Za-z0-9_$])(setInterval|setTimeout|setImmediate|queueMicrotask|requestIdleCallback|addEventListener|onUpdate|subscribe|watch)/;
     const offenders = sources
       .filter((file) => banned.test(file.code))
       .map((file) => `${file.path}: ${banned.exec(file.code)?.[0]}`);
     expect(offenders).toEqual([]);
   });
 
-  it("has exactly one commit call site outside src/adapters/", () => {
-    // `\.commit\s*\(` catches `git.commit()` AND `this.commit()`, so a timer or
-    // callback that re-entered the nature's own commit would push this count to two.
-    // It does not catch a bare `commit()` on a module-scope function — there is none,
-    // and the behavioural test below is the backstop for anything this misses.
+  it("never registers a project builder — the nature contributes none", () => {
+    // The other way to get code run without a caller asking: hand a builder to the
+    // build engine. `applyNature(project, {builders: () => [...]})` needs no timer and
+    // no import the rules above notice, and the handler it registers is driven by
+    // `ProjectBuilder.run()` — a commit inside it is a commit nobody asked for.
+    // CONTEXT.md asserts "GitNature registers no builders"; this is that assertion.
+    //
+    // Applies to ALL of src/, adapters included: unlike the vcs-workspace import,
+    // there is no directory where registering a builder would be legitimate.
+    const banned = /(?<![A-Za-z0-9_$])(applyNature|registerBuilder|ProjectBuilder)/;
+    const offenders = sources
+      .filter((file) => banned.test(file.code))
+      .map((file) => `${file.path}: ${banned.exec(file.code)?.[0]}`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("has exactly one mention of .commit outside src/adapters/", () => {
+    // `\.commit\b`, NOT `\.commit\s*\(`: the call form misses every indirection that
+    // reaches the same method without syntactically calling it — `this.commit.bind(this)`
+    // handed to a scheduler being the proven one. Any second `.commit` anywhere outside
+    // the adapters, called or not, fails this.
+    //
+    // The lookbehind rejects only a preceding dot, i.e. the spread `[...commit.parents]`
+    // over a variable that happens to be named `commit`. A member access is always
+    // preceded by an identifier character or a `)`, never by `.`.
     const sites = sources
       .filter((file) => !file.path.startsWith(ADAPTERS))
-      .flatMap((file) => [...file.code.matchAll(/\.commit\s*\(/g)].map(() => file.path));
+      .flatMap((file) => [...file.code.matchAll(/(?<!\.)\.commit\b/g)].map(() => file.path));
     expect(sites).toEqual(["runtime/vcs-nature.ts"]);
 
     // `src/adapters/repository.ts` legitimately holds the second call site: it is
     // reachable only by the three deliberate acts the spec names (construct the
     // adapter, hand it to `publish`, set `commitAfterSync`) — none of which the
-    // nature performs.
+    // nature performs. The CALL form here, deliberately: the adapters also read a
+    // `PushResult.commit` property, which is not a call site and not a vector.
     const adapterSites = sources
       .filter((file) => file.path.startsWith(ADAPTERS))
       .flatMap((file) => [...file.code.matchAll(/\.commit\s*\(/g)].map(() => file.path));
@@ -216,5 +244,59 @@ describe("architecture — behaviourally, nothing commits on its own", () => {
     });
     expect(outcome.changed).toBe(true);
     expect((await nature.log()).map((c) => c.message)).toEqual(["explicit"]);
+  });
+
+  it("commits nothing when a repository is merely REOPENED over staged work", async () => {
+    const encoder = new TextEncoder();
+    const nature = vcsNatureOf(await projectOf("a"));
+    await nature.init();
+    await files.write("/a/src/main.ts", [encoder.encode("export {};")]);
+    await nature.add(".");
+
+    // Session 1 leaves work staged and deliberately uncommitted.
+    expect([...(await nature.status()).added].sort()).toEqual(["README.md", "src/main.ts"]);
+    expect(await nature.log()).toEqual([]);
+
+    // Session 2: every handle from session 1 is dropped and the repository is opened
+    // again from disk. This is the leg the suite was missing — an autosave installed
+    // at OPEN time (`git()`) never fires in a session that opened the repo before the
+    // work existed, so the single-session test above cannot see it. On reopen it
+    // fires immediately, and the user's staged-not-committed work becomes a commit
+    // nobody asked for.
+    const reopened = new Workspace().setFileSystem(files);
+    registerVcs(reopened, {
+      fetch: (() => {
+        throw new Error("fetch must not be called");
+      }) as never,
+    });
+    const project = await reopened.getProject("a");
+    if (!project) throw new Error("no project: a");
+    const again = vcsNatureOf(project);
+    await again.git();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(await again.log()).toEqual([]);
+    // And the staged work is still staged — not committed, not dropped.
+    expect([...(await again.status()).added].sort()).toEqual(["README.md", "src/main.ts"]);
+  });
+
+  it("registers no project builders, so a build run produces no commit", async () => {
+    const nature = vcsNatureOf(await projectOf("a"));
+    await nature.init();
+    await nature.add(".");
+
+    // `registerVcs` ran in `beforeEach`; `init()` and `add()` are the whole surface a
+    // caller touches. Nothing along that path may have contributed a builder.
+    const builder = (await projectOf("a")).requireAdapter(ProjectBuilder);
+    expect((await builder.status()).builders).toEqual([]);
+
+    // And driving the engine to convergence still commits nothing — the backstop for
+    // a builder registered by some path this test does not walk.
+    for await (const _ of builder.run()) {
+      /* drain */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await nature.log()).toEqual([]);
   });
 });
