@@ -350,6 +350,45 @@ describe("HTTP remotes", () => {
       expect(secretsPath.startsWith("/a/")).toBe(false);
     });
 
+    it("keeps the credential out of the error raised for a credentialed URL", async () => {
+      // `InvalidRemoteUrlError` is the guard that exists to keep credentials out of
+      // `.git/config` — and it fires exactly when userinfo is present, so it is the
+      // one place in this package guaranteed to be holding a token when it formats a
+      // message. `error.message` and `error.stack` reach every log and every UI.
+      const nature = await natureOf("a");
+      await nature.init();
+
+      const error = await nature.remotes
+        .addHttp("origin", `https://gitnature:${SENTINEL}@example.test/x.git`)
+        .catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).not.toContain(SENTINEL);
+      expect((error as Error).stack ?? "").not.toContain(SENTINEL);
+      expect(String(error)).not.toContain(SENTINEL);
+      // Every own property, not just the two above: `url` is public and any structured
+      // logger prints it.
+      const own = Object.getOwnPropertyNames(error as object);
+      expect(JSON.stringify(error, own)).not.toContain(SENTINEL);
+      // Still says which URL it refused, so the message stays actionable.
+      expect((error as Error).message).toContain("example.test");
+    });
+
+    it("keeps the credential out of the error raised for an unparseable URL", async () => {
+      // The scheme check formats the URL too, and a non-`//` scheme carries its
+      // userinfo through `new URL()` without landing in `parsed.username`.
+      const nature = await natureOf("a");
+      await nature.init();
+
+      const error = await nature.remotes
+        .addHttp("origin", `gitnature:${SENTINEL}@example.test/x.git`)
+        .catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).not.toContain(SENTINEL);
+      expect((error as Error).stack ?? "").not.toContain(SENTINEL);
+    });
+
     it("stores them through the Secrets adapter, not beside the URL", async () => {
       const nature = await natureOf("a");
       await nature.init();

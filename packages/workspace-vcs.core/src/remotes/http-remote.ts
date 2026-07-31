@@ -72,15 +72,42 @@ export class UnknownRemoteError extends Error {
   }
 }
 
-/** Raised when a URL is not usable as an HTTP remote. */
+/**
+ * Raised when a URL is not usable as an HTTP remote.
+ *
+ * **The URL is redacted, and {@link url} is the redacted form** — there is no
+ * unredacted copy anywhere on this error. One of the reasons this is raised *is*
+ * "the URL carries credentials", so this class is the one place in the package
+ * guaranteed to be holding a token when it formats a string, and `message` and
+ * `stack` reach every log, crash reporter and UI. Invariant 4 is about the token,
+ * not about the file it might have been written to.
+ */
 export class InvalidRemoteUrlError extends Error {
-  constructor(
-    readonly url: string,
-    reason: string,
-  ) {
-    super(`invalid HTTP remote URL '${url}': ${reason}`);
+  readonly url: string;
+
+  constructor(url: string, reason: string) {
+    const redacted = redactUserinfo(url);
+    super(`invalid HTTP remote URL '${redacted}': ${reason}`);
+    this.url = redacted;
     this.name = "InvalidRemoteUrlError";
   }
+}
+
+/**
+ * Replace a URL's userinfo with `***`, on the raw string.
+ *
+ * Textual rather than `new URL()`-based, deliberately: this runs on input that was
+ * refused precisely *because* it does not parse the way it looks. `new URL()` puts
+ * nothing in `username`/`password` for an opaque scheme, so
+ * `gitnature:<token>@example.test` would come back untouched.
+ *
+ * Anchored at the start of the string or at a `//`, so a `@` inside a path
+ * (`https://h.test/@scope/pkg.git`) is left alone. It over-redacts rather than
+ * under-redacts — `git@example.test:x.git` becomes `***@example.test:x.git` — which
+ * is the right way round for a guard whose failure mode is printing a live token.
+ */
+function redactUserinfo(url: string): string {
+  return url.replace(/(^|\/\/)([^\s/@]*)@/g, (_match, lead: string) => `${lead}***@`);
 }
 
 /** Raised when a remote name is not safe to write into `.git/config`. */
