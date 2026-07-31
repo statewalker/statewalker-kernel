@@ -80,12 +80,30 @@ describe("VcsNature", () => {
         .setAuthor("Test", "test@example.com")
         .call();
 
-      // `b`'s repository never saw that commit.
+      // `b` saw none of it: its branch does not exist yet, so it has no HEAD commit
+      // to resolve at all.
+      expect(await files.exists("/b/.git/refs/heads/main")).toBe(false);
+      await expect(gitB.log().call()).rejects.toThrow(/HEAD cannot be resolved/);
+
+      await gitB.add().addFilepattern("README.md").call();
+      const second = await gitB
+        .commit()
+        .setMessage("b only")
+        .setAuthor("Test", "test@example.com")
+        .call();
+
+      // Two histories, two branch refs, no overlap — `README.md` differs per project
+      // so even the trees are distinct.
+      expect(second.id).not.toBe(first.id);
+      expect((await readText(files, "/a/.git/refs/heads/main")).trim()).toBe(first.id);
+      expect((await readText(files, "/b/.git/refs/heads/main")).trim()).toBe(second.id);
+
+      const logA = [];
+      for await (const c of await gitA.log().call()) logA.push(c);
       const logB = [];
       for await (const c of await gitB.log().call()) logB.push(c);
-      expect(logB).toEqual([]);
-      expect((await readText(files, "/a/.git/refs/heads/main")).trim()).toBe(first.id);
-      expect(await files.exists("/b/.git/refs/heads/main")).toBe(false);
+      expect(logA.map((c) => c.message)).toEqual(["a only"]);
+      expect(logB.map((c) => c.message)).toEqual(["b only"]);
     });
 
     it("memoises the Git handle per adapter instance", async () => {
@@ -179,7 +197,9 @@ describe("VcsNature", () => {
         .setAuthor("Test", "test@example.com")
         .call();
 
-      const tree = await git.history.trees.load(commit.tree);
+      const history = git.history;
+      if (!history) throw new Error("no history on the Git façade");
+      const tree = await history.trees.load(commit.tree);
       if (!tree) throw new Error("commit tree not found");
       const entries = [];
       for await (const entry of tree) entries.push(entry.name);
