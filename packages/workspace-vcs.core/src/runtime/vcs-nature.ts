@@ -183,13 +183,13 @@ export class VcsNature extends ProjectAdapter {
   }
 
   /**
-   * Materialize the nature: create the `.git`, exclude the workbench's own state from
-   * it, and write the `nature.vcs.json` marker. Safe to call on a project that already
-   * has a repository — the repository is then opened, not overwritten.
+   * Materialize the nature: create the `.git` (which also excludes the workbench's own
+   * state from it — see {@link git}) and write the `nature.vcs.json` marker. Safe to
+   * call on a project that already has a repository — the repository is then opened,
+   * not overwritten.
    */
   async init(config: Omit<VcsConfigData, "version"> = {}): Promise<void> {
     await this.git();
-    await this.writeInfoExclude();
     await this.config.write({ version: 1, ...config });
   }
 
@@ -199,11 +199,24 @@ export class VcsNature extends ProjectAdapter {
    *
    * `create` is decided by {@link exists}: the layout is laid down exactly once, and
    * every later call opens what is on disk.
+   *
+   * **The exclude is ensured here, not in {@link init}.** A `.git` made by native
+   * `git init` — or one that predates this nature — never passes through `init()`,
+   * so an exclude written there would leave exactly the repositories we advertise
+   * compatibility with unprotected, and `add(".")` would commit `.project/**` (this
+   * nature's marker, the scanner's indexes, transaction state) into the user's own
+   * history. Ensuring it on every open costs one `tryReadText`, is append-idempotent
+   * (see {@link writeInfoExclude}), and `init()` simply inherits it.
    */
   git(): Promise<Git> {
     if (!this.#git) {
-      this.#git = (async () =>
-        openGitRepo(repoFilesOf(this.project), { create: !(await this.exists()) }))();
+      this.#git = (async () => {
+        const git = await openGitRepo(repoFilesOf(this.project), {
+          create: !(await this.exists()),
+        });
+        await this.writeInfoExclude();
+        return git;
+      })();
     }
     return this.#git;
   }
@@ -213,7 +226,8 @@ export class VcsNature extends ProjectAdapter {
    *
    * Paths are relative to the project directory, because the repository lives on
    * the project-rooted `FilesApi` — `add("src")`, never `add("<project>/src")`.
-   * `.project` is skipped because {@link init} wrote it to `.git/info/exclude`.
+   * `.project` is skipped because {@link git} ensures it in `.git/info/exclude` on
+   * every open — including on a repository this nature never created.
    */
   async add(pathspec = "."): Promise<void> {
     const git = await this.git();

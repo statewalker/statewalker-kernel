@@ -62,7 +62,7 @@ export async function openGitRepo(files: FilesApi, options: OpenGitRepoOptions):
   await staging.read();
 
   const checkout = createMemoryCheckout({ staging });
-  // `gitDir` is what makes the worktree read `.git/info/exclude` — see `VcsNature.init`.
+  // `gitDir` is what makes the worktree read `.git/info/exclude` — see `VcsNature.git`.
   const worktree = createFileWorktree({
     files,
     rootPath: "",
