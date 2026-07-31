@@ -1,4 +1,5 @@
-import type { History } from "@statewalker/vcs-core";
+import type { History, RefEntry, Refs } from "@statewalker/vcs-core";
+import { RefStorage } from "@statewalker/vcs-core";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
 import { beforeEach, describe, expect, it } from "vitest";
 import { refStoreOf } from "../../src/adapters/ref-store.js";
@@ -7,6 +8,24 @@ import { openGitRepo } from "../../src/runtime/git-assembly.js";
 
 const MAIN = "1111111111111111111111111111111111111111";
 const FEATURE = "2222222222222222222222222222222222222222";
+
+/**
+ * A `History` whose `refs.list()` yields exactly `entries`.
+ *
+ * A stub rather than a real store because the shape under test — a symbolic ref
+ * that also carries an `objectId` — is one the file-backed store never produces,
+ * and it is precisely the shape that separates `listAll()`'s two guard clauses.
+ * Only `list()` is implemented; every other member would be a `TypeError` if the
+ * adapter reached for it, which is the point.
+ */
+function refsYielding(entries: RefEntry[]): History {
+  const refs = {
+    async *list(): AsyncIterable<RefEntry> {
+      for (const entry of entries) yield entry;
+    },
+  } as unknown as Refs;
+  return { refs } as unknown as History;
+}
 
 describe("refStoreOf", () => {
   let history: History;
@@ -32,6 +51,43 @@ describe("refStoreOf", () => {
     });
     expect(listed.map(([name]) => name)).not.toContain("HEAD");
     expect(listed.every(([, oid]) => typeof oid === "string" && oid.length === 40)).toBe(true);
+  });
+
+  /**
+   * The case that actually pins the symbolic-ref guard.
+   *
+   * The test above does **not**: `.git/HEAD` comes back from the file ref store
+   * with **no `objectId`**, so `listAll()`'s second clause — `!ref.objectId` —
+   * satisfies it on its own. Measured: deleting `isSymbolicRef(ref) ||` from
+   * `ref-store.ts:38` left the whole package at **145/145 passing**. The guard
+   * that the source calls "the whole reason a hand-rolled adapter is needed" was
+   * entirely unverified.
+   *
+   * `RefEntry` is `Ref | SymbolicRef` and `isSymbolicRef` is a *structural* test
+   * for `target`, so a `Refs` that yields a **resolved** symbolic ref — carrying
+   * both `target` and `objectId` — is a legal shape of that union and the one
+   * that tells the two clauses apart. It is also the shape that matters: without
+   * the guard, the in-process server this adapter backs would advertise `HEAD`
+   * as an ordinary ref to its peers, which no real git server does.
+   */
+  it("drops a symbolic ref even when it carries an objectId", async () => {
+    const refs = refsYielding([
+      { name: "refs/heads/main", objectId: MAIN, storage: RefStorage.LOOSE, peeled: false },
+      // Resolved symref: `!ref.objectId` is FALSE here, so only `isSymbolicRef`
+      // can drop it.
+      {
+        name: "HEAD",
+        target: "refs/heads/main",
+        objectId: MAIN,
+        storage: RefStorage.LOOSE,
+        peeled: false,
+      } as unknown as RefEntry,
+    ]);
+
+    const listed = [...(await refStoreOf(refs).listAll())];
+
+    expect(listed).toEqual([["refs/heads/main", MAIN]]);
+    expect(listed.map(([name]) => name)).not.toContain("HEAD");
   });
 
   it("surfaces HEAD's target through getSymrefTarget, and nothing else's", async () => {
