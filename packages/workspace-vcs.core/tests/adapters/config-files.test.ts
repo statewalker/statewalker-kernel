@@ -46,3 +46,17 @@ describe("configFilesOf", () => {
     );
   });
 });
+
+describe("configFilesOf — a directory is not an empty file", () => {
+  it("reports `undefined`, so GitWorkingCopyConfig.load() short-circuits", async () => {
+    // `tryReadFile` gates on `exists()`, which is TRUE for a directory, and then
+    // collects zero chunks — a truthy `Uint8Array(0)`. `load()`'s `if (!content)
+    // return` then failed to fire and the next write assembled a config from
+    // nothing. The undefined-vs-empty distinction this shim exists for got the
+    // MISSING case right and this one wrong.
+    const files = new MemFilesApi();
+    await files.mkdir("/.git/config");
+
+    expect(await configFilesOf(files).read(".git/config")).toBeUndefined();
+  });
+});

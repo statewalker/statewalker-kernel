@@ -82,3 +82,26 @@ describe("repoFilesOf", () => {
     expect(typeof rooted.list).toBe("function");
   });
 });
+
+describe("repoFilesOf — containment", () => {
+  it("hides any path holding a `..` segment", async () => {
+    // `normalizePath` drops empty and `.` segments and passes `..` through
+    // verbatim, and the node backend's `resolvePath` is pure concatenation — so
+    // containment is a claim this view has to make true itself.
+    const files = new MemFilesApi({
+      initialFiles: { "a/README.md": "inside", "secret.txt": "outside the project" },
+    });
+    const workspace = new Workspace().setFileSystem(files);
+    const project = await workspace.getProject("a");
+    if (!project) throw new Error("no project: a");
+    const view = repoFilesOf(project);
+
+    expect(await view.exists("README.md")).toBe(true);
+    expect(await view.exists("../secret.txt")).toBe(false);
+    expect(await view.exists("nested/../../secret.txt")).toBe(false);
+    await expect(view.write("../escaped.txt", [new TextEncoder().encode("x")])).rejects.toThrow(
+      /hidden/,
+    );
+    expect(await files.exists("/escaped.txt")).toBe(false);
+  });
+});

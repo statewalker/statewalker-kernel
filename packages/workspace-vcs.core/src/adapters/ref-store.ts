@@ -20,7 +20,22 @@ import type { RefStore } from "@statewalker/vcs-transport";
  * - **`get()` resolves, it does not read.** `RefStore.get` returns an object id, so
  *   it maps to `Refs.resolve` (which follows symrefs), not to `Refs.get` (which
  *   returns the raw, possibly symbolic, value).
+ * - **`listAll()` must drop remote-tracking refs.** This store is the SERVER side
+ *   of an exchange, and `refs/remotes/origin/*` is a private record of what some
+ *   other machine had. Real git servers advertise no such thing; advertising them
+ *   leaks the local machine's remote topology to every peer and offers refs no
+ *   client asked about.
+ *
+ * **`update()` is blind, by construction.** `RefStore.update(name, oid)` carries no
+ * expected old value, so a server built on this cannot reject a non-fast-forward
+ * push — it has nothing to compare against. Force and non-force pushes are therefore
+ * indistinguishable receiver-side here. That is a property of the interface, not an
+ * oversight, and it is why the in-process server is a test fixture rather than
+ * something to deploy.
  */
+/** Remote-tracking refs: local bookkeeping, never advertised to a peer. */
+const TRACKING_PREFIX = "refs/remotes/";
+
 export function refStoreOf(history: History): RefStore {
   const refs = history.refs;
   return {
@@ -36,6 +51,7 @@ export function refStoreOf(history: History): RefStore {
       const entries: Array<[string, string]> = [];
       for await (const ref of refs.list()) {
         if (isSymbolicRef(ref) || !ref.objectId) continue;
+        if (ref.name.startsWith(TRACKING_PREFIX)) continue;
         entries.push([ref.name, ref.objectId]);
       }
       return entries;

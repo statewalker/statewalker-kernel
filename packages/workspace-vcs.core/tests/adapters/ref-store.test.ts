@@ -127,3 +127,24 @@ describe("repositoryFacadeOf", () => {
     expect(await facade.has("0".repeat(40))).toBe(false);
   });
 });
+
+describe("refStoreOf — listAll() advertises no remote-tracking refs", () => {
+  it("drops refs/remotes/**, which are local bookkeeping about another machine", async () => {
+    // This store is the SERVER side of an exchange. `refs/remotes/origin/main` is a
+    // private record of what some other machine had; real git servers advertise no
+    // such thing, and doing so leaks the local remote topology to every peer.
+    const files = new MemFilesApi();
+    const git = await openGitRepo(files, { create: true });
+    const history = git.history;
+    if (!history) throw new Error("no history");
+    await history.refs.set("refs/heads/main", "a".repeat(40));
+    await history.refs.set("refs/remotes/origin/main", "b".repeat(40));
+    await history.refs.set("refs/tags/v1", "c".repeat(40));
+
+    const advertised = [...(await refStoreOf(history).listAll())].map(([name]) => name);
+
+    expect(advertised).toContain("refs/heads/main");
+    expect(advertised).toContain("refs/tags/v1");
+    expect(advertised.filter((name) => name.startsWith("refs/remotes/"))).toEqual([]);
+  });
+});
