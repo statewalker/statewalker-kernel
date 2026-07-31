@@ -384,6 +384,10 @@ export class VcsNature extends ProjectAdapter {
    * The staging index compared against HEAD — `added` / `changed` / `removed` /
    * `conflicting`.
    *
+   * `.git/index` is re-read first, so this answers from the file rather than from
+   * this handle's private snapshot — see {@link git} for why a project can have
+   * more than one live handle.
+   *
    * **Not the worktree.** `StatusCommand` reads the index and the HEAD tree and
    * nothing else, and `Status` has no `untracked` field, so a file written
    * through the `FilesApi` and never staged does not appear here. Surfacing

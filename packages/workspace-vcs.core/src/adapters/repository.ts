@@ -86,6 +86,16 @@ export function trackedFilesOf(files: FilesApi): FilesApi {
  * one instance across `manifest()` and `publish()`; {@link hashContentSha256}
  * is the one this package ships.
  *
+ * **Known limit — `checkout` never deletes.** `restore` writes the target tree
+ * over the working tree but does not remove files absent from it, so a file
+ * created after the checkpoint survives as an untracked file. Inherited from
+ * `checkoutBranch`; `setForced(true)` would suppress it by discarding uncommitted
+ * work, which is worse.
+ *
+ * **Known limit — `hasChanges()` is O(working tree) per call**, and `publish`
+ * calls it every run. See {@link hasWorkingTreeChanges} for why nothing cheaper
+ * answers correctly.
+ *
  * **Known limit — symlinks, gitlinks and executables are refused.** `hasChanges()`
  * and `commit()` both raise `UnsupportedEntryError` when the index records a mode
  * other than `100644`; nothing is staged and the repository is left as it was
@@ -133,6 +143,11 @@ async function headOf(git: Git): Promise<string | undefined> {
  *   wrong in the other direction.
  * - **`git.status()`** (`StatusCommand`) is index-vs-HEAD only and never reads
  *   the worktree at all.
+ *
+ * **Cost: O(working tree), and `publish` calls this on every run.** It walks the
+ * whole worktree and computes a git blob hash for every tracked file. That is the
+ * price of the paragraph above — every cheaper source measured wrong — and on a
+ * large project it is the dominant cost of a checkpoint.
  *
  * So the worktree half is an explicit **content-hash** diff against the index —
  * `Worktree.computeHash` is the git blob id of the file on disk, directly

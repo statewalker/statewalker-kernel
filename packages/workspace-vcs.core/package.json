@@ -14,7 +14,8 @@
     ".": "./src/index.ts"
   },
   "files": [
-    "src"
+    "src",
+    "CONTEXT.md"
   ],
   "scripts": {
     "test": "vitest run --passWithNoTests",
@@ -25,13 +26,11 @@
   },
   "dependencies": {
     "@statewalker/workspace.core": "workspace:*",
-    "@statewalker/content-transfer": "catalog:",
     "@statewalker/vcs-commands": "catalog:",
     "@statewalker/vcs-core": "catalog:",
     "@statewalker/vcs-store-files": "catalog:",
     "@statewalker/vcs-transport": "catalog:",
     "@statewalker/vcs-transport-adapters": "catalog:",
-    "@statewalker/vcs-utils": "catalog:",
     "@statewalker/vcs-working-tree": "catalog:",
     "@statewalker/vcs-workspace": "catalog:",
     "@statewalker/webrun-files": "catalog:",

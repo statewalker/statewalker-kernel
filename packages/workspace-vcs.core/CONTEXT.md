@@ -123,6 +123,57 @@ the worktree view reports `REGULAR_FILE` for everything. A symlink or executable
 that has never been staged is therefore not detected, and `add(".")` would take it
 in as a regular file.
 
+**A hand-written `.git/config` is rewritten, not edited.** `GitWorkingCopyConfig`
+re-serializes the whole file from a flat `Map` on every `save()`, so the first
+`remotes.addHttp` on a repository whose config someone else wrote loses:
+
+- every `#` / `;` **comment**, permanently;
+- every **repeated key but the last** — git's format allows a key more than once,
+  and the one this costs is a second `fetch` refspec. The one dropped is
+  `+refs/heads/*:refs/remotes/origin/*`, so a later native `git fetch origin`
+  fetches nothing into tracking refs;
+- **subsections**, which come back as `remote."origin"` — canonicalised on read,
+  which is what keeps `addHttp` idempotent, but the canonicalisation is ours;
+- **numeric-looking values**, coerced by an unconditional `Number()`: `007`
+  becomes `7`, and so do `0x10` and `1e3`.
+
+Remotes themselves always survive. A repository this nature created holds nothing
+else, so the loss is confined to adopted repositories — and it is on
+`VcsRemotes.addHttp`'s own JSDoc, not only here.
+
+**Remote names are narrower than git's.** `[A-Za-z0-9][A-Za-z0-9._/-]*`, and the
+URL must be absolute `http(s)` with no userinfo and no control character. Narrower
+than git allows because the config writer escapes a `"` and nothing else: a
+newline in either argument opens a `.git/config` section git then honours, and
+whitespace or a quote in a name comes back renamed. Anything outside the set is
+refused and nothing is written.
+
+**`checkout` never deletes.** `restore` writes the target tree over the working
+tree but does not remove files absent from it, so a file created after the
+checkpoint survives the restore as an untracked file. Inherited from
+`checkoutBranch`; not worked around, because the alternative — `setForced(true)` —
+discards uncommitted work.
+
+**`hasChanges()` is O(working tree) per call, and `publish` calls it every run.**
+It walks the whole worktree and computes a git blob hash for every tracked file,
+because every cheaper source measured wrong: `MemoryWorkingCopy.getStatus()`
+returns hardcoded literals, `StatusCalculatorImpl` calls a freshly committed tree
+dirty, and `git.status()` never reads the worktree at all. On a large project this
+is the dominant cost of a checkpoint.
+
+**Two live handles on one project converge through `.git/index`, not in memory.**
+`Workspace._projects` is an LRU with a one-hour default `maxAge`, so a second
+`Project` — and a second repository — for the same path is routine. `add`,
+`commit` and `status` re-read `.git/index` first so nothing is lost; the cost is
+one file read per call, and two handles interleaving writes still race in the
+ordinary filesystem sense.
+
+**A nested repository is inert, not tracked.** A directory holding its own `.git`
+is pruned by the worktree walk, so `add(".")` cannot stage anything beneath it and
+`hasChanges()` does not count it. Its contents are neither committed nor reported
+as deleted. Both `.git` and `.project` are hidden from `manifest()` as path
+*segments*, at any depth.
+
 ## Flagged ambiguities
 
 - `@statewalker/workspace-vcs.core` and `@statewalker/workspace.core` differ only
