@@ -4,6 +4,8 @@
 // `.git` per project (native-git compatible, via `@statewalker/vcs-store-files`),
 // driven manually — init · add · commit · log · status — plus HTTP remotes.
 //
-// Surface: runtime (VcsNature and its project-rooted FilesApi).
+// Surface: config (the `nature.vcs.json` marker) + runtime (VcsNature and its
+// project-rooted FilesApi).
 
+export * from "./config/index.js";
 export * from "./runtime/index.js";
