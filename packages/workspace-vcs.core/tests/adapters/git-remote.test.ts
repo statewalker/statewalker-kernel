@@ -36,7 +36,9 @@ import {
   createDuplexGitRemote,
   createHttpGitRemote,
   duplexPushOutcome,
+  duplexRefspecOf,
   httpPushOutcome,
+  httpRefspecOf,
   type PushTarget,
   RemotePushError,
 } from "../../src/adapters/git-remote.js";
@@ -127,9 +129,9 @@ async function readText(files: MemFilesApi, path: string): Promise<string> {
 
 function target(overrides: Partial<PushTarget> = {}): PushTarget {
   return {
-    refspec: "refs/heads/main:refs/heads/main",
     source: "refs/heads/main",
     destination: "refs/heads/main",
+    force: false,
     commit: "a".repeat(40),
     ...overrides,
   };
@@ -255,19 +257,18 @@ describe("createHttpGitRemote", () => {
       expect(() => httpPushOutcome(result, [target()])).toThrow(/rejected/);
     });
 
-    it("3 — throws when the transport silently skipped a requested refspec", async () => {
-      // Reachable, and this is how: `resolveRefspecs` does NOT strip the `+` force
-      // prefix (`http-client.ts:572-608`), so it looks up the local ref
-      // `+refs/heads/main`, finds nothing, and SKIPS the refspec — while `httpPush`
-      // still returns `{success: true}`. A zero-byte push that reads as a success.
-      const { git } = await localRepo([{ "README.md": "hello" }]);
-      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+    it("3 — throws when the transport silently skipped a requested refspec", () => {
+      // `resolveRefspecs` SILENTLY SKIPS any refspec whose local ref does not
+      // resolve, and `httpPush` still answers `{success: true}` with an empty
+      // `refStatus` — a zero-byte push that reads as a success. `pushTargetsOf`
+      // now refuses an unresolvable refspec before the wire, and the `+` prefix is
+      // stripped before `httpPush` sees it, so no caller input reaches this branch
+      // today. Like case 2 it is exercised directly rather than deleted: what makes
+      // it worth keeping is that `publish` would checkpoint such a push as done.
+      const result: PushResult = { success: true, refStatus: new Map() };
 
-      await expect(remote.push(["+refs/heads/main:refs/heads/main"])).rejects.toThrow(
-        RemotePushError,
-      );
-      // …and nothing landed, which is exactly why silence here is unacceptable.
-      expect(await serverRefs(server)).toEqual({});
+      expect(() => httpPushOutcome(result, [target()])).toThrow(RemotePushError);
+      expect(() => httpPushOutcome(result, [target()])).toThrow(/said nothing about/);
     });
 
     it("throws before the wire when a refspec's local ref does not resolve", async () => {
@@ -296,6 +297,79 @@ describe("createHttpGitRemote", () => {
       await expect(remote.push([":refs/heads/main"])).rejects.toThrow(RemotePushError);
       expect(server.requests).toEqual([]);
     });
+
+    it("throws on a NEGATIVE refspec instead of pushing the ref it means to exclude", async () => {
+      // `parseRefSpec` sets `negative: true` for `^refs/…` and the canonicaliser
+      // read only `parsed.force`, so `^refs/heads/main` — which means EXCLUDE —
+      // was canonicalised into `refs/heads/main:refs/heads/main` and PUSHED. The
+      // exact inverse of what the caller asked for, which is worse than a refusal.
+      const { git } = await localRepo([{ "README.md": "hello" }]);
+      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      await expect(remote.push(["^refs/heads/main"])).rejects.toThrow(RemotePushError);
+      await expect(remote.push(["^refs/heads/main"])).rejects.toThrow(/exclude/);
+      expect(server.requests).toEqual([]);
+      expect(await serverRefs(server)).toEqual({});
+    });
+  });
+
+  describe("force refspecs", () => {
+    /** A server already holding `oid` on `refs/heads/main`. */
+    async function serverHolding(oid: string): Promise<void> {
+      await server.refStore.update("refs/heads/main", oid);
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": oid });
+    }
+
+    it("a '+' refspec LANDS, rather than throwing on a push that never happened", async () => {
+      // This is the case the suite used to pin the wrong way round. `+` was passed
+      // through to `httpPush`, whose `resolveRefspecs` does not strip it — so the
+      // transport looked up a local ref literally named `+refs/heads/main`, found
+      // nothing, skipped the refspec, and reported `{success: true}` with an empty
+      // `refStatus`; outcome case 3 then threw. Force-push ALWAYS threw and NEVER
+      // landed. The `+` is now stripped before HTTP sees it (it is inert on that
+      // wire) and kept for the duplex FSM, which reads it.
+      const { git, ids } = await localRepo([{ "README.md": "hello" }]);
+      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      const { commit } = await remote.push(["+refs/heads/main:refs/heads/main"]);
+
+      expect(commit).toBe(commitId(ids, 0));
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
+    });
+
+    it("a '+' refspec overwrites a server ref that is not an ancestor", async () => {
+      // The reason `+` exists at all: the destination holds something the local
+      // history knows nothing about. Without a landing force-push this is simply
+      // unreachable through this adapter.
+      const { git, ids } = await localRepo([{ "README.md": "hello" }]);
+      await serverHolding("9".repeat(40));
+      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      await remote.push(["+refs/heads/main:refs/heads/main"]);
+
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
+    });
+
+    it("a '+' refspec with no destination lands on the same name", async () => {
+      const { git, ids } = await localRepo([{ "README.md": "hello" }]);
+      const remote = createHttpGitRemote(git, { url: server.url, fetchFn: server.fetch });
+
+      expect(await remote.push(["+refs/heads/main"])).toEqual({ commit: commitId(ids, 0) });
+      expect(await serverRefs(server)).toEqual({ "refs/heads/main": commitId(ids, 0) });
+    });
+
+    it("keeps the '+' for the duplex FSM, which reads it, and drops it for HTTP", () => {
+      // The two transports differ, so one canonical string cannot serve both:
+      // `client-push-fsm.ts` reads the prefix for its local non-fast-forward check,
+      // while HTTP's `resolveRefspecs` treats it as part of the ref NAME.
+      const forced = target({ force: true });
+      expect(duplexRefspecOf(forced)).toBe("+refs/heads/main:refs/heads/main");
+      expect(httpRefspecOf(forced)).toBe("refs/heads/main:refs/heads/main");
+
+      const plain = target();
+      expect(duplexRefspecOf(plain)).toBe("refs/heads/main:refs/heads/main");
+      expect(httpRefspecOf(plain)).toBe("refs/heads/main:refs/heads/main");
+    });
   });
 });
 
@@ -320,6 +394,17 @@ describe("createDuplexGitRemote", () => {
     const remote = createDuplexGitRemote(git, { connect: server.connect });
 
     expect(await remote.push(["refs/heads/main"])).toEqual({ commit: commitId(ids, 0) });
+    expect(await server.refStore.get("refs/heads/main")).toBe(commitId(ids, 0));
+  });
+
+  it("lands a '+' refspec, with the prefix kept — the FSM is what reads it", async () => {
+    const { git, ids } = await localRepo([{ "README.md": "hello" }]);
+    const server = await createDuplexServer();
+    const remote = createDuplexGitRemote(git, { connect: server.connect });
+
+    const { commit } = await remote.push(["+refs/heads/main:refs/heads/main"]);
+
+    expect(commit).toBe(commitId(ids, 0));
     expect(await server.refStore.get("refs/heads/main")).toBe(commitId(ids, 0));
   });
 
