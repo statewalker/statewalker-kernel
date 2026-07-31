@@ -87,6 +87,42 @@ _Avoid_: repo config (that is `.git/config`).
   **Vcs configuration** holds neither
 - **GitNature** depends on `@statewalker/vcs-workspace` and never modifies it
 
+## Known limits
+
+Things this package **refuses to do** or **cannot do**, stated here because the
+alternative to stating them is a caller discovering them from corrupted history.
+
+**Symlinks, gitlinks and executables are refused, not carried.**
+`VcsNature.add`, `VcsNature.commit`, and the `Repository` adapter's `hasChanges()`
+and `commit()` all raise `UnsupportedEntryError` when the index records a mode
+other than `100644`. Nothing is staged and the repository is left exactly as it
+was found.
+
+The cause is upstream and out of this feature's bounds:
+`FileWorktree.getFileMode` in `@statewalker/vcs-store-files` returns
+`FileMode.REGULAR_FILE` for **every** path, unconditionally, and `AddCommand`
+stages what the worktree reports. Measured against git 2.43.0 on a repository
+created by native git:
+
+- **Executable** — `add(".")` rewrites `100755` to `100644` in the index and the
+  next commit records it gone from history. `git fsck --strict` exits 0 with
+  empty output; it does not flag this.
+- **Symlink** — `Worktree.computeHash` follows the link and hashes its *target*,
+  which can never equal the `120000` blob. So `hasChanges()` answers `true` on a
+  repository `git status` calls clean, `commitOnlyWhenChanged` therefore commits,
+  and that commit replaces the link in history with a **regular file holding the
+  target's bytes**. Irreversible.
+
+Refusal was chosen over both alternatives: fixing `getFileMode` means editing
+`store-files`, which this feature's contract hard-bans, and degrading silently is
+worse than an error. Lifting the limit is a follow-up on `store-files`.
+
+**The guard is index-based, so an untracked entry is invisible to it.** The index
+is the only place a true mode survives — a native `git add` wrote it there — and
+the worktree view reports `REGULAR_FILE` for everything. A symlink or executable
+that has never been staged is therefore not detected, and `add(".")` would take it
+in as a regular file.
+
 ## Flagged ambiguities
 
 - `@statewalker/workspace-vcs.core` and `@statewalker/workspace.core` differ only

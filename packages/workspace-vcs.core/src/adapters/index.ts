@@ -13,3 +13,8 @@ export {
 export { refStoreOf } from "./ref-store.js";
 export { createGitRepository, trackedFilesOf } from "./repository.js";
 export { historyOf, repositoryFacadeOf, serializationOf } from "./repository-facade.js";
+export {
+  assertSupportedEntry,
+  assertSupportedIndex,
+  UnsupportedEntryError,
+} from "./unsupported-entries.js";

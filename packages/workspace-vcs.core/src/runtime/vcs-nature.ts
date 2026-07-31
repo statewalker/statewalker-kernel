@@ -7,6 +7,7 @@ import {
   Secrets,
   type Workspace,
 } from "@statewalker/workspace.core";
+import { assertSupportedIndex } from "../adapters/unsupported-entries.js";
 import { type VcsConfigData, VcsConfiguration } from "../config/index.js";
 import {
   addHttpRemote,
@@ -244,9 +245,19 @@ export class VcsNature extends ProjectAdapter {
    * the project-rooted `FilesApi` — `add("src")`, never `add("<project>/src")`.
    * `.project` is skipped because {@link git} ensures it in `.git/info/exclude` on
    * every open — including on a repository this nature never created.
+   *
+   * **Raises `UnsupportedEntryError` rather than staging a mode regression.** This
+   * is the call that would corrupt: `AddCommand` stages the worktree's reported
+   * mode, and `FileWorktree.getFileMode` reports `REGULAR_FILE` for everything, so
+   * an adopted repository's `100755` entries would silently become `100644` and its
+   * symlinks would become regular files holding their targets' bytes. See
+   * {@link assertSupportedIndex}.
    */
   async add(pathspec = "."): Promise<void> {
     const git = await this.git();
+    // Before staging: `add` is what rewrites the mode, and afterwards the true
+    // mode is gone from the only place that recorded it.
+    await assertSupportedIndex(git);
     await git.add().addFilepattern(pathspec).call();
   }
 
@@ -269,9 +280,16 @@ export class VcsNature extends ProjectAdapter {
    * The pre-check asks both questions ("no HEAD commit" *and* "empty index")
    * rather than "empty index" alone: an empty index against a non-empty HEAD is
    * a staged deletion of the whole tree, which is a real change and must commit.
+   *
+   * **Known limit — a repository holding a symlink, a gitlink or an executable is
+   * refused**, with `UnsupportedEntryError`. Not a mode this nature can carry: see
+   * {@link assertSupportedIndex} for the upstream cause and why refusing beats the
+   * silent, irreversible alternative. Detection reads the index, so an *untracked*
+   * symlink or executable is not seen.
    */
   async commit(opts: CommitOptions): Promise<CommitOutcome> {
     const git = await this.git();
+    await assertSupportedIndex(git);
     if (!(await headCommitOf(git)) && (await stagedEntryCount(git)) === 0) {
       return { changed: false };
     }

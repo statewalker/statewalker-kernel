@@ -5,6 +5,7 @@ import type { FilesApi } from "@statewalker/webrun-files";
 import { FilteredFilesApi, newPathFilter } from "@statewalker/webrun-files-composite";
 import type { HashContent } from "../util/hash-content.js";
 import { historyOf } from "./repository-facade.js";
+import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entries.js";
 
 /** Where the repository lives inside the project — mirrors `openGitRepo`. */
 const GIT_DIR = "/.git";
@@ -54,6 +55,15 @@ export function trackedFilesOf(files: FilesApi): FilesApi {
  * `hashContent` is likewise injected rather than chosen, so a caller can hold
  * one instance across `manifest()` and `publish()`; {@link hashContentSha256}
  * is the one this package ships.
+ *
+ * **Known limit — symlinks, gitlinks and executables are refused.** `hasChanges()`
+ * and `commit()` both raise `UnsupportedEntryError` when the index records a mode
+ * other than `100644`; nothing is staged and the repository is left as it was
+ * found. The cause is `FileWorktree.getFileMode` in `@statewalker/vcs-store-files`
+ * reporting `REGULAR_FILE` for every path, which is out of this feature's bounds
+ * to fix — and the alternative to refusing is a silent, irreversible rewrite of
+ * the caller's history. Detection is index-based, so an *untracked* symlink or
+ * executable is not seen. See `## Known limits` in this package's `CONTEXT.md`.
  */
 export function createGitRepository(
   git: Git,
@@ -109,6 +119,11 @@ async function hasWorkingTreeChanges(git: Git): Promise<boolean> {
 
   const staged = new Map<string, string>();
   for await (const entry of staging.entries()) {
+    // Checked before anything else, including the conflict shortcut: on a
+    // symlink the content comparison below is not merely uninformative, it is
+    // WRONG — `computeHash` follows the link, so a clean repository reads as
+    // changed and `commitOnlyWhenChanged` then commits the link away.
+    assertSupportedEntry(entry);
     // A conflict stage is by definition unresolved, hence uncommitted.
     if (entry.stage !== 0) return true;
     staged.set(entry.path, entry.objectId);
@@ -160,6 +175,9 @@ async function commitWorktree(
   git: Git,
   message?: string,
 ): Promise<{ commit: string; changed: boolean }> {
+  // Before `add(".")`, not after: staging is what destroys the mode, so by the
+  // time the index has been rewritten there is nothing left to detect.
+  await assertSupportedIndex(git);
   await git.add().addFilepattern(".").call();
 
   if (!(await headOf(git)) && (await checkoutOf(git).staging.getEntryCount()) === 0) {
