@@ -8,6 +8,13 @@ import {
   type Workspace,
 } from "@statewalker/workspace.core";
 import { type VcsConfigData, VcsConfiguration } from "../config/index.js";
+import {
+  DEFAULT_REMOTE,
+  type FetchOutcome,
+  type HttpRemote,
+  type PushOutcome,
+  type RemoteCredentials,
+} from "../remotes/index.js";
 import { openGitRepo } from "./git-assembly.js";
 import { repoFilesOf } from "./repo-files.js";
 
@@ -93,6 +100,28 @@ export interface CommitOptions {
 export interface CommitOutcome {
   changed: boolean;
   id?: string;
+}
+
+/** Arguments to {@link VcsRemotes.addHttp}. */
+export interface AddHttpRemoteOptions {
+  /** Stored in the workspace `Secrets`, never alongside the URL. */
+  credentials?: RemoteCredentials;
+}
+
+/** Arguments to {@link VcsNature.push}. */
+export interface PushOptions {
+  /** Push this ref instead of the current branch, e.g. `refs/heads/main`. */
+  ref?: string;
+  /** Allow a non-fast-forward update. */
+  force?: boolean;
+}
+
+/** The remote namespace of {@link VcsNature}. */
+export interface VcsRemotes {
+  /** Record an HTTP(S) remote in `.git/config`; its credentials go to `Secrets`. */
+  addHttp(name: string, url: string, options?: AddHttpRemoteOptions): Promise<void>;
+  /** Every remote recorded in this repository's `.git/config`. */
+  list(): Promise<HttpRemote[]>;
 }
 
 /**
@@ -262,6 +291,34 @@ export class VcsNature extends ProjectAdapter {
   async status(): Promise<Status> {
     const git = await this.git();
     return git.status().call();
+  }
+
+  /**
+   * The project's HTTP remotes, as recorded in its own `.git/config`.
+   *
+   * A namespace rather than four more methods on the façade, so `remotes.list()`
+   * reads as what it is and leaves room for `remove` later without crowding
+   * `add`/`commit`/`log`/`status`.
+   */
+  get remotes(): VcsRemotes {
+    return {
+      addHttp: (_name: string, _url: string, _options?: AddHttpRemoteOptions) => {
+        throw new Error("not implemented");
+      },
+      list: () => {
+        throw new Error("not implemented");
+      },
+    };
+  }
+
+  /** Send the current branch to `remote`. */
+  push(_remote = DEFAULT_REMOTE, _options: PushOptions = {}): Promise<PushOutcome> {
+    throw new Error("not implemented");
+  }
+
+  /** Bring `remote`'s branches into this repository as remote-tracking refs. */
+  fetch(_remote = DEFAULT_REMOTE): Promise<FetchOutcome> {
+    throw new Error("not implemented");
   }
 
   /** The project's declared commit identity, if it has one. */

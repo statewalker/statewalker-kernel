@@ -7,5 +7,7 @@
 // Surface: config (the `nature.vcs.json` marker) + runtime (VcsNature and its
 // project-rooted FilesApi).
 
+export * from "./adapters/index.js";
 export * from "./config/index.js";
+export * from "./remotes/index.js";
 export * from "./runtime/index.js";
