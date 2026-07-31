@@ -220,8 +220,16 @@ export class VcsNature extends ProjectAdapter {
   }
 
   /**
-   * The repository, memoised for this adapter instance (and adapter instances are
-   * themselves cached per project handle, so one project has one repository).
+   * The repository, memoised for this adapter instance.
+   *
+   * **One project can nevertheless have more than one of these.** Adapter instances
+   * are cached per `Project` handle and `Workspace._projects` is an LRU with a
+   * one-hour default `maxAge`, so `getProject("a")` an hour later — or past 256
+   * projects — hands back a *new* Project, a new `VcsNature`, a new `Git` and a new
+   * staging store. Each holds its own in-memory index that `add()` writes out
+   * wholesale, so `.git/index`, not this memo, is the shared truth. That is why
+   * {@link add}, {@link commit} and {@link status} re-read it first — see
+   * {@link refreshStaging}.
    *
    * `create` is decided by {@link exists}: the layout is laid down exactly once, and
    * every later call opens what is on disk.
@@ -277,6 +285,7 @@ export class VcsNature extends ProjectAdapter {
    */
   async add(pathspec = "."): Promise<void> {
     const git = await this.git();
+    await refreshStaging(git);
     // Before staging: `add` is what rewrites the mode, and afterwards the true
     // mode is gone from the only place that recorded it.
     await assertSupportedIndex(git);
@@ -311,6 +320,7 @@ export class VcsNature extends ProjectAdapter {
    */
   async commit(opts: CommitOptions): Promise<CommitOutcome> {
     const git = await this.git();
+    await refreshStaging(git);
     await assertSupportedIndex(git);
     if (!(await headCommitOf(git)) && (await stagedEntryCount(git)) === 0) {
       return { changed: false };
@@ -368,6 +378,7 @@ export class VcsNature extends ProjectAdapter {
    */
   async status(): Promise<Status> {
     const git = await this.git();
+    await refreshStaging(git);
     return git.status().call();
   }
 
@@ -547,6 +558,25 @@ async function currentBranchRef(git: Git): Promise<string> {
     throw new Error("push: HEAD is detached — pass { ref } to name the ref to push");
   }
   return head.target;
+}
+
+/**
+ * Re-read `.git/index` into the staging store before answering from it.
+ *
+ * The staging store keeps the index in memory and `add()` writes it out **wholesale**,
+ * so a second live handle on the same project — which the `Workspace` LRU hands out
+ * routinely, see {@link VcsNature.git} — would otherwise overwrite entries it never
+ * saw, silently dropping the other handle's staged work, and would answer `status()`
+ * from a snapshot the file no longer matches.
+ *
+ * Unconditional, not gated on `isOutdated()`: this runs once per call, the read is one
+ * file, and the gate would reintroduce exactly the staleness it is meant to close. It
+ * loses nothing in flight either — the previous `add()` already persisted.
+ */
+async function refreshStaging(git: Git): Promise<void> {
+  const checkout = git.checkoutState;
+  if (!checkout) throw new Error("no checkout on the Git façade");
+  await checkout.staging.read();
 }
 
 /** How many entries the staging index holds, across all merge stages. */

@@ -173,6 +173,76 @@ describe("VcsNature", () => {
     });
   });
 
+  describe("two handles on one project", () => {
+    /** A second Workspace over the same files — the shape an LRU eviction produces. */
+    async function secondHandle(): Promise<Project> {
+      const other = new Workspace().setFileSystem(files);
+      registerVcs(other, deps);
+      const project = await other.getProject("a");
+      if (!project) throw new Error("no project: a");
+      return project;
+    }
+
+    it("does not lose one handle's staged work when the other stages and commits", async () => {
+      // `Workspace._projects` is an LRU with a one-hour default maxAge, so "one
+      // project, one repository" is false in wall-clock terms: after an eviction
+      // `getProject("a")` yields a new Project, a new VcsNature, a new Git and a new
+      // staging store — each with its own in-memory index that `add()` writes out
+      // wholesale. Nothing about this needs two Workspaces; that is only the fastest
+      // way to reproduce it.
+      const first = vcsNatureOf(await projectOf("a"));
+      await first.init();
+      const second = vcsNatureOf(await secondHandle());
+
+      await files.write("/a/one.md", [encoder.encode("one")]);
+      await files.write("/a/two.md", [encoder.encode("two")]);
+
+      await second.add("one.md");
+      await first.add("two.md");
+
+      const outcome = await first.commit({
+        message: "both",
+        author: { name: "Test", email: "test@example.com" },
+      });
+      expect(outcome.changed).toBe(true);
+
+      const git = await first.git();
+      const history = git.history;
+      if (!history) throw new Error("no history on the Git façade");
+      const commit = await history.commits.load(outcome.id ?? "");
+      if (!commit) throw new Error("commit not found");
+      const tree = await history.trees.load(commit.tree);
+      if (!tree) throw new Error("commit tree not found");
+      const names: string[] = [];
+      for await (const entry of tree) names.push(entry.name);
+      expect(names.sort()).toEqual(["one.md", "two.md"]);
+    });
+
+    it("lets the other handle see the commit rather than reporting stale staging", async () => {
+      const first = vcsNatureOf(await projectOf("a"));
+      await first.init();
+      const second = vcsNatureOf(await secondHandle());
+
+      await files.write("/a/one.md", [encoder.encode("one")]);
+      await files.write("/a/two.md", [encoder.encode("two")]);
+      await second.add("one.md");
+      await first.add("two.md");
+      await first.commit({
+        message: "both",
+        author: { name: "Test", email: "test@example.com" },
+      });
+
+      // The second handle's view must reconverge on what is on disk: both files are
+      // in HEAD and in `.git/index`, so nothing is added and nothing is removed. A
+      // handle answering from a private in-memory index would report `one.md` added
+      // and `two.md` removed — a deletion the user never asked for.
+      const status = await second.status();
+      expect([...status.added]).toEqual([]);
+      expect([...status.removed]).toEqual([]);
+      expect(status.isClean()).toBe(true);
+    });
+  });
+
   describe("the nature marker", () => {
     it("writes nature.vcs.json, so vcsConfigOf() round-trips it", async () => {
       const project = await projectOf("a");
