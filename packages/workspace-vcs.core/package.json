@@ -39,6 +39,7 @@
   },
   "devDependencies": {
     "@statewalker/vcs-utils-node": "catalog:",
+    "@types/node": "catalog:",
     "@statewalker/webrun-files-mem": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
