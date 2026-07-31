@@ -4,16 +4,24 @@ import {
   DEFAULT_SYSTEM_FOLDER,
   type Project,
   ProjectAdapter,
-  type Secrets,
+  Secrets,
   type Workspace,
 } from "@statewalker/workspace.core";
 import { type VcsConfigData, VcsConfiguration } from "../config/index.js";
 import {
+  addHttpRemote,
   DEFAULT_REMOTE,
   type FetchOutcome,
+  fetchFromHttpRemote,
+  fetchImplOf,
   type HttpRemote,
+  httpRemoteUrl,
+  listHttpRemotes,
   type PushOutcome,
+  pushToHttpRemote,
   type RemoteCredentials,
+  remoteCredentialsKey,
+  UnknownRemoteError,
 } from "../remotes/index.js";
 import { openGitRepo } from "./git-assembly.js";
 import { repoFilesOf } from "./repo-files.js";
@@ -302,23 +310,125 @@ export class VcsNature extends ProjectAdapter {
    */
   get remotes(): VcsRemotes {
     return {
-      addHttp: (_name: string, _url: string, _options?: AddHttpRemoteOptions) => {
-        throw new Error("not implemented");
+      addHttp: async (name: string, url: string, options: AddHttpRemoteOptions = {}) => {
+        await this.requireRepository("addHttp");
+        await addHttpRemote(repoFilesOf(this.project), name, url);
+        // After the URL is on disk, so a rejected URL never leaves a dangling secret.
+        if (options.credentials) await this.storeCredentials(name, options.credentials);
       },
-      list: () => {
-        throw new Error("not implemented");
+      list: async () => {
+        await this.requireRepository("remotes.list");
+        return listHttpRemotes(repoFilesOf(this.project));
       },
     };
   }
 
-  /** Send the current branch to `remote`. */
-  push(_remote = DEFAULT_REMOTE, _options: PushOptions = {}): Promise<PushOutcome> {
-    throw new Error("not implemented");
+  /**
+   * Send a branch to `remote` — by default the branch HEAD is on.
+   *
+   * `remote` is a **name**, resolved here against this repository's own
+   * `.git/config`. That resolution is the reason the porcelain is not used:
+   * `PushCommand.resolveRemoteUrl()` returns its input unchanged whenever it holds
+   * neither `://` nor `@`, so `push("origin")` reaches `new Request("origin/info/refs?…")`
+   * and dies with `TypeError: Failed to parse URL`. An unknown name here raises
+   * {@link UnknownRemoteError} before any request exists.
+   */
+  async push(remote = DEFAULT_REMOTE, options: PushOptions = {}): Promise<PushOutcome> {
+    const git = await this.requireRepository("push");
+    const url = await this.requireRemoteUrl(remote);
+
+    const ref = options.ref ?? (await currentBranchRef(git));
+    if (!(await headCommitOf(git, ref))) {
+      throw new Error(`push: ${ref} has no commit yet — commit before pushing`);
+    }
+
+    return pushToHttpRemote({
+      git,
+      url,
+      ref,
+      force: options.force,
+      auth: await this.credentialsFor(remote),
+      fetchImpl: fetchImplOf(this.requireDeps().fetch),
+    });
   }
 
-  /** Bring `remote`'s branches into this repository as remote-tracking refs. */
-  fetch(_remote = DEFAULT_REMOTE): Promise<FetchOutcome> {
-    throw new Error("not implemented");
+  /**
+   * Bring `remote`'s branches into this repository as `refs/remotes/<remote>/*`.
+   *
+   * Objects are imported, not merely advertised — and nothing on the local branch
+   * moves. Fetch is not merge; this nature has no merge surface.
+   */
+  async fetch(remote = DEFAULT_REMOTE): Promise<FetchOutcome> {
+    const git = await this.requireRepository("fetch");
+    const url = await this.requireRemoteUrl(remote);
+
+    return fetchFromHttpRemote({
+      git,
+      url,
+      remote,
+      auth: await this.credentialsFor(remote),
+      fetchImpl: fetchImplOf(this.requireDeps().fetch),
+    });
+  }
+
+  /**
+   * The repository, but only if one is already there.
+   *
+   * {@link git} *creates* on first call, which is right for `init()` and wrong for
+   * everything a remote operation does — `remotes.addHttp` on a project with no
+   * `.git` would otherwise silently make one as a side effect of recording a URL.
+   */
+  private async requireRepository(operation: string): Promise<Git> {
+    if (!(await this.exists())) {
+      throw new Error(`${operation}: no repository at '${this.path}' — call init() first`);
+    }
+    return this.git();
+  }
+
+  /** A remote's URL, or {@link UnknownRemoteError}. */
+  private async requireRemoteUrl(remote: string): Promise<string> {
+    const url = await httpRemoteUrl(repoFilesOf(this.project), remote);
+    if (!url) throw new UnknownRemoteError(remote);
+    return url;
+  }
+
+  /**
+   * The workspace's secret store, or `undefined` when this workspace has none.
+   *
+   * The `getAdapter` guard is the same trap {@link requireDeps} documents: adapter
+   * tokens self-host, and `Secrets` is abstract only in TypeScript — at runtime an
+   * unconfigured workspace happily constructs one with no method bodies at all. A
+   * duck-type check turns that into "no store" instead of a `TypeError` deep inside
+   * a push.
+   */
+  private secretsStore(): Secrets | undefined {
+    const injected = this.requireDeps().secrets;
+    if (injected) return injected;
+    const adapter = this.workspace.getAdapter(Secrets);
+    return typeof adapter?.get === "function" ? adapter : undefined;
+  }
+
+  private async storeCredentials(remote: string, credentials: RemoteCredentials): Promise<void> {
+    const secrets = this.secretsStore();
+    if (!secrets) {
+      throw new Error(
+        `addHttp: credentials were given for '${remote}' but this workspace has no Secrets ` +
+          "adapter — pass one as registerVcs(workspace, { fetch, secrets }) or run initWorkspace(). " +
+          "Credentials are never written to .git/config.",
+      );
+    }
+    await secrets.set(remoteCredentialsKey(this.project.projectName, remote), credentials);
+  }
+
+  /** A remote's credentials from `Secrets`, or `undefined` for an anonymous remote. */
+  private async credentialsFor(remote: string): Promise<RemoteCredentials | undefined> {
+    const secrets = this.secretsStore();
+    if (!secrets) return undefined;
+    const stored = await secrets.get(remoteCredentialsKey(this.project.projectName, remote));
+    if (!stored || typeof stored !== "object") return undefined;
+    const { username, password } = stored as Partial<RemoteCredentials>;
+    if (typeof username !== "string" || typeof password !== "string") return undefined;
+    return { username, password };
   }
 
   /** The project's declared commit identity, if it has one. */
@@ -340,16 +450,33 @@ export class VcsNature extends ProjectAdapter {
 }
 
 /**
- * The commit HEAD points at, or `undefined` when the repository has no commits.
+ * The commit a ref points at, or `undefined` when it resolves to nothing.
  *
  * The same resolution the porcelain does before it raises `NoHeadError`, asked as
  * a question instead: `.git/HEAD` names a branch from the moment the repository is
  * created, but that branch ref does not exist until the first commit writes it.
  */
-async function headCommitOf(git: Git): Promise<string | undefined> {
+async function headCommitOf(git: Git, ref = "HEAD"): Promise<string | undefined> {
   const history = git.history;
   if (!history) throw new Error("no history on the Git façade");
-  return (await history.refs.resolve("HEAD"))?.objectId;
+  return (await history.refs.resolve(ref))?.objectId;
+}
+
+/**
+ * The branch ref HEAD names, e.g. `refs/heads/main`.
+ *
+ * Read from `.git/HEAD` rather than assumed: it is a symbolic ref from the moment
+ * the repository is created, and it is what a push has to name as its source. A
+ * detached HEAD has no branch to push, and saying so beats pushing the wrong ref.
+ */
+async function currentBranchRef(git: Git): Promise<string> {
+  const history = git.history;
+  if (!history) throw new Error("no history on the Git façade");
+  const head = await history.refs.get("HEAD");
+  if (!head || !("target" in head)) {
+    throw new Error("push: HEAD is detached — pass { ref } to name the ref to push");
+  }
+  return head.target;
 }
 
 /** How many entries the staging index holds, across all merge stages. */

@@ -1,5 +1,5 @@
 import type { ConfigFilesApi } from "@statewalker/vcs-store-files";
-import type { FilesApi } from "@statewalker/webrun-files";
+import { type FilesApi, tryReadFile } from "@statewalker/webrun-files";
 
 /**
  * Adapt a `FilesApi` to the `ConfigFilesApi` `GitWorkingCopyConfig` expects.
@@ -15,6 +15,9 @@ import type { FilesApi } from "@statewalker/webrun-files";
  * yields *nothing* for a path that does not exist rather than failing — so a shim
  * that just collected chunks would report "present but empty".
  */
-export function configFilesOf(_files: FilesApi): ConfigFilesApi {
-  throw new Error("not implemented");
+export function configFilesOf(files: FilesApi): ConfigFilesApi {
+  return {
+    read: (path: string) => tryReadFile(files, path),
+    write: (path: string, content: Uint8Array) => files.write(path, [content]),
+  };
 }

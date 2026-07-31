@@ -144,6 +144,26 @@ describe("HTTP remotes", () => {
       ]);
     });
 
+    it("is idempotent — re-adding a remote does not duplicate or corrupt the section", async () => {
+      // `GitWorkingCopyConfig` writes `[remote "origin"]` but parses that header back
+      // as the section `remote."origin"`, quotes included. Set naively, the second
+      // addHttp would hold both spellings and emit `[remote ""origin""]`, and every
+      // later lookup would miss. The key canonicalisation is what keeps this stable.
+      const nature = await natureOf("a");
+      await nature.init();
+      await nature.remotes.addHttp("origin", server.url);
+      await nature.remotes.addHttp("origin", server.url);
+      await nature.remotes.addHttp("origin", "https://example.test/moved.git");
+
+      expect(await nature.remotes.list()).toEqual([
+        { name: "origin", url: "https://example.test/moved.git" },
+      ]);
+      const written = await readText(files, "/a/.git/config");
+      expect(written).toContain('[remote "origin"]');
+      expect(written).not.toContain('""');
+      expect(written.match(/\[remote /g)).toHaveLength(1);
+    });
+
     it("refuses a URL that is not absolute HTTP(S)", async () => {
       const nature = await natureOf("a");
       await nature.init();

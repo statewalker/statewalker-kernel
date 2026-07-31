@@ -20,7 +20,7 @@
  *   they never reached the disk.
  */
 
-import { Git } from "@statewalker/vcs-commands";
+import type { Git } from "@statewalker/vcs-commands";
 import type { RefStore } from "@statewalker/vcs-transport";
 import { createFetchHandler } from "@statewalker/vcs-transport";
 import type { FilesApi } from "@statewalker/webrun-files";

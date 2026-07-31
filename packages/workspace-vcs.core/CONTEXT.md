@@ -53,9 +53,14 @@ can never arrive as a build signal.
 _Avoid_: autosave, checkpoint.
 
 **Remote**:
-A named HTTP endpoint for `push` / `fetch`, stored **in `.git/config`** through
-native `remoteAdd` / `remoteList` — because storing it anywhere else would make
-the repo unreadable to native git.
+A named HTTP endpoint for `push` / `fetch`, stored **in `.git/config`** — because
+storing it anywhere else would make the repo unreadable to native git. Written
+through `GitWorkingCopyConfig`, **not** through the porcelain's `remoteAdd` /
+`remoteList`: `RemoteAddCommand.storeRemoteConfig()` is an empty method body and
+`RemoteListCommand` scans `refs/remotes/` and hard-codes `urls: []`, so after
+`remoteAdd().call()` the config file is unchanged and `remoteList().call()`
+returns `[]`. A remote name is resolved to a URL **here**, before any request is
+built — the porcelain would hand `"origin"` straight to `new Request()`.
 _Avoid_: origin (that is one remote's name, not the concept).
 
 **Credentials**:

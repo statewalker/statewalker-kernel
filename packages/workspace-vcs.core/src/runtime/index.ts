@@ -11,6 +11,6 @@ export {
   registerVcs,
   type VcsDeps,
   VcsNature,
-  vcsNatureOf,
   type VcsRemotes,
+  vcsNatureOf,
 } from "./vcs-nature.js";
