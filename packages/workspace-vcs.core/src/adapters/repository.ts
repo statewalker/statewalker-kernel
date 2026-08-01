@@ -1,0 +1,311 @@
+import { CheckoutStatus, type Git } from "@statewalker/vcs-commands";
+import { FileMode } from "@statewalker/vcs-core";
+import type { Checkout, Worktree } from "@statewalker/vcs-working-tree";
+import { manifestOf, type Repository } from "@statewalker/vcs-workspace";
+import type { FilesApi } from "@statewalker/webrun-files";
+import { FilteredFilesApi, newRegexpPathFilter } from "@statewalker/webrun-files-composite";
+import { DEFAULT_SYSTEM_FOLDER } from "@statewalker/workspace.core";
+import { isEmptyCommitError } from "../util/empty-commit.js";
+import type { HashContent } from "../util/hash-content.js";
+import { historyOf } from "./repository-facade.js";
+import { assertSupportedEntry, assertSupportedIndex } from "./unsupported-entries.js";
+
+/**
+ * Every path segment the tracked view hides — matched as a **segment**, at any
+ * depth, not as a path prefix.
+ *
+ * `newPathFilter("/.git")` is prefix-anchored, so it hides the root `.git` and
+ * nothing else. A vendored or nested repository at `vendor/lib/.git` stayed in the
+ * manifest, and writing one byte under its `objects/` moved the checkpoint id —
+ * exactly the "no checkpoint could be re-derived from the files alone" failure the
+ * filter exists to prevent.
+ *
+ * `.project` is here for the mirror-image reason: it is the workbench's own
+ * per-project state (this nature's marker, the scanner's indexes, transaction
+ * state), it is in `.git/info/exclude` so no commit ever carries it, and it is
+ * written in the background. Leaving it visible meant a background write moved
+ * `manifest()` while HEAD stood still — so `publish` paired a new manifest with an
+ * old commit that no commit could ever match — and meant `.project/**` was mirrored
+ * to every file remote fed from this same view.
+ *
+ * Segment-anchored and boundary-aware: `.gitignore`, `.gitmodules` and `.projectile`
+ * are ordinary files and stay visible.
+ *
+ * The workbench folder is **derived** from `DEFAULT_SYSTEM_FOLDER` rather than
+ * spelled out, for the same reason `VcsNature`'s exclude pattern is: a literal here
+ * would go on hiding `.project` after the constant moved.
+ */
+const HIDDEN_SEGMENTS = [segmentPattern(".git"), segmentPattern(DEFAULT_SYSTEM_FOLDER)];
+
+/** A regexp matching `name` as a whole path segment, at any depth. */
+function segmentPattern(name: string): RegExp {
+  return new RegExp(`(^|/)${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(/|$)`);
+}
+
+/** What a commit is called when `Repository.commit` is given no message. */
+const DEFAULT_COMMIT_MESSAGE = "workspace checkpoint";
+
+/**
+ * The `.git`-excluding view of a project's files — **exactly what
+ * {@link createGitRepository}'s `manifest()` measures**.
+ *
+ * Exported because `publish` does not call `repository.manifest()`: it computes
+ * its checkpoint id as `manifestOf(ws.workingTree, hashContent)` itself
+ * (`publish.ts:35`). Hand it `trackedFilesOf(files)` as `workingTree` and the
+ * two ids agree; hand it the raw project view and they never can.
+ *
+ * Why the exclusion is mandatory rather than tidy: `manifestOf` → `buildAnchor`
+ * does an **unfiltered** recursive list and hashes every file it finds. Over the
+ * raw view that includes `.git/index`, `.git/HEAD` and `.git/objects/**`, so
+ * *staging a file* moves the "working-tree" manifest and no checkpoint could
+ * ever be re-derived from the files alone. `FilteredFilesApi` is the right
+ * decorator here specifically because it forwards the `ListOptions` argument —
+ * a wrapper that dropped it would silently flatten the manifest to root level.
+ *
+ * The alternative — a `filter` parameter on `manifestOf` — is contract-forbidden
+ * (it edits `vcs/packages/workspace/src/**`) and was not attempted.
+ *
+ * **Scope note:** `.git` and `.project` are hidden, as *segments*, at any depth —
+ * see {@link HIDDEN_SEGMENTS} for what each one costs when it is visible. Pass an
+ * already-filtered `files` to hide more.
+ */
+export function trackedFilesOf(files: FilesApi): FilesApi {
+  return new FilteredFilesApi(files, newRegexpPathFilter(...HIDDEN_SEGMENTS));
+}
+
+/**
+ * The `vcs-workspace` {@link Repository} over a file-backed `Git` — the adapter
+ * that lets `publish` / `restore` drive this nature's real `.git`.
+ *
+ * `files` is a third argument and not derivable from `git`: `manifestOf` needs a
+ * `FilesApi` and the `Git` façade exposes none (`Worktree` has no `files`
+ * member). Pass the same project-rooted view the repository was opened on —
+ * `repoFilesOf(project)`.
+ *
+ * `hashContent` is likewise injected rather than chosen, so a caller can hold
+ * one instance across `manifest()` and `publish()`; {@link hashContentSha256}
+ * is the one this package ships.
+ *
+ * **Known limit — `checkout` never deletes.** `restore` writes the target tree
+ * over the working tree but does not remove files absent from it, so a file
+ * created after the checkpoint survives as an untracked file. Inherited from
+ * `checkoutBranch`; `setForced(true)` would suppress it by discarding uncommitted
+ * work, which is worse.
+ *
+ * **Known limit — `hasChanges()` is O(working tree) per call**, and `publish`
+ * calls it every run. See {@link hasWorkingTreeChanges} for why nothing cheaper
+ * answers correctly.
+ *
+ * **Known limit — symlinks, gitlinks and executables are refused.** `hasChanges()`
+ * and `commit()` both raise `UnsupportedEntryError` when the index records a mode
+ * other than `100644`; nothing is staged and the repository is left as it was
+ * found. The cause is `FileWorktree.getFileMode` in `@statewalker/vcs-store-files`
+ * reporting `REGULAR_FILE` for every path, which is out of this feature's bounds
+ * to fix — and the alternative to refusing is a silent, irreversible rewrite of
+ * the caller's history. Detection is index-based, so an *untracked* symlink or
+ * executable is not seen. See `## Known limits` in this package's `CONTEXT.md`.
+ */
+export function createGitRepository(
+  git: Git,
+  files: FilesApi,
+  hashContent: HashContent,
+): Repository {
+  const tracked = trackedFilesOf(files);
+
+  return {
+    manifest: () => manifestOf(tracked, hashContent),
+    head: () => headOf(git),
+    hasChanges: () => hasWorkingTreeChanges(git),
+    commit: (opts) => commitWorktree(git, opts.message),
+    checkout: (commit) => checkoutCommit(git, commit),
+  };
+}
+
+/** The commit HEAD resolves to, or `undefined` before the first commit. */
+async function headOf(git: Git): Promise<string | undefined> {
+  return (await historyOf(git).refs.resolve("HEAD"))?.objectId;
+}
+
+/**
+ * Whether the **working tree** holds anything not yet committed.
+ *
+ * This is `commitOnlyWhenChanged`'s only input, so a wrong answer here is a
+ * skipped commit or an endless one — never an error. Both obvious sources are
+ * wrong, measured on this assembly:
+ *
+ * - **`git.workingCopy.getStatus()`** is a `MemoryWorkingCopy` method whose own
+ *   comment says "Returns a simplified status for testing": `files: []`,
+ *   `isClean: true`, `hasUnstaged: false` are **hardcoded literals** (only
+ *   `branch` and `head` are computed). `!isClean` is therefore always `false`.
+ * - **`StatusCalculatorImpl`** compares worktree to index by size + mtime and
+ *   treats any file younger than the index as "racily clean ⇒ maybe modified".
+ *   On a freshly committed clean tree it answers `hasUnstaged: true`, so it is
+ *   wrong in the other direction.
+ * - **`git.status()`** (`StatusCommand`) is index-vs-HEAD only and never reads
+ *   the worktree at all.
+ *
+ * **Cost: O(working tree), and `publish` calls this on every run.** It walks the
+ * whole worktree and computes a git blob hash for every tracked file. That is the
+ * price of the paragraph above — every cheaper source measured wrong — and on a
+ * large project it is the dominant cost of a checkpoint.
+ *
+ * So the worktree half is an explicit **content-hash** diff against the index —
+ * `Worktree.computeHash` is the git blob id of the file on disk, directly
+ * comparable to the index entry's `objectId` — and the staged half delegates to
+ * `git.status()`, which is exactly what that command is for.
+ *
+ * Ignored files count only when they are already tracked: `commit()` stages with
+ * `add(".")`, which honours `.git/info/exclude`, so an ignored untracked file is
+ * something no commit would ever pick up.
+ *
+ * **Index entries the walk cannot reach do not count at all.** `walkDirectory`
+ * prunes any directory that holds a `.git` of its own, and `add(".")` walks exactly
+ * the same way — so once `vendor/lib` becomes a repository, every index entry
+ * beneath it is inert: no commit can add, modify or delete it. Counting those as
+ * changes (which the `matched !== staged.size` deletion check did) made this
+ * permanently `true` while `commit()` reported `{changed: false}` — the
+ * non-convergence that has `commitOnlyWhenChanged` committing forever. The pruned
+ * directories are identified from the same walk: a directory holding a `.git` is
+ * reported with the gitlink mode.
+ */
+async function hasWorkingTreeChanges(git: Git): Promise<boolean> {
+  const worktree = worktreeOf(git);
+  const staging = checkoutOf(git).staging;
+
+  const staged = new Map<string, string>();
+  for await (const entry of staging.entries()) {
+    // Checked before anything else, including the conflict shortcut: on a
+    // symlink the content comparison below is not merely uninformative, it is
+    // WRONG — `computeHash` follows the link, so a clean repository reads as
+    // changed and `commitOnlyWhenChanged` then commits the link away.
+    assertSupportedEntry(entry);
+    // A conflict stage is by definition unresolved, hence uncommitted.
+    if (entry.stage !== 0) return true;
+    staged.set(entry.path, entry.objectId);
+  }
+
+  let matched = 0;
+  const pruned: string[] = [];
+  for await (const entry of worktree.walk({ includeIgnored: true, includeDirectories: true })) {
+    if (entry.isDirectory) {
+      // A directory carrying its own `.git` is reported as a gitlink and NOT
+      // recursed into; everything the index holds beneath it is unreachable.
+      if (entry.mode === FileMode.GITLINK) pruned.push(`${entry.path}/`);
+      continue;
+    }
+    const indexed = staged.get(entry.path);
+    if (indexed === undefined) {
+      if (entry.isIgnored) continue;
+      return true; // untracked, and `add(".")` would stage it
+    }
+    matched++;
+    if ((await worktree.computeHash(entry.path)) !== indexed) return true;
+  }
+  // Every index entry the walk did not reach is a file deleted from the
+  // worktree — `add(".")` stages deletions, so that is a real change. Except
+  // the ones under a pruned directory, which `add(".")` cannot reach either.
+  const unreachable = [...staged.keys()].filter((path) =>
+    pruned.some((prefix) => path.startsWith(prefix)),
+  ).length;
+  if (matched !== staged.size - unreachable) return true;
+
+  return (await git.status().call()).hasUncommittedChanges();
+}
+
+/**
+ * Stage the whole worktree and record it as a commit.
+ *
+ * `add(".")` first is not a convenience: `CommitCommand` writes the tree from
+ * the **index**, so without it `publish` would commit whatever happened to be
+ * staged — an empty tree on a fresh repository. `Repository` has no "stage"
+ * step, so this method owns one; the index mutation is a documented effect.
+ *
+ * The three outcomes, and why they are shaped this way:
+ *
+ * - **Something to commit** → `{commit: <new id>, changed: true}`.
+ * - **Nothing to commit, with history** → `CommitCommand` throws
+ *   `EmptyCommitError` and `CommitResult` carries no `changed` field, while
+ *   `Repository.commit` must return a **non-optional** id. The id therefore
+ *   comes from HEAD: `{commit: head, changed: false}`.
+ * - **Nothing to commit, no history** → **throws**. No commit id exists, and the
+ *   return type cannot express its absence. Left to the porcelain this case is
+ *   worse than an error: the empty guard is gated on `parents.length > 0`, so it
+ *   would write an empty root commit and return an id for a state that has none.
+ *
+ * The author is the porcelain's default (`Unknown <unknown@example.com>`) —
+ * `Repository.commit` has no author field. `VcsNature.commit` is the surface
+ * that carries the project's configured identity.
+ */
+async function commitWorktree(
+  git: Git,
+  message?: string,
+): Promise<{ commit: string; changed: boolean }> {
+  // Before `add(".")`, not after: staging is what destroys the mode, so by the
+  // time the index has been rewritten there is nothing left to detect.
+  await assertSupportedIndex(git);
+  await git.add().addFilepattern(".").call();
+
+  if (!(await headOf(git)) && (await checkoutOf(git).staging.getEntryCount()) === 0) {
+    throw new Error(
+      "commit: nothing to commit and this repository has no commit yet — " +
+        "Repository.commit must return a commit id and none exists. Write a file first.",
+    );
+  }
+
+  try {
+    const { id } = await git
+      .commit()
+      .setMessage(message ?? DEFAULT_COMMIT_MESSAGE)
+      .call();
+    return { commit: id, changed: true };
+  } catch (error) {
+    if (!isEmptyCommitError(error)) throw error;
+    const head = await headOf(git);
+    // Unreachable: EmptyCommitError is only raised when a parent commit exists.
+    if (!head) throw error;
+    return { commit: head, changed: false };
+  }
+}
+
+/**
+ * Reset the working tree to `commit` — `restore`'s only engine call.
+ *
+ * A raw commit id is accepted: `CheckoutCommand` resolves branches, tags, refs
+ * and then object ids, and detaches HEAD onto the last of those.
+ *
+ * **The status inspection is the whole point.** `checkoutBranch` does not throw
+ * when staged entries differ from HEAD — it **returns `{status: CONFLICTS}`**
+ * with the offending paths — and `Repository.checkout` returns `void`. Ignore
+ * the result and `restore` reports success over a working tree it never touched.
+ * `setForced(true)` would suppress the conflict instead, discarding uncommitted
+ * work; that is destructive and deliberately not done here — a caller who wants
+ * it can commit or reset first.
+ *
+ * Known limitation, inherited: `checkoutBranch` writes the target tree over the
+ * worktree but never **removes** files absent from it, so a file added after
+ * `commit` survives the checkout untracked.
+ */
+async function checkoutCommit(git: Git, commit: string): Promise<void> {
+  const result = await git.checkout().setName(commit).call();
+  if (result.status !== CheckoutStatus.OK) {
+    const detail = result.conflicts.length ? `: ${result.conflicts.join(", ")}` : "";
+    throw new Error(
+      `checkout: '${commit}' was not checked out — status ${result.status}${detail}. ` +
+        "Commit or discard the staged changes first.",
+    );
+  }
+}
+
+/** The worktree behind a `Git`, or throw — `Git.worktree` is optional. */
+function worktreeOf(git: Git): Worktree {
+  const worktree = git.worktree;
+  if (!worktree) throw new Error("git has no worktree");
+  return worktree;
+}
+
+/** The checkout state behind a `Git`, or throw — `Git.checkoutState` is optional. */
+function checkoutOf(git: Git): Checkout {
+  const checkout = git.checkoutState;
+  if (!checkout) throw new Error("git has no checkout state");
+  return checkout;
+}
