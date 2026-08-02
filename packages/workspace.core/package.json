@@ -33,8 +33,8 @@
     "@statewalker/shared-adapters": "catalog:",
     "@statewalker/shared-baseclass": "catalog:",
     "@statewalker/shared-commands": "catalog:",
-    "@statewalker/shared-dataflow": "catalog:",
     "@statewalker/shared-logger": "catalog:",
+    "@statewalker/webrun-dataflow": "workspace:*",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-composite": "catalog:"
   },
