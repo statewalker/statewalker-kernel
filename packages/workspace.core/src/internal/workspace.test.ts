@@ -136,7 +136,9 @@ describe("Workspace — adapter persistence across cycles", () => {
 
     const a = ws.requireAdapter(A);
     a.closed.mockImplementation(() => events.push("adapter.close"));
-    ws.onUnload(() => events.push("unload"));
+    ws.onUnload(() => {
+      events.push("unload");
+    });
 
     await ws.close();
 
@@ -197,8 +199,12 @@ describe("Workspace — rebind sequence", () => {
     ws.setFileSystem(new MemFilesApi(), "A");
 
     const order: string[] = [];
-    ws.onLoad(() => order.push("load"));
-    ws.onUnload(() => order.push("unload"));
+    ws.onLoad(() => {
+      order.push("load");
+    });
+    ws.onUnload(() => {
+      order.push("unload");
+    });
 
     await ws.open();
     await ws.close();
