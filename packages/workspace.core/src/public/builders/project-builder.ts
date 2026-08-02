@@ -9,6 +9,10 @@ import { DEFAULT_SYSTEM_FOLDER, type Project } from "../types/project.js";
  * itself is the `host` passed to every builder handler (`handler(project)`), so a
  * project's "nature" keeps contributing builders via `registerBuilder` / a
  * `BuilderProvider` exactly as before.
+ *
+ * Invariant: the logger is resolved once here at construction (`loggerOf`), so the
+ * host must register its `LoggerAdapter` BEFORE resolving `ProjectBuilder` — a later
+ * registration is not picked up. Workspace bootstrap satisfies this ordering.
  */
 export class ProjectBuilder extends BuildEngine<Project> {
   constructor(project: Project) {
