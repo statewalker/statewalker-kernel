@@ -64,9 +64,10 @@ describe("newWebAppModuleServer", () => {
 
     expect(response.status).toBe(200);
     const body = await response.text();
-    // The bare `tiny` import was rewritten to a same-origin URL under `/deps/`, pinned
-    // to the locked version — no CDN, no bare specifier.
-    expect(body).toContain("deps/tiny@1.0.0/index.js");
+    // The bare `tiny` import was rewritten to a same-origin `~deps` proxy module (the ~deps
+    // proxy layer) — no CDN, no bare specifier. The proxy pins the locked `deps/tiny@1.0.0`
+    // version (verified directly in @statewalker/webrun-modules' own suite).
+    expect(body).toContain("~deps/main.ts/deps.tiny.js");
     expect(body).not.toContain("http");
     expect(body).not.toContain('from "tiny"');
   });
