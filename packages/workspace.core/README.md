@@ -24,8 +24,11 @@ hierarchy (the consolidation of `@statewalker/resources-workspace`):
 > **Transitional:** `@statewalker/resources-workspace` and
 > `@statewalker/resources-wiki` still exist and build unchanged; the wiki
 > migration onto this model and the deletion of `resources-workspace` are a
-> follow-up step. `ProjectBuilder` (the signal-driven build engine + `BuilderProvider`
-> "nature") is being ported here next.
+> follow-up step. The signal-driven build engine now lives in
+> `@statewalker/webrun-builder` as `BuildEngine<THost>`; this package provides the
+> `ProjectBuilder` Project-bound adapter (`extends BuildEngine<Project>`) plus the
+> `BuilderProvider` "nature", re-exported from `./builders` and resolved via
+> `project.requireAdapter(ProjectBuilder)`.
 
 ## What it exports
 
