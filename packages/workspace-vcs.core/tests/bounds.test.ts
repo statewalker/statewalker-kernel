@@ -33,7 +33,7 @@ interface Bound {
 
 const BOUNDS: Bound[] = [
   {
-    repo: "../../../vcs",
+    repo: "../../../webrun-vcs",
     paths: ["packages/workspace/src"],
     invariant: "2 — vcs-workspace source is untouched",
   },
