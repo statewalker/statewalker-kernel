@@ -28,10 +28,10 @@
     "@statewalker/webrun-modules": "workspace:*",
     "@statewalker/webrun-site-builder": "workspace:*",
     "@statewalker/webrun-site-host": "workspace:*",
-    "@statewalker/webrun-files": "catalog:"
+    "@statewalker/webrun-files": "workspace:*"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "catalog:",
+    "@statewalker/webrun-files-mem": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

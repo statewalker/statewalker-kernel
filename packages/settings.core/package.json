@@ -19,9 +19,9 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shared-baseclass": "catalog:",
-    "@statewalker/shared-commands": "catalog:",
-    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-baseclass": "workspace:*",
+    "@statewalker/shared-commands": "workspace:*",
+    "@statewalker/shared-registry": "workspace:*",
     "@statewalker/shared-slots": "workspace:*",
     "@statewalker/workspace.core": "workspace:*"
   },

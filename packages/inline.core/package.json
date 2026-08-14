@@ -19,7 +19,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-registry": "workspace:*",
     "@statewalker/shared-slots": "workspace:*"
   },
   "devDependencies": {

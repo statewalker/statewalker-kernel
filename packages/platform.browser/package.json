@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "Browser implementation of the platform.api intents — pickers, downloads, clipboard, preferences.",
+  "description": "Browser implementation of the platform.api intents \u2014 pickers, downloads, clipboard, preferences.",
   "homepage": "https://github.com/statewalker/statewalker-workbench",
   "author": {
     "name": "Mikhail Kotelnikov",
@@ -33,16 +33,16 @@
   },
   "dependencies": {
     "@statewalker/platform.core": "workspace:*",
-    "@statewalker/shared-commands": "catalog:",
-    "@statewalker/shared-logger": "catalog:",
-    "@statewalker/shared-logger-pino": "catalog:",
-    "@statewalker/shared-registry": "catalog:",
-    "@statewalker/webrun-files": "catalog:",
-    "@statewalker/webrun-files-browser": "catalog:",
+    "@statewalker/shared-commands": "workspace:*",
+    "@statewalker/shared-logger": "workspace:*",
+    "@statewalker/shared-logger-pino": "workspace:*",
+    "@statewalker/shared-registry": "workspace:*",
+    "@statewalker/webrun-files": "workspace:*",
+    "@statewalker/webrun-files-browser": "workspace:*",
     "@statewalker/workspace.core": "workspace:*"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "catalog:",
+    "@statewalker/webrun-files-mem": "workspace:*",
     "jsdom": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",

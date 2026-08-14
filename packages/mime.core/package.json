@@ -20,12 +20,12 @@
   },
   "dependencies": {
     "@statewalker/shell.core": "workspace:*",
-    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/shared-commands": "workspace:*",
     "@statewalker/render.core": "workspace:*",
-    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-registry": "workspace:*",
     "@statewalker/shared-slots": "workspace:*",
-    "@statewalker/webrun-files": "catalog:",
-    "@statewalker/webrun-files-mem": "catalog:",
+    "@statewalker/webrun-files": "workspace:*",
+    "@statewalker/webrun-files-mem": "workspace:*",
     "@statewalker/workspace.core": "workspace:*"
   },
   "devDependencies": {

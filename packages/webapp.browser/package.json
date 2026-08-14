@@ -25,13 +25,13 @@
   },
   "dependencies": {
     "@statewalker/render.core": "workspace:*",
-    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/shared-commands": "workspace:*",
     "@statewalker/shell.core": "workspace:*",
     "@statewalker/webapp.core": "workspace:*",
     "@statewalker/webrun-site-host": "workspace:*"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "catalog:",
+    "@statewalker/webrun-files-mem": "workspace:*",
     "@statewalker/workspace.core": "workspace:*",
     "@types/node": "catalog:",
     "typescript": "catalog:",
