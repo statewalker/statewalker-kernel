@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/mime.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "Mime-viewer dispatch: files:visualize + files:open commands, mime:renderers/mime-icons/editor-factories slots, MimeRenderer + pickMimeRenderer.",

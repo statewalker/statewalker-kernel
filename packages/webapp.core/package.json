@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/webapp.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "Web-app project nature (React-free): convention detection + config, and a persistent per-project module-server cache over @statewalker/webrun-modules.",

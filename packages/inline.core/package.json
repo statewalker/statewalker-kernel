@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/inline.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "Inline-content logic fragment: declares inline-content:components and inline-content:renderers slot keys.",

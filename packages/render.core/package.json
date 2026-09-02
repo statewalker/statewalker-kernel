@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/render.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "json-render engine state (opaque, no @json-render dep): SpecStore adapter + spec:create/spec:patch + restorePanelSpecsFromLayout, plus the json:catalogs keyed slot.",

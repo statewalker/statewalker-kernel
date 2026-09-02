@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/platform.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "Platform-capability intent vocabulary shared by every application composed of statewalker-workbench fragments.",

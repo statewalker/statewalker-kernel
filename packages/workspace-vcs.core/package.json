@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/workspace-vcs.core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "type": "module",
   "description": "GitNature — version control as an opt-in nature of a workbench project: init/add/commit/log/status plus HTTP remotes over a real, native-compatible .git.",
