@@ -30,17 +30,17 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shared-adapters": "workspace:*",
-    "@statewalker/shared-baseclass": "workspace:*",
-    "@statewalker/shared-commands": "workspace:*",
-    "@statewalker/shared-logger": "workspace:*",
-    "@statewalker/webrun-builder": "workspace:*",
-    "@statewalker/webrun-dataflow": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*",
-    "@statewalker/webrun-files-composite": "workspace:*"
+    "@statewalker/shared-adapters": "catalog:",
+    "@statewalker/shared-baseclass": "catalog:",
+    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/shared-logger": "catalog:",
+    "@statewalker/webrun-builder": "catalog:",
+    "@statewalker/webrun-dataflow": "catalog:",
+    "@statewalker/webrun-files": "catalog:",
+    "@statewalker/webrun-files-composite": "catalog:"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files-mem": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

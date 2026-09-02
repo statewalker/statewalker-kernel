@@ -28,16 +28,16 @@
     "@json-render/core": "0.18.0",
     "@statewalker/shell.core": "workspace:*",
     "@statewalker/mime.core": "workspace:*",
-    "@statewalker/shared-baseclass": "workspace:*",
-    "@statewalker/shared-commands": "workspace:*",
-    "@statewalker/shared-registry": "workspace:*",
-    "@statewalker/shared-slots": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*",
+    "@statewalker/shared-baseclass": "catalog:",
+    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-slots": "catalog:",
+    "@statewalker/webrun-files": "catalog:",
     "@statewalker/workspace.core": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files-mem": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

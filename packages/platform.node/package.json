@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "Node implementation of the platform.api commands \u2014 filesystem-backed durable preferences.",
+  "description": "Node implementation of the platform.api commands — filesystem-backed durable preferences.",
   "homepage": "https://github.com/statewalker/statewalker-workbench",
   "author": {
     "name": "Mikhail Kotelnikov",
@@ -33,14 +33,14 @@
   },
   "dependencies": {
     "@statewalker/platform.core": "workspace:*",
-    "@statewalker/shared-commands": "workspace:*",
-    "@statewalker/shared-registry": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*",
-    "@statewalker/webrun-files-node": "workspace:*",
+    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/webrun-files": "catalog:",
+    "@statewalker/webrun-files-node": "catalog:",
     "@statewalker/workspace.core": "workspace:*"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files-mem": "catalog:",
     "@types/node": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",

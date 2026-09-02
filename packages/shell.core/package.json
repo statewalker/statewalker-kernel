@@ -19,16 +19,16 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shared-commands": "workspace:*",
+    "@statewalker/shared-commands": "catalog:",
     "@statewalker/render.core": "workspace:*",
-    "@statewalker/shared-registry": "workspace:*",
-    "@statewalker/shared-slots": "workspace:*",
+    "@statewalker/shared-registry": "catalog:",
+    "@statewalker/shared-slots": "catalog:",
     "@statewalker/workspace.core": "workspace:*",
     "dockview-react": "6.0.3"
   },
   "devDependencies": {
-    "@statewalker/webrun-files": "workspace:*",
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files": "catalog:",
+    "@statewalker/webrun-files-mem": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

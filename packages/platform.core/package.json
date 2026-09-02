@@ -32,10 +32,10 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shared-adapters": "workspace:*",
-    "@statewalker/shared-baseclass": "workspace:*",
-    "@statewalker/shared-commands": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*",
+    "@statewalker/shared-adapters": "catalog:",
+    "@statewalker/shared-baseclass": "catalog:",
+    "@statewalker/shared-commands": "catalog:",
+    "@statewalker/webrun-files": "catalog:",
     "@statewalker/workspace.core": "workspace:*"
   },
   "devDependencies": {

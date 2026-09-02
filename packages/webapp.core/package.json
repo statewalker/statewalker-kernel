@@ -25,13 +25,13 @@
   },
   "dependencies": {
     "@statewalker/workspace.core": "workspace:*",
-    "@statewalker/webrun-modules": "workspace:*",
-    "@statewalker/webrun-site-builder": "workspace:*",
-    "@statewalker/webrun-site-host": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*"
+    "@statewalker/webrun-modules": "catalog:",
+    "@statewalker/webrun-site-builder": "catalog:",
+    "@statewalker/webrun-site-host": "catalog:",
+    "@statewalker/webrun-files": "catalog:"
   },
   "devDependencies": {
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files-mem": "catalog:",
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"

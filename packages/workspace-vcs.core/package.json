@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
-  "description": "GitNature \u2014 version control as an opt-in nature of a workbench project: init/add/commit/log/status plus HTTP remotes over a real, native-compatible .git.",
+  "description": "GitNature — version control as an opt-in nature of a workbench project: init/add/commit/log/status plus HTTP remotes over a real, native-compatible .git.",
   "homepage": "https://github.com/statewalker/statewalker-workbench",
   "license": "MIT",
   "repository": {
@@ -26,20 +26,20 @@
   },
   "dependencies": {
     "@statewalker/workspace.core": "workspace:*",
-    "@statewalker/vcs-commands": "workspace:*",
-    "@statewalker/vcs-core": "workspace:*",
-    "@statewalker/vcs-store-files": "workspace:*",
-    "@statewalker/vcs-transport": "workspace:*",
-    "@statewalker/vcs-transport-adapters": "workspace:*",
-    "@statewalker/vcs-working-tree": "workspace:*",
-    "@statewalker/vcs-workspace": "workspace:*",
-    "@statewalker/webrun-files": "workspace:*",
-    "@statewalker/webrun-files-composite": "workspace:*"
+    "@statewalker/vcs-commands": "catalog:",
+    "@statewalker/vcs-core": "catalog:",
+    "@statewalker/vcs-store-files": "catalog:",
+    "@statewalker/vcs-transport": "catalog:",
+    "@statewalker/vcs-transport-adapters": "catalog:",
+    "@statewalker/vcs-working-tree": "catalog:",
+    "@statewalker/vcs-workspace": "catalog:",
+    "@statewalker/webrun-files": "catalog:",
+    "@statewalker/webrun-files-composite": "catalog:"
   },
   "devDependencies": {
-    "@statewalker/vcs-utils-node": "workspace:*",
+    "@statewalker/vcs-utils-node": "catalog:",
     "@types/node": "catalog:",
-    "@statewalker/webrun-files-mem": "workspace:*",
+    "@statewalker/webrun-files-mem": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
