@@ -2,7 +2,7 @@ import { SpecStore } from "@statewalker/render.core";
 import initSpecStore from "@statewalker/render.core/fragment";
 import { Commands } from "@statewalker/shared-commands";
 import { getWorkspace } from "@statewalker/workspace.core";
-import type { DockviewApi, IDockviewPanel } from "dockview-react";
+import type { DockviewApi, IDockviewPanel } from "dockview-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ClosePanelCommand, FocusPanelCommand, ShowDockPanelCommand } from "../public/commands.js";
 import { DockHost } from "../public/dock-host.js";

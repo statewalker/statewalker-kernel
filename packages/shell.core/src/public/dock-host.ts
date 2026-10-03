@@ -1,6 +1,6 @@
 import { LayoutStore } from "@statewalker/render.core";
 import type { Workspace } from "@statewalker/workspace.core";
-import type { DockviewApi } from "dockview-react";
+import type { DockviewApi } from "dockview-core";
 import type { ShowDockPanelPayload } from "./commands.js";
 
 /** The dockview serialized-layout shape, as accepted by `api.fromJSON`. */

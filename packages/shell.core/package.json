@@ -24,7 +24,7 @@
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
     "@statewalker/workspace.core": "workspace:*",
-    "dockview-react": "6.0.3"
+    "dockview-core": "6.0.3"
   },
   "devDependencies": {
     "@statewalker/webrun-files": "catalog:",

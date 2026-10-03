@@ -2,7 +2,7 @@ import { LayoutStore, restorePanelSpecsFromLayout, SpecStore } from "@statewalke
 import { writeText } from "@statewalker/webrun-files";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
 import { initWorkspace, SystemFiles, Workspace } from "@statewalker/workspace.core";
-import type { DockviewApi, IDockviewPanel } from "dockview-react";
+import type { DockviewApi, IDockviewPanel } from "dockview-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DockHost } from "../public/dock-host.js";
 
