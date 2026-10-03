@@ -5,7 +5,7 @@ packages:
 catalog:
   "@changesets/cli": "^3.0.3"
   "@json-render/core": ^0.18.0
-  "dockview-core": ^6.6.1
+  "dockview-core": ^8.4.0
   "idb-keyval": "^6.3.0"
   "@statewalker/webrun-dataflow": ^0.1.1
   "@statewalker/webrun-builder": ^0.1.1

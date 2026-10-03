@@ -103,8 +103,9 @@ export class DockHost {
       for (const cb of this._layoutListeners) cb();
     });
     this._setActivePanelId(api.activePanel?.id);
-    const onActivePanel = api.onDidActivePanelChange((panel) => {
-      this._setActivePanelId(panel?.id);
+    // dockview 8: the listener receives { panel, origin }, not the panel itself.
+    const onActivePanel = api.onDidActivePanelChange((evt) => {
+      this._setActivePanelId(evt.panel?.id);
     });
     this._disposeApiListeners = () => {
       onLayoutChange.dispose();

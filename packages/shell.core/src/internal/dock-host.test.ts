@@ -75,6 +75,29 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("DockHost — active panel", () => {
+  it("tracks the active panel from dockview's onDidActivePanelChange event", () => {
+    const { api } = makeFakeApi();
+    let fire: ((evt: { panel: { id: string } | undefined; origin: string }) => void) | undefined;
+    api.onDidActivePanelChange.mockImplementation((cb: typeof fire) => {
+      fire = cb;
+      return { dispose: () => {} };
+    });
+    const host = new DockHost();
+    const seen: (string | undefined)[] = [];
+    host.onActivePanelChange((id) => seen.push(id));
+    host.setApi(api as unknown as DockviewApi);
+    expect(host.getActivePanelId()).toBeUndefined();
+
+    // dockview 8 passes an event ({ panel, origin }), not the panel itself.
+    fire?.({ panel: { id: "p1" }, origin: "user" });
+    expect(host.getActivePanelId()).toBe("p1");
+    fire?.({ panel: undefined, origin: "user" });
+    expect(host.getActivePanelId()).toBeUndefined();
+    expect(seen).toEqual(["p1", undefined]);
+  });
+});
+
 describe("DockHost — panel queue/focus mechanics (no workspace)", () => {
   it("queues showOrFocus before api attach, drains after setApi", async () => {
     const host = new DockHost();
