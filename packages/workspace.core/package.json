@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/workspace.core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "type": "module",
   "description": "Workspace logic fragment: the Workspace class, system/secrets/settings adapters, the workspace:change intent, and its registrar init.",
