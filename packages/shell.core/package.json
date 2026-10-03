@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/shell.core",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "description": "Dock logic fragment: dock:* slot keys, dock:show-panel/close-panel/focus-panel intents, dock state.",
@@ -24,7 +24,7 @@
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
     "@statewalker/workspace.core": "workspace:*",
-    "dockview-core": "6.0.3"
+    "dockview-core": "catalog:"
   },
   "devDependencies": {
     "@statewalker/webrun-files": "catalog:",

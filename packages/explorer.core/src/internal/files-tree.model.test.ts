@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { FilesTreeView } from "../public/files-tree.model.js";
 
 function entry(name: string, kind: "file" | "directory" = "file"): FileInfo {
-  return { name, path: `/${name}`, kind };
+  return kind === "file"
+    ? { name, path: `/${name}`, kind, size: 0, lastModified: 0 }
+    : { name, path: `/${name}`, kind };
 }
 
 describe("FilesTreeView", () => {

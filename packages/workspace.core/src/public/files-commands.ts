@@ -10,9 +10,9 @@ import type { FileInfo, FileStats } from "@statewalker/webrun-files";
  * Result returned by `files:load-directory`. Mirrors a thin slice of
  * `FileInfo` plus optional MIME metadata.
  */
-export interface DirectoryEntry extends FileInfo {
+export type DirectoryEntry = FileInfo & {
   mimeType?: string;
-}
+};
 
 /**
  * Result returned by `files:load-file`. Carries the bytes plus derived

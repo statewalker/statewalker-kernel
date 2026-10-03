@@ -136,10 +136,10 @@ export class FilesListModel extends ViewModel {
           cmp = a.name.localeCompare(b.name);
           break;
         case "size":
-          cmp = (a.size ?? 0) - (b.size ?? 0);
+          cmp = (a.kind === "file" ? a.size : 0) - (b.kind === "file" ? b.size : 0);
           break;
         case "lastModified":
-          cmp = (a.lastModified ?? 0) - (b.lastModified ?? 0);
+          cmp = (a.kind === "file" ? a.lastModified : 0) - (b.kind === "file" ? b.lastModified : 0);
           break;
         case "kind":
           cmp = a.kind.localeCompare(b.kind);

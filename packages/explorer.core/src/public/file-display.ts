@@ -4,16 +4,16 @@ import type { FileInfo } from "@statewalker/webrun-files";
  * Display-ready file entry — computed from `FileInfo` by the model.
  * Icon/color resolution is a model concern, not a view concern.
  */
-export interface FileDisplayEntry extends FileInfo {
+export type FileDisplayEntry = FileInfo & {
   /** Lucide icon name: "folder", "file-text", "file-code", etc. */
   icon: string;
   /** Tailwind color class: "text-primary", "text-yellow-400", etc. */
   iconColor: string;
   /** Pre-formatted size: "4.2 KB", "" for directories. */
   displaySize: string;
-  /** Pre-formatted date: "Mar 15, 2026". */
+  /** Pre-formatted date: "Mar 15, 2026"; "" for directories (webrun-files >=0.9 reports no directory times). */
   displayDate: string;
-}
+};
 
 const IMAGE_EXTS = new Set(["jpg", "jpeg", "png", "gif", "svg", "webp", "ico", "bmp"]);
 const AUDIO_EXTS = new Set(["mp3", "wav", "flac", "m3u", "ogg", "aac"]);
@@ -93,7 +93,7 @@ export function toDisplayEntry(entry: FileInfo): FileDisplayEntry {
     icon: resolveFileIcon(entry),
     iconColor: resolveFileIconColor(entry),
     displaySize: entry.kind === "file" ? formatFileSize(entry.size) : "",
-    displayDate: formatFileDate(entry.lastModified),
+    displayDate: formatFileDate(entry.kind === "file" ? entry.lastModified : undefined),
   };
 }
 

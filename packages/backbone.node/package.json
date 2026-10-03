@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/backbone.node",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "description": "Backbone server bootstrap: resolves an AppManifest against the filesystem and activates modules.",

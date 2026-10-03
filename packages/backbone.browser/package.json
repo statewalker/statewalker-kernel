@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/backbone.browser",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "description": "Backbone web runtime: fragment loader + browser-side activation for the backbone platform.",
