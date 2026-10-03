@@ -24,7 +24,7 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/workspace.core": "workspace:*",
+    "@statewalker/workspace.core": "workspace:^",
     "@statewalker/webrun-modules": "catalog:",
     "@statewalker/webrun-site-builder": "catalog:",
     "@statewalker/webrun-site-host": "catalog:",

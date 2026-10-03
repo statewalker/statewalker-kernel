@@ -20,10 +20,10 @@
   },
   "dependencies": {
     "@statewalker/shared-commands": "catalog:",
-    "@statewalker/render.core": "workspace:*",
+    "@statewalker/render.core": "workspace:^",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
-    "@statewalker/workspace.core": "workspace:*",
+    "@statewalker/workspace.core": "workspace:^",
     "dockview-core": "catalog:"
   },
   "devDependencies": {

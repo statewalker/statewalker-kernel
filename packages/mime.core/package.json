@@ -19,14 +19,14 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/shell.core": "workspace:*",
+    "@statewalker/shell.core": "workspace:^",
     "@statewalker/shared-commands": "catalog:",
-    "@statewalker/render.core": "workspace:*",
+    "@statewalker/render.core": "workspace:^",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-mem": "catalog:",
-    "@statewalker/workspace.core": "workspace:*"
+    "@statewalker/workspace.core": "workspace:^"
   },
   "devDependencies": {
     "typescript": "catalog:",

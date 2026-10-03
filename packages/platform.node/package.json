@@ -32,12 +32,12 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/platform.core": "workspace:*",
+    "@statewalker/platform.core": "workspace:^",
     "@statewalker/shared-commands": "catalog:",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-node": "catalog:",
-    "@statewalker/workspace.core": "workspace:*"
+    "@statewalker/workspace.core": "workspace:^"
   },
   "devDependencies": {
     "@statewalker/webrun-files-mem": "catalog:",

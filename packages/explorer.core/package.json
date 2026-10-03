@@ -26,14 +26,14 @@
   },
   "dependencies": {
     "@json-render/core": "catalog:",
-    "@statewalker/shell.core": "workspace:*",
-    "@statewalker/mime.core": "workspace:*",
+    "@statewalker/shell.core": "workspace:^",
+    "@statewalker/mime.core": "workspace:^",
     "@statewalker/shared-baseclass": "catalog:",
     "@statewalker/shared-commands": "catalog:",
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/shared-slots": "catalog:",
     "@statewalker/webrun-files": "catalog:",
-    "@statewalker/workspace.core": "workspace:*",
+    "@statewalker/workspace.core": "workspace:^",
     "zod": "catalog:"
   },
   "devDependencies": {

@@ -24,7 +24,7 @@
     "@statewalker/shared-registry": "catalog:",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-browser": "catalog:",
-    "@statewalker/workspace.core": "workspace:*",
+    "@statewalker/workspace.core": "workspace:^",
     "idb-keyval": "catalog:"
   },
   "devDependencies": {
