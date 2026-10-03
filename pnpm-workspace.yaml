@@ -3,7 +3,7 @@ packages:
   - "apps/*"
 
 catalog:
-  "@changesets/cli": "^2.31.1"
+  "@changesets/cli": "^3.0.3"
   "@json-render/core": ^0.18.0
   "dockview-core": ^6.6.1
   "idb-keyval": "^6.3.0"
