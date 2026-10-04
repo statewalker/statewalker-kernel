@@ -4,6 +4,15 @@
   "private": false,
   "type": "module",
   "description": "Workspace-bridge logic fragment: WorkspaceShellAdapter + workspace:* intents.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/workspace.browser"
+  },
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/workspace.browser#readme",
   "license": "MIT",
   "exports": {
     ".": {

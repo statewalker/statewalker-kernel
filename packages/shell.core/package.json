@@ -4,6 +4,15 @@
   "private": false,
   "type": "module",
   "description": "Dock logic fragment: dock:* slot keys, dock:show-panel/close-panel/focus-panel intents, dock state.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/shell.core"
+  },
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/shell.core#readme",
   "license": "MIT",
   "exports": {
     ".": {
