@@ -71,9 +71,10 @@ export class LayoutStore {
    * settles, so a later connect (e.g. a close→open re-connect) runs fresh.
    */
   connect(): Promise<void> {
-    return (this._connecting ??= this._connect().finally(() => {
+    this._connecting ??= this._connect().finally(() => {
       this._connecting = null;
-    }));
+    });
+    return this._connecting;
   }
 
   private async _connect(): Promise<void> {

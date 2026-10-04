@@ -32,6 +32,11 @@ async function setupProject(root = "proj"): Promise<{ project: Project; workspac
   return { project, workspace };
 }
 
+/** The site frame props of a stored webapp dock spec. */
+function siteProps(spec: unknown): SiteFrameProps {
+  return (spec as { elements: { site: { props: SiteFrameProps } } }).elements.site.props;
+}
+
 describe("registerOpenWebApp (open-command logic, injected host)", () => {
   it("hosts via the injected boundary and fires ShowDockPanelCommand with a spec referencing the baseUrl", async () => {
     const { project, workspace } = await setupProject();
@@ -66,8 +71,7 @@ describe("registerOpenWebApp (open-command logic, injected host)", () => {
     // The stored spec references the hosted baseUrl + resolved client entry.
     const record = store.get(specId);
     expect(record?.catalogId).toBe(WEBAPP_DOCK_CATALOG_ID);
-    const props = (record?.spec as { elements: { site: { props: SiteFrameProps } } }).elements.site
-      .props;
+    const props = siteProps(record?.spec);
     expect(props.baseUrl).toBe(BASE_URL);
     // Stored as a baseUrl-relative URL including the hosted `~/` project-file prefix.
     expect(props.clientEntry).toBe("~/client/index.html");
@@ -110,8 +114,7 @@ describe("registerOpenWebApp (open-command logic, injected host)", () => {
     ]);
 
     // The persistent spec still points at the FIRST mount's baseUrl (not re-created).
-    const props = (store.get(specId)?.spec as { elements: { site: { props: SiteFrameProps } } })
-      .elements.site.props;
+    const props = siteProps(store.get(specId)?.spec);
     expect(props.baseUrl).toBe("http://site.local/mount-1/");
   });
 
@@ -150,8 +153,7 @@ describe("registerOpenWebApp (open-command logic, injected host)", () => {
     expect(hostCalls).toBe(1);
     // A single spec exists, pointing at the one-and-only mount.
     const specId = webAppSpecId(project.path);
-    const props = (store.get(specId)?.spec as { elements: { site: { props: SiteFrameProps } } })
-      .elements.site.props;
+    const props = siteProps(store.get(specId)?.spec);
     expect(props.baseUrl).toBe("http://site.local/mount-1/");
   });
 
