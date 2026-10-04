@@ -10,7 +10,7 @@ catalog:
   "@statewalker/webrun-dataflow": ^0.1.1
   "@statewalker/webrun-builder": "^0.2.0"
   "@statewalker/vcs-utils-node": "^0.3.0"
-  "@statewalker/vcs-workspace": "^0.2.0"
+  "@statewalker/vcs-workspace": "^0.3.0"
   "@statewalker/vcs-working-tree": "^0.3.0"
   "@statewalker/vcs-transport-adapters": "^0.3.0"
   "@statewalker/vcs-transport": "^0.3.0"
