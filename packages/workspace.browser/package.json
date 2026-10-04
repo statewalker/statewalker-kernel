@@ -6,17 +6,29 @@
   "description": "Workspace-bridge logic fragment: WorkspaceShellAdapter + workspace:* intents.",
   "license": "MIT",
   "exports": {
-    ".": "./src/index.ts",
-    "./fragment": "./src/fragment.ts"
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./fragment": {
+      "source": "./src/fragment.ts",
+      "types": "./dist/fragment.d.ts",
+      "import": "./dist/fragment.js",
+      "default": "./dist/fragment.js"
+    }
   },
   "files": [
+    "dist",
     "src"
   ],
   "scripts": {
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "build": "tsdown"
   },
   "dependencies": {
     "@statewalker/shared-baseclass": "catalog:",
@@ -29,6 +41,7 @@
   },
   "devDependencies": {
     "jsdom": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

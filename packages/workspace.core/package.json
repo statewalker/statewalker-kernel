@@ -15,11 +15,27 @@
     "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
   },
   "exports": {
-    ".": "./src/index.ts",
-    "./fragment": "./src/fragment.ts",
-    "./files-fragment": "./src/files-fragment.ts"
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./fragment": {
+      "source": "./src/fragment.ts",
+      "types": "./dist/fragment.d.ts",
+      "import": "./dist/fragment.js",
+      "default": "./dist/fragment.js"
+    },
+    "./files-fragment": {
+      "source": "./src/files-fragment.ts",
+      "types": "./dist/files-fragment.d.ts",
+      "import": "./dist/files-fragment.js",
+      "default": "./dist/files-fragment.js"
+    }
   },
   "files": [
+    "dist",
     "src"
   ],
   "scripts": {
@@ -27,7 +43,8 @@
     "test:watch": "vitest --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "build": "tsdown"
   },
   "dependencies": {
     "@statewalker/shared-adapters": "catalog:",
@@ -41,6 +58,7 @@
   },
   "devDependencies": {
     "@statewalker/webrun-files-mem": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

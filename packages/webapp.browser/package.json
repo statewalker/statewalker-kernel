@@ -11,9 +11,15 @@
     "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
   },
   "files": [
+    "dist",
     "src"
   ],
   "scripts": {
@@ -21,19 +27,21 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "biome check --write .",
-    "format": "biome format --write ."
+    "format": "biome format --write .",
+    "build": "tsdown"
   },
   "dependencies": {
     "@statewalker/render.core": "workspace:^",
     "@statewalker/shared-commands": "catalog:",
     "@statewalker/shell.core": "workspace:^",
     "@statewalker/webapp.core": "workspace:^",
-    "@statewalker/webrun-site-host": "catalog:"
+    "@statewalker/webrun-site-host": "catalog:",
+    "@statewalker/workspace.core": "workspace:^"
   },
   "devDependencies": {
     "@statewalker/webrun-files-mem": "catalog:",
-    "@statewalker/workspace.core": "workspace:^",
     "@types/node": "catalog:",
+    "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
