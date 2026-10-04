@@ -64,11 +64,18 @@ describe("newWebAppModuleServer", () => {
 
     expect(response.status).toBe(200);
     const body = await response.text();
-    // The bare `tiny` import was rewritten to a same-origin `~deps` proxy module (the ~deps
-    // proxy layer) — no CDN, no bare specifier. The proxy pins the locked `deps/tiny@1.0.0`
-    // version (verified directly in @statewalker/webrun-modules' own suite).
-    expect(body).toContain("~deps/main.ts/deps.tiny.js");
+    // The bare `tiny` import was rewritten to a same-origin `~deps` proxy module — no CDN,
+    // no bare specifier. webrun-modules 0.3 serves one `~deps/` per module root
+    // (`feat(webrun-modules)!: one ~deps/ per module root`), i.e. `../~deps/tiny/index.js`.
+    expect(body).toContain("~deps/tiny/index.js");
     expect(body).not.toContain("http");
     expect(body).not.toContain('from "tiny"');
+
+    // The proxy is served same-origin and pins the locked version.
+    const spec = body.match(/from "([^"]*~deps\/tiny[^"]*)"/)?.[1];
+    expect(spec).toBeDefined();
+    const proxy = await server.fetch(new Request(new URL(spec ?? "", "http://x/~/client/main.ts")));
+    expect(proxy.status).toBe(200);
+    expect(await proxy.text()).toContain("deps/tiny@1.0.0/");
   });
 });
