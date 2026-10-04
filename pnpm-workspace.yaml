@@ -8,17 +8,17 @@ catalog:
   "dockview-core": ^8.4.0
   "idb-keyval": "^6.3.0"
   "@statewalker/webrun-dataflow": ^0.1.1
-  "@statewalker/webrun-builder": ^0.1.1
-  "@statewalker/vcs-utils-node": "^0.2.0"
+  "@statewalker/webrun-builder": "^0.2.0"
+  "@statewalker/vcs-utils-node": "^0.3.0"
   "@statewalker/vcs-workspace": "^0.2.0"
-  "@statewalker/vcs-working-tree": "^0.2.0"
-  "@statewalker/vcs-transport-adapters": "^0.2.0"
-  "@statewalker/vcs-transport": "^0.2.0"
-  "@statewalker/vcs-store-files": "^0.2.0"
-  "@statewalker/vcs-core": "^0.2.0"
-  "@statewalker/vcs-commands": "^0.2.0"
+  "@statewalker/vcs-working-tree": "^0.3.0"
+  "@statewalker/vcs-transport-adapters": "^0.3.0"
+  "@statewalker/vcs-transport": "^0.3.0"
+  "@statewalker/vcs-store-files": "^0.3.0"
+  "@statewalker/vcs-core": "^0.3.0"
+  "@statewalker/vcs-commands": "^0.3.0"
   "@statewalker/webrun-site-builder": ^0.2.0
-  "@statewalker/webrun-modules": ^0.2.1
+  "@statewalker/webrun-modules": "^0.3.0"
   # 0.1.7 and 0.2.0 on npm leak catalog:/workspace: specifiers and cannot install; 0.2.1 is clean.
   "@statewalker/webrun-site-host": ^0.2.1
   "@statewalker/shared-slots": ^0.2.0
