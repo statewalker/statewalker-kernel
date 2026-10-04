@@ -190,10 +190,11 @@ describe("HTTP remotes", () => {
       expect(await files.exists("/a/.git/config")).toBe(false);
     });
 
-    // The two known limits of writing through `GitWorkingCopyConfig`. Both are
-    // properties of `save()` re-serializing the whole file from a flat `Map`, and
-    // both are pinned here so a change of writer is a visible contract change.
-    it("known limit: save() re-serializes, so comments in .git/config are lost", async () => {
+    // Writing through `GitWorkingCopyConfig`. Comments used to be lost because
+    // `save()` re-serialized the whole file from a flat `Map`; the writer now keeps
+    // them, so this is pinned as a guarantee. The repeated-key collapse below is
+    // still a known limit, pinned so a change of writer is a visible contract change.
+    it("keeps comments in .git/config when a remote is added", async () => {
       const nature = await natureOf("a");
       await nature.init();
       await files.write("/a/.git/config", [
@@ -202,7 +203,10 @@ describe("HTTP remotes", () => {
 
       await nature.remotes.addHttp("origin", server.url);
 
-      expect(await readText(files, "/a/.git/config")).not.toContain("hand-written note");
+      const written = await readText(files, "/a/.git/config");
+      expect(written).toContain("# hand-written note");
+      expect(written).toContain("filemode = true");
+      expect(written).toContain('[remote "origin"]');
     });
 
     it("known limit: a repeated key collapses, so only one fetch refspec survives", async () => {
