@@ -4,7 +4,10 @@
   "private": false,
   "type": "module",
   "description": "Backbone common primitives: module resolver, activation, topological sort, manifest types, vendored logger slice.",
-  "homepage": "https://github.com/statewalker/statewalker-workbench",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/backbone.core#readme",
   "author": {
     "name": "Mikhail Kotelnikov",
     "email": "mikhail.kotelnikov@gmail.com"
@@ -12,7 +15,8 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/backbone.core"
   },
   "exports": {
     ".": {

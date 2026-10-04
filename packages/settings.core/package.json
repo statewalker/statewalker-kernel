@@ -4,6 +4,15 @@
   "private": false,
   "type": "module",
   "description": "Settings logic fragment.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/settings.core"
+  },
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/settings.core#readme",
   "license": "MIT",
   "exports": {
     ".": {

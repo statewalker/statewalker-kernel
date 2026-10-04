@@ -4,11 +4,15 @@
   "private": false,
   "type": "module",
   "description": "GitNature — version control as an opt-in nature of a workbench project: init/add/commit/log/status plus HTTP remotes over a real, native-compatible .git.",
-  "homepage": "https://github.com/statewalker/statewalker-workbench",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/workspace-vcs.core#readme",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/workspace-vcs.core"
   },
   "exports": {
     ".": {

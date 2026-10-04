@@ -4,7 +4,10 @@
   "type": "module",
   "packageManager": "pnpm@10.16.1",
   "description": "Headless kernel of the StateWalker workbench: backbone, platform, workspace, explorer, render, shell, settings, mime, inline, webapp.",
-  "homepage": "https://github.com/statewalker/statewalker-kernel",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel#readme",
   "author": {
     "name": "Mikhail Kotelnikov",
     "email": "mikhail.kotelnikov@gmail.com"
@@ -12,7 +15,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/statewalker/statewalker-kernel.git"
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git"
   },
   "scripts": {
     "build": "pnpm -r run build",

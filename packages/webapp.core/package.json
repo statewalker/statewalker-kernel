@@ -4,11 +4,15 @@
   "private": false,
   "type": "module",
   "description": "Web-app project nature (React-free): convention detection + config, and a persistent per-project module-server cache over @statewalker/webrun-modules.",
-  "homepage": "https://github.com/statewalker/statewalker-workbench",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/webapp.core#readme",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/statewalker/statewalker-workbench.git"
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/webapp.core"
   },
   "exports": {
     ".": {

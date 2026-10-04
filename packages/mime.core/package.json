@@ -4,6 +4,15 @@
   "private": false,
   "type": "module",
   "description": "Mime-viewer dispatch: files:visualize + files:open commands, mime:renderers/mime-icons/editor-factories slots, MimeRenderer + pickMimeRenderer.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages/mime.core"
+  },
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages/mime.core#readme",
   "license": "MIT",
   "exports": {
     ".": {
