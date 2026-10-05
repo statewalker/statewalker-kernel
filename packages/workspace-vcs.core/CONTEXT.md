@@ -30,8 +30,9 @@ Resources, and adapters. Its `FilesApi` spans the whole workspace.
 
 **Project-rooted `FilesApi`**:
 The view of the workspace `FilesApi` restricted to one project's subtree
-(`new CompositeFilesApi(workspace.files, project.path)`), and the only files
-handle the repository ever sees. **Private to this package** — deliberately not
+(`repoFilesOf(project)`: a `CompositeFilesApi(workspace.files, project.path)`
+wrapped in a `FilteredFilesApi` that hides any path with a `..` segment), and the
+only files handle the repository ever sees. **Owned by this package** — deliberately not
 promoted to `workspace.core` as `project.files`, to keep the blast radius at
 zero. Two projects in one workspace therefore get **independent** repositories.
 _Avoid_: scoped files, sub-files.

@@ -3,7 +3,7 @@
   "version": "0.5.1",
   "private": false,
   "type": "module",
-  "description": "json-render engine state (opaque, no @json-render dep): SpecStore adapter + spec:create/spec:patch + restorePanelSpecsFromLayout, plus the json:catalogs keyed slot.",
+  "description": "json-render engine state (opaque, no @json-render dep): SpecStore adapter + spec:create/spec:patch, LayoutStore (dock-layout.json), restorePanelSpecsFromLayout, and the json:catalogs keyed slot.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/statewalker/statewalker-kernel.git",

@@ -2,29 +2,21 @@
 
 ## What it is
 
-The React-free state layer for the workbench's json-render engine. It holds
-[json-render](https://github.com/) specs in a workspace-scoped `SpecStore`
-(keyed by id, with stable references and per-id observers), exposes
-`spec:create` / `spec:patch` commands to mutate them, ships a
-`json:catalogs` slot for registering renderer catalogs, and provides
-`restorePanelSpecsFromLayout` to pre-seed specs from a persisted DockView
-layout before the React tree mounts. It deliberately carries **no
-`@json-render/*` dependency** — specs and registries are held opaquely
-(`unknown`); the concrete json-render types live only in
-`@statewalker/render.view.react`.
+The React-free state layer for json-render dock panels. It keeps specs in a
+workspace-scoped `SpecStore` (by id, with stable references and per-id
+observers), handles the `spec:create` / `spec:patch` commands, declares the
+`json:catalogs` keyed slot for renderer catalogs, and provides `LayoutStore`,
+which keeps the dock layout in `dock-layout.json` under the workspace's
+`SystemFiles`. `restorePanelSpecsFromLayout` re-creates panel specs from a saved
+layout.
 
 ## Why it exists
 
-DockView serializes panel *layout* (which tabs exist, their positions) but
-not panel *content*. When a json-render panel is restored from a saved
-layout, it needs its spec back synchronously, the moment it renders —
-otherwise it flashes a `PanelMissing` placeholder until something else
-recreates it. This package owns that out-of-band content store and the
-plumbing around it, separated from the rendering boundary so logic
-fragments can create and patch specs without pulling React or json-render
-into their dependency graph (ADR-0002 logic/view split). It also folds in
-the former `@statewalker/catalog-registry` package, which was a single slot
-definition plus a no-op fragment — that is now the `catalogsSlot` here.
+DockView saves which panels exist and where, but not what they show. Each panel
+stores only a `specId`; the spec itself lives here. Logic fragments create and
+patch specs through this package without depending on React or on
+`@json-render/*`: specs and catalogs are held as `unknown`, and the concrete
+json-render types appear only in the renderer, `@statewalker/render.view.react`.
 
 ## How to use
 
@@ -32,151 +24,153 @@ definition plus a no-op fragment — that is now the `catalogsSlot` here.
 pnpm add @statewalker/render.core
 ```
 
-The package is a workspace **logic fragment**. Activate the default export
-(also at `./fragment`) after the substrate fragments (CatalogRegistry,
-Dock, Workspace-bridge) are wired:
+No peer dependencies. No DOM requirement (`LayoutStore` touches
+`globalThis.localStorage` only when it exists).
+
+| Import | Gives |
+| --- | --- |
+| `@statewalker/render.core` | `SpecStore`, `LayoutStore`, `CreateSpecCommand`, `PatchSpecCommand`, `catalogsSlot`, `restorePanelSpecsFromLayout`, types (no default export) |
+| `@statewalker/render.core/fragment` | default export `initSpecStore(ctx)`: attaches `SpecStore` to the workspace and handles `spec:create` / `spec:patch`; returns `cleanup` |
 
 ```ts
 import initSpecStore from "@statewalker/render.core/fragment";
 
-const cleanup = initSpecStore(ctx); // attaches SpecStore + spec:* handlers
-// ... later
-await cleanup();
-```
-
-After init, any other fragment resolves the store and fires commands
-through the workspace's adapters:
-
-```ts
-import { SpecStore, CreateSpecCommand, PatchSpecCommand } from "@statewalker/render.core";
-import { Commands } from "@statewalker/shared-commands";
-
-const store = workspace.requireAdapter(SpecStore);
-const commands = workspace.requireAdapter(Commands);
-
-const { specId } = await commands.call(CreateSpecCommand, {
-  catalogId: "chat",
-  spec: { type: "chat-panel", sessionId: "abc" },
-});
-await commands.call(PatchSpecCommand, { specId, patch: { spec: { /* ... */ } } });
+const cleanup = initSpecStore(ctx);
 ```
 
 ## Examples
 
-### SpecStore directly
+Create and patch a spec through commands:
+
+```ts
+import { CreateSpecCommand, PatchSpecCommand } from "@statewalker/render.core";
+import { Commands } from "@statewalker/shared-commands";
+
+const commands = workspace.requireAdapter(Commands);
+const { specId } = await commands.call(CreateSpecCommand, {
+  catalogId: "chat",
+  spec: { type: "chat-panel", sessionId: "abc" },
+}).promise;
+await commands.call(PatchSpecCommand, {
+  specId,
+  patch: { spec: { type: "chat-panel", sessionId: "def" } },
+}).promise;
+```
+
+Use `SpecStore` directly:
 
 ```ts
 import { SpecStore } from "@statewalker/render.core";
 
-const store = new SpecStore();
-
-const id = store.create({ catalogId: "pdf-viewer", spec: { src: "/x.pdf" } });
-const record = store.get(id);   // stable reference until next mutation for `id`
-
-const stop = store.observe(id, () => render());  // fires on patch/delete
-store.patch(id, { spec: { src: "/y.pdf" } });    // notifies observers
+const store = workspace.requireAdapter(SpecStore);
+const id = store.create({ catalogId: "pdf-viewer", spec: { src: "/x.pdf" } }); // "spec:<uuid>"
+const record = store.get(id); // { catalogId, spec, meta } | null
+const stop = store.observe(id, () => console.log("changed")); // on patch and delete
+store.patch(id, { spec: { src: "/y.pdf" } });
 store.delete(id);
 stop();
 ```
 
-`create` throws if a caller-supplied id already exists; `patch` throws for
-unknown ids. The returned record reference is stable across `get` calls
-until a `create` / `patch` / `delete` mutation for that id — required so
-`useSyncExternalStore` consumers in the renderer don't loop.
-
-### Restoring specs from a saved layout
-
-Run at fragment-init time, before `DockHost.setApi` calls `fromJSON()`:
+Re-create panel specs from the saved layout, in a fragment's `onLoad`:
 
 ```ts
-import {
-  restorePanelSpecsFromLayout,
-  DOCK_LAYOUT_STORAGE_KEY,
-} from "@statewalker/render.core";
+import { LayoutStore, SpecStore, restorePanelSpecsFromLayout } from "@statewalker/render.core";
 
-restorePanelSpecsFromLayout({
-  store,
-  storage: globalThis.localStorage,
-  layoutKey: DOCK_LAYOUT_STORAGE_KEY,
-  panelIdPrefix: "pdf-viewer:",
-  catalogId: "pdf-viewer",
-  buildSpec: (suffix) => ({ src: suffix }),
-  buildSpecId: (suffix) => `pdf-viewer:${suffix}`,
-  // meta defaults to { persistent: true } so the dock fragment won't evict
+workspace.onLoad(() => {
+  restorePanelSpecsFromLayout({
+    store: workspace.requireAdapter(SpecStore),
+    layout: workspace.requireAdapter(LayoutStore).get(),
+    panelIdPrefix: "pdf-viewer:",
+    catalogId: "pdf-viewer",
+    buildSpec: (suffix) => ({ src: suffix }),
+    buildSpecId: (suffix) => `pdf-viewer:${suffix}`,
+  });
 });
 ```
 
-It walks `parsed.panels` keys, matches those starting with `panelIdPrefix`
-(and having a non-empty suffix), and inserts one spec each. Idempotent —
-existing spec ids are skipped, so hot reload / StrictMode double-mount are
-safe.
-
-### Registering a renderer catalog into the slot
+Register and look up a renderer catalog:
 
 ```ts
 import { catalogsSlot } from "@statewalker/render.core";
 import { Slots } from "@statewalker/shared-slots";
 
 const slots = workspace.requireAdapter(Slots);
-slots.register(catalogsSlot, "chat", chatRegistry); // registry held opaquely
-const reg = slots.get(catalogsSlot, "chat");
+const remove = slots.register(catalogsSlot, "chat", chatRegistry);
+const registry = slots.get(catalogsSlot, "chat"); // unknown | null
 ```
 
 ## Internals
 
-### Architectural decisions
+### Why `get` returns the same object until the spec changes
 
-- **No `@json-render/*` dependency.** Specs (`Spec = unknown`) and catalog
-  registries are held opaquely. The store never introspects a spec; callers
-  cast at the rendering boundary inside the renderer. This keeps logic
-  fragments free of React/json-render and is the `.core` half of the
-  ADR-0002 split.
-- **Out-of-band content store.** DockView persists layout, not content. The
-  `SpecStore` is the parallel store keyed by the `specId` that layout JSON
-  references via `params: { specId }`, so panels re-render on patch without
-  DockView re-serialization.
-- **Eviction lives elsewhere.** The store never evicts on its own. The dock
-  fragment decides when to delete a spec on panel close, honouring the
-  `SpecMeta.persistent` flag (`true` = survives last-panel unmount).
-- **Commands are `silent`.** `spec:create` / `spec:patch` are built with
-  `Command.silent`, so consumers fire them without importing the adapter.
+`SpecStore.get(id)` returns the same record object across calls until a
+`create`, `patch` or `delete` for that id. React's `useSyncExternalStore`
+compares snapshots by reference and loops when every read returns a new object.
+Observers are called on `patch` and `delete`, not on registration; an observer
+that throws is caught, so the others still run.
 
-### Algorithms
+### Why specs must be restored before the layout is applied
 
-`restorePanelSpecsFromLayout` is defensive against DockView serialization
-shape changes: it only reads `parsed.panels` keys and ignores everything
-else. Non-JSON payloads, missing storage, and missing keys are no-ops
-rather than errors. The restore window matters — `JsonPanel` looks the spec
-up synchronously when a restored panel renders, so the pass must complete
-before the React tree mounts.
+When the dock re-creates a panel from a saved layout, the renderer looks up the
+panel's spec synchronously. If it is missing, the tab shows a "panel missing"
+placeholder until something re-creates the spec. `restorePanelSpecsFromLayout`
+must therefore run in `workspace.onLoad`, before the dock applies the layout.
+It reads only the keys of `layout.panels`, so other changes in DockView's
+serialized format do not affect it. For each panel id that starts with
+`panelIdPrefix` and has a non-empty suffix it creates one spec, with
+`meta: { persistent: true }` unless `meta` is given. Ids already in the store are
+skipped, so repeated calls (hot reload, StrictMode double mount, reconnect) are
+safe. A missing layout or a non-object `panels` is a no-op.
+
+### Who deletes specs
+
+`SpecStore` never evicts. The dock (`@statewalker/shell.core`) deletes a spec
+when its last panel closes, unless `meta.persistent === true`.
+
+### How `LayoutStore` loads and saves
+
+- `get()` / `set(layout)` work on an in-memory copy. `set` schedules one write
+  per burst (a microtask plus a zero-delay timeout), so many `set` calls in the
+  same tick produce one write of the latest layout.
+- `connect()` runs on `workspace.onLoad`. The adapter registers that listener in
+  its constructor, so the first consumer that resolves it gets the file loaded
+  before its own `onLoad` handlers run. Concurrent `connect()` calls share one run.
+- An existing `dock-layout.json` always wins and is never overwritten on load.
+  If there is no file, a layout stored in `localStorage` under
+  `chat-mini:dock-layout` is imported once and written to the file; otherwise
+  the in-memory layout, if any, is written.
+- `SystemFiles` is touched only on connect, because it throws before a file
+  system is installed.
+
+### What breaks
+
+- `store.create` with an existing id throws `SpecStore: spec id "<id>" already exists`.
+- `store.patch` with an unknown id throws `SpecStore: cannot patch unknown spec id "<id>"`.
+  Through `spec:patch` this becomes a rejected command.
+- A corrupt `dock-layout.json` is not an error: the console shows
+  `[layout-store] corrupt dock-layout.json — using default layout` and the dock
+  starts empty. Read and write failures log
+  `[layout-store] failed to read dock-layout.json` /
+  `[layout-store] failed to persist dock-layout.json`; `connect()` never rejects.
+- The commands are `Command.silent`: without `initSpecStore`, their promises never settle.
 
 ### Constraints
 
-- `SpecPatch` is v1 full-replace per provided field — no JSON-Patch / delta
-  forms.
-- Observers fire on `patch` and `delete`, not at registration time.
-- `DOCK_LAYOUT_STORAGE_KEY` (`"chat-mini:dock-layout"`) mirrors
-  `@statewalker/dock`'s internal key; it will migrate to a
-  `SystemFiles/dock-layout.json` path alongside the dock fragment's
-  persistence migration.
+- `SpecPatch` replaces each field it provides (`catalogId`, `spec`, `meta`).
+  There is no partial or JSON-Patch form.
+- Generated ids are `spec:` plus `crypto.randomUUID()`, so `crypto.randomUUID`
+  must exist.
 
 ### Dependencies
 
-- `@statewalker/shared-commands` — the `Command` builder + `Commands`
-  adapter for `spec:create` / `spec:patch`.
-- `@statewalker/shared-registry` — LIFO cleanup in the fragment init.
-- `@statewalker/shared-slots` — the `json:catalogs` keyed slot.
-- `@statewalker/workspace.core` — `getWorkspace` / `requireAdapter` to
-  attach the `SpecStore`.
+- `@statewalker/shared-commands` — `spec:create` / `spec:patch`.
+- `@statewalker/shared-registry` — fragment `cleanup`.
+- `@statewalker/shared-slots` — the `json:catalogs` slot.
+- `@statewalker/workspace.core` — `getWorkspace`, `SystemFiles`.
+- `@statewalker/webrun-files` — reading and writing `dock-layout.json`.
 
-No `@json-render/*` runtime dependency by design.
-
-## Related
-
-- `@statewalker/render.view.react` — the
-  React renderer that consumes these opaque specs and registries
-  (`<SpecRenderer>`); the `.view.react` half of this `.core` package.
+No `@json-render/*` dependency.
 
 ## License
 
-MIT — see the monorepo root `LICENSE`.
+MIT

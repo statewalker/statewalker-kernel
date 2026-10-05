@@ -3,7 +3,7 @@
   "version": "0.5.1",
   "private": false,
   "type": "module",
-  "description": "Browser implementation of the platform.api intents — pickers, downloads, clipboard, preferences.",
+  "description": "Browser implementation of the @statewalker/platform.core commands — pickers, downloads, clipboard, preferences, URL-hash binding.",
   "bugs": {
     "url": "https://github.com/statewalker/statewalker-kernel/issues"
   },
