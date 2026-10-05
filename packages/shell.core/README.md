@@ -137,9 +137,10 @@ or HMR remount does not lose panels added since the last save.
 
 ### What breaks
 
-- `DockHost` finds `LayoutStore` with `getAdapter`, which does not create it. If
-  no fragment has resolved `LayoutStore` with `requireAdapter`, the layout is
-  neither saved nor restored, without any message.
+- A cold start shows the default layout first. `LayoutStore` (created by whichever
+  part resolves it first, a fragment or `DockHost`; `getAdapter` constructs a class
+  adapter like `requireAdapter`) loads the saved file on `workspace.onLoad`, and
+  `DockHost` re-applies it then.
 - A layout that DockView cannot apply logs
   `[chat-mini:dock] failed to restore in-memory layout` and falls back to the
   saved layout. Save errors log `[chat-mini:dock] failed to persist layout`.
