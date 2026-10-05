@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/explorer.core",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "type": "module",
   "description": "File-explorer logic fragment: navigation, search controller, tree-state, browser orchestration intents.",

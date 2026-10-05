@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/webapp.browser",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "type": "module",
   "description": "Browser ServiceWorker host binding for the web-app project nature: mounts a webapp.core SiteHandler behind HostedSiteBuilder and stamps cross-origin isolation headers.",

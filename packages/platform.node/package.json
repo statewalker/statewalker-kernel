@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/platform.node",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "type": "module",
   "description": "Node implementation of the @statewalker/platform.core commands — filesystem-backed durable preferences.",

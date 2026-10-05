@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/shell.core",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "type": "module",
   "description": "Dock logic fragment: dock:* slot keys, dock:show-panel/close-panel/focus-panel intents, dock state.",
