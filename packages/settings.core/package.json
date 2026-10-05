@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/settings.core",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "private": false,
   "type": "module",
   "description": "Settings logic fragment.",
