@@ -2,25 +2,20 @@
 
 ## What it is
 
-The React-free logic half of the workbench file explorer. It owns the
-reactive panel models (`FilesListModel`, `FilesTreeView`, `SearchModel`),
-the directory-loading orchestrator (`createPanelController` / `PanelController`),
-the file-icon/size/date display resolver, the `file-explorer:*` orchestration
-commands, the json-render spec helpers, and the extension-point slots that let
-panels advertise themselves and host file/folder activations. Its paired
-renderer is `@statewalker/explorer.view.react`.
+The React-free logic of the file explorer: panel models (`FilesListModel`,
+`FilesTreeView`, `SearchModel`), the directory loader (`loadDirectory`,
+`createPanelController`), file display helpers (icon, size, date), json-render
+spec helpers for explorer panels, the `file-explorer:*` commands, and the slots
+through which panels declare presets and register themselves. Its fragment
+handles `files:open`: a directory is navigated in an explorer panel, a file is
+passed to `files:visualize`.
 
 ## Why it exists
 
-Per ADR-0002 (logic / view split) the explorer is two packages. This one holds
-everything that does not touch React, so the panel state machine, the directory
-I/O glue, and the activation-routing command handler can be unit-tested without
-a DOM and reused outside the canonical two-pane layout. The split also keeps the
-`files:open` routing handler (which decides which panel a click navigates into,
-and where a viewer tab docks) free of any React lifecycle / StrictMode coupling.
-
-It is the "logic fragment" registered into a `Workspace`; the view fragment binds
-the json-render catalog and mounts the actual panels.
+The explorer's state and its routing rules are kept away from React so they can
+be unit-tested without a DOM and reused outside one fixed layout. The renderer,
+`@statewalker/explorer.view.react`, binds the json-render catalog and mounts the
+panels; this package decides what a click on a folder or file does.
 
 ## How to use
 
@@ -28,148 +23,200 @@ the json-render catalog and mounts the actual panels.
 pnpm add @statewalker/explorer.core
 ```
 
-Two entry points:
+No peer dependencies. No DOM or Node APIs. The fragment needs a `Workspace`
+(`@statewalker/workspace.core`) with a files API, and the `files:visualize`
+handler from `@statewalker/mime.core`.
 
-- `@statewalker/explorer.core` — all public symbols (models, controller,
-  commands, slots, display helpers, spec helpers).
-- `@statewalker/explorer.core/fragment` — the default-exported
-  `initFileExplorer(ctx)` logic-fragment init, registered by the host app.
+| Import | Gives |
+| --- | --- |
+| `@statewalker/explorer.core` | models, loader, commands, slots, display and spec helpers (no default export) |
+| `@statewalker/explorer.core/fragment` | default export `initFileExplorer(ctx)`: registers the `files:open` handler; returns `cleanup` |
 
-The init reads the `Workspace` from `ctx` (`getWorkspace`), grabs its `Commands`
-and `Slots` adapters, and registers the `files:open` (`OpenCommand`) handler.
-Mounted panels register an `ActiveFileExplorerPanel` into
-`activeFileExplorerPanelsSlot`; the handler resolves the target panel from that
-slot. It returns a `cleanup` thunk.
+```ts
+import initFileExplorer from "@statewalker/explorer.core/fragment";
+
+const cleanup = initFileExplorer(ctx);
+```
 
 ## Examples
 
-Drive a panel's model directly (e.g. in a test) with `MemFilesApi`:
+Load directories into a panel model (`createPanelController`, `loadDirectory`):
 
 ```ts
-import { createPanelController, loadDirectory } from "@statewalker/explorer.core";
+import { createPanelController } from "@statewalker/explorer.core";
 import { MemFilesApi } from "@statewalker/webrun-files-mem";
 
-const files = new MemFilesApi();
-const panel = createPanelController({ files, title: "Files", initialPath: "/" });
-panel.navigate("/docs");           // async load into panel.model
-const rows = panel.model.getDisplayEntries();   // FileDisplayEntry[] (icon, size, date)
+const panel = createPanelController({ files: new MemFilesApi(), title: "Files", initialPath: "/" });
+panel.navigate("/docs"); // loads asynchronously into panel.model
+const off = panel.model.onUpdate(() => {
+  if (!panel.model.loading) console.log(panel.model.getDisplayEntries()); // icon, size, date per entry
+});
 ```
 
-Sortable / filterable list state:
+List state (`FilesListModel`); the caller supplies the entries:
 
 ```ts
 import { FilesListModel } from "@statewalker/explorer.core";
 
 const model = new FilesListModel();
 const done = model.startLoading({ path: "/" });
-done({ entries: await collect(files.list("/")) });
-model.setSort("size");        // toggles asc/desc on repeat
-model.setFilter("README");
+done({ entries: await Array.fromAsync(files.list("/")) }); // or done({ error: "..." })
+model.setSort("size"); // "name" | "size" | "lastModified" | "kind"; repeat to reverse
+model.setFilter("readme"); // case-insensitive substring
 model.toggleHidden();
 model.moveCursor(1);
-const selected = model.getSelectedOrCursor();   // string[] of paths
+const paths = model.getSelectedOrCursor(); // selected paths, or the cursor entry's path
 ```
 
-Lazy tree state:
+Tree state (`FilesTreeView`), loaded one level at a time:
 
 ```ts
 import { FilesTreeView } from "@statewalker/explorer.core";
 
 const tree = new FilesTreeView();
-tree.setRootNodes(rootEntries);
+tree.setRootNodes(await Array.fromAsync(files.list("/")));
 const node = tree.getCursorNode();
-tree.toggleExpand(node!);                 // sets pendingExpand for dir nodes
-const toLoad = tree.consumeExpand();      // orchestrator loads children…
-tree.setNodeChildren(toLoad!, childEntries);   // …and pushes them back
+if (node) tree.toggleExpand(node);
+const toLoad = tree.consumeExpand(); // a directory that needs its children
+if (toLoad) tree.setNodeChildren(toLoad, await Array.fromAsync(files.list(toLoad.entry.path)));
 ```
 
-Declare an explorer panel preset (consumed by the renderer's two-pane init):
+Search state (`SearchModel`); the caller runs the search and pushes results:
 
 ```ts
-import { fileExplorerPanelPresetsSlot, type FileExplorerPanelPreset } from "@statewalker/explorer.core";
-import { Slots } from "@statewalker/shared-slots";
+import { SearchModel } from "@statewalker/explorer.core";
 
-const preset: FileExplorerPanelPreset = {
-  id: "left", label: "Tree", side: "left", order: 0, folderNavigationHost: true,
-};
-workspace.requireAdapter(Slots).provide(fileExplorerPanelPresetsSlot, preset);
+const search = new SearchModel();
+search.setPattern("todo");
+search.start();
+for await (const entry of files.list("/", { recursive: true })) {
+  if (search.cancelled) break;
+  if (entry.name.includes(search.pattern)) search.addResult(entry);
+}
+search.markDone();
 ```
 
-Open a fresh panel programmatically:
+Display helpers:
 
 ```ts
-import { NewFileExplorerPanelCommand } from "@statewalker/explorer.core";
+import { formatFileDate, formatFileSize, resolveFileIcon, toDisplayEntry } from "@statewalker/explorer.core";
+
+const row = toDisplayEntry(fileInfo); // FileInfo plus display fields
+formatFileSize(fileInfo.kind === "file" ? fileInfo.size : undefined);
+resolveFileIcon(fileInfo); // icon name
+```
+
+Declare a panel preset and open an explorer panel:
+
+```ts
+import {
+  NewFileExplorerPanelCommand,
+  fileExplorerPanelPresetsSlot,
+  type FileExplorerPanelPreset,
+} from "@statewalker/explorer.core";
+
+const preset: FileExplorerPanelPreset = { id: "left", label: "Tree", side: "left", order: 0, folderNavigationHost: true };
+slots.provide(fileExplorerPanelPresetsSlot, preset);
+
+// handled by @statewalker/explorer.view.react
 const { panelId } = await commands.call(NewFileExplorerPanelCommand, { label: "Files" }).promise;
+```
+
+Spec helpers for an explorer dock panel:
+
+```ts
+import { FILE_EXPLORER_CATALOG_ID, fileExplorerPanelId, fileExplorerSpecId, makeFileExplorerSpec } from "@statewalker/explorer.core";
+
+const spec = makeFileExplorerSpec("main", { label: "Files", initialPath: "/", mainViewerHost: true });
+// panel id "file-explorer:main", spec id "spec:file-explorer:main", catalog "file-explorer"
 ```
 
 ## Internals
 
-### Architectural decisions
+### How `files:open` routes a URI
 
-- **Models are pure data; I/O lives outside.** `FilesListModel.startLoading`
-  flips loading state and returns a completion callback the orchestrator invokes
-  with results. The model never calls `FilesApi` itself — this keeps it
-  synchronous and trivially testable.
-- **Activation never flows through model state.** Folder navigation and file
-  opening are dispatched via the `files:open` (`OpenCommand`) command, not by
-  mutating a model field. The `PanelController` deliberately does *not* subscribe
-  to its own model, so it carries no lifecycle coupling.
-- **`files:open` routing handler** (in `init.ts`) probes the URI's kind on the
-  workspace `FilesApi`. Directories route by priority `target` → the
-  `folderNavigationHost` panel → `origin` → first registered panel, then focus
-  that tab; files go through `files:visualize` with `referencePanelId` set to the
-  `mainViewerHost` panel so viewers always dock into a known group.
-- **`file-explorer:*` vs `files:*` namespacing.** Per the `file-management-split`
-  capability, only orchestration UI commands (rename/mkdir prompts, confirm
-  dialogs, new-panel) live here; primitive file ops stay on `files:*` in the
-  files package and are not re-declared.
-- **Spec helpers split across ADR-0002.** This package owns the React-free
-  `makeFileExplorerSpec` / id helpers (`fileExplorerPanelId`,
-  `fileExplorerSpecId`, `FILE_EXPLORER_CATALOG_ID`); the schema-typed
-  `defineCatalog` binding lives on the React side because it needs
-  `@json-render/react`'s `schema`.
+```
+files:open { uri, origin?, target? }
+        │
+ workspace.files.stats(uri)
+        │
+        ├─ directory ─► target panel = target (if registered)
+        │                           ?? panel with folderNavigationHost
+        │                           ?? origin (if registered)
+        │                           ?? first registered panel
+        │               panel.navigate(uri); dock:focus-panel (best effort)
+        │
+        └─ file or unknown ─► files:visualize { uri, referencePanelId: mainViewerHost panel }
+```
 
-### Algorithms
+Panels pass themselves as `target`, so a folder clicked in a panel opens in that
+panel. Callers without a panel (for example an agent) omit `target` and get the
+`folderNavigationHost` panel. Files always open next to the `mainViewerHost`
+panel, so viewers land in a known group instead of whichever group had focus.
+Mounted panels register an `ActiveFileExplorerPanel` (`navigate`,
+`isMainViewerHost`, `isFolderNavigationHost`) under their id in
+`activeFileExplorerPanelsSlot`; the handler finds them there.
 
-- **`getVisibleEntries`** applies hidden-file and substring filters, always
-  keeps a leading `".."`, then sorts directories before files and within each
-  group by the active field/direction.
-- **Tree expansion** is a two-phase hand-off: `toggleExpand` sets `pendingExpand`
-  + `loading` for an un-loaded directory; the orchestrator calls `consumeExpand`,
-  fetches children, and calls `setNodeChildren`. `pendingSelectFile` works the
-  same way for file activation.
-- **`loadDirectory`** synthesises the `".."` parent row for non-root paths and,
-  when navigating up, restores the cursor onto the child you came from.
-- **`ViewModel`** bumps a monotonic `version` on every `notify()` so the
-  renderer's `useSyncExternalStore` reads stay referentially stable, and assigns
-  a per-class auto-incremented `key` usable as a React list key.
+### Why models do no I/O
+
+`FilesListModel.startLoading` sets the loading state and returns a completion
+callback; the model never calls a files API. Models stay synchronous and easy to
+test. `createPanelController` is the I/O glue: it owns one `FilesListModel`,
+loads directories into it, and navigates to `initialPath` (default `/`) at once
+so the first render has entries. It does not subscribe to its own model: opening
+files and folders goes through `files:open`, which keeps the controller free of
+React lifecycle and StrictMode concerns.
+
+### Non-obvious list and tree behavior
+
+- `loadDirectory` adds a `..` row for every path except `/`. When navigating up,
+  `createPanelController` puts the cursor on the folder you came from.
+- `getVisibleEntries` hides dot-files unless `toggleHidden` was called, applies
+  the filter, keeps `..` first, puts directories before files, then sorts by the
+  active field.
+- Tree expansion is a hand-off: `toggleExpand` marks an unloaded directory as
+  pending, the caller takes it with `consumeExpand`, loads its children, and
+  passes them to `setNodeChildren`. `activateCursorEntry` on a file sets a path
+  that `consumeSelectFile` returns once.
+- All models extend `ViewModel` (`BaseClass` with `title`, `setTitle`, a
+  `version` counter bumped on every `notify()`, and a `key` like
+  `"FilesListModel-3"`), so React's `useSyncExternalStore` gets a changing
+  snapshot value and lists get stable keys.
+
+### What breaks
+
+- `files:open` for a directory with no registered explorer panel rejects with
+  `files:open — no active file-explorer panel registered to host folder navigation`.
+  The comment next to this code says it falls through instead; it does not.
+- A panel id found in the slot snapshot but gone by lookup rejects with
+  `files:open — stale panel registration for "<id>"`.
+- `loadDirectory` does not throw: a listing error is stored as `model.error`
+  (the error message) with an empty entry list.
+- `RenamePromptCommand`, `MkdirPromptCommand`, `ConfirmDeleteCommand` and
+  `ConfirmCopyMoveCommand` (`file-explorer:rename-prompt`, `mkdir-prompt`,
+  `confirm-delete`, `confirm-copy-move`) are declared as prompts that resolve on
+  confirm and reject on cancel, but no package registers a handler for them.
+  They are `Command.silent`, so a call never settles.
 
 ### Constraints
 
-- Models hold no `FilesApi` reference; a caller must supply directory contents.
-- Tree mode loads one level at a time; there is no recursive prefetch.
-- The `files:open` handler is forgiving of teardown timing — if no panel is
-  mounted for a file it still visualises; for a directory with no panel it throws.
+- Primitive file operations are the `files:*` commands of
+  `@statewalker/workspace.core`; this package declares only UI orchestration
+  commands under `file-explorer:*`.
+- The tree loads one level at a time; there is no prefetch.
+- `SearchModel` holds state only; it does not search.
 
 ### Dependencies
 
-`@statewalker/webrun-files` (`FileInfo` / `FilesApi` types), `shared-baseclass`
-(`BaseClass` reactive base), `shared-commands` (`Command` builder),
-`shared-slots` (extension-point slots), `shared-registry` (init cleanup),
-`@statewalker/workspace.core` (`getWorkspace`), `@statewalker/shell.core`
-(`FocusPanelCommand`), `@statewalker/mime.core` (`OpenCommand`,
-`VisualizeFileCommand`), `@json-render/core` (`Spec` type), `zod`.
-
-## Related
-
-- `@statewalker/explorer.view.react` — the
-  paired React renderer (catalog binding, panels, list/tree/breadcrumb views,
-  two-pane preset application).
-- `@statewalker/workspace.core` — the `Workspace`
-  / adapter host this fragment plugs into.
-- `@statewalker/mime.core` — owns
-  `files:open` / `files:visualize`.
+- `@statewalker/webrun-files` — `FileInfo` / `FilesApi` types.
+- `@statewalker/shared-baseclass` — change notifications for the models.
+- `@statewalker/shared-commands`, `@statewalker/shared-slots`, `@statewalker/shared-registry` — commands, slots, fragment `cleanup`.
+- `@statewalker/workspace.core` — `getWorkspace` and `workspace.files`.
+- `@statewalker/mime.core` — `OpenCommand`, `VisualizeFileCommand`.
+- `@statewalker/shell.core` — `FocusPanelCommand`.
+- `@json-render/core` — the `Spec` type returned by `makeFileExplorerSpec`.
+- `zod` — listed as a dependency; no source file imports it.
 
 ## License
 
-MIT — see the monorepo root `LICENSE`.
+MIT

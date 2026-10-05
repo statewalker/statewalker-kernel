@@ -3,7 +3,7 @@
   "version": "0.5.1",
   "private": false,
   "type": "module",
-  "description": "Mime-viewer dispatch: files:visualize + files:open commands, mime:renderers/mime-icons/editor-factories slots, MimeRenderer + pickMimeRenderer.",
+  "description": "Mime-viewer dispatch: files:visualize + files:open commands, files:mime-renderers/mime-icons/editor-factories/indexers slots, MimeRenderer + pickMimeRenderer.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/statewalker/statewalker-kernel.git",

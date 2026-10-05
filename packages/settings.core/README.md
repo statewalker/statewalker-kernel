@@ -2,23 +2,18 @@
 
 ## What it is
 
-The React-free logic fragment for the workbench settings dialog. It owns the
-dialog's open / active-tab state (`Settings` workspace adapter), the
-`settings:open` / `settings:close` commands that mutate it, and the
-`settings:tabs` extension-point slot that other fragments contribute tabs
-to. It contains no React — the dialog is rendered by
-`@statewalker/settings.view.react`.
+The React-free logic fragment of the settings dialog. It keeps the dialog's
+open state and active tab in the `Settings` workspace adapter, handles the
+`settings:open` / `settings:close` commands, and declares the `settings:tabs`
+slot that other fragments contribute tabs to.
 
 ## Why it exists
 
-The settings dialog is a host-wide overlay that any fragment may want to
-open (e.g. an AI-providers fragment opening straight to its tab) and any
-fragment may want to extend with its own tab. Per ADR-0002, the logic —
-state, commands, the contribution slot — is isolated from the rendering so
-that a logic fragment can register a settings tab without importing React.
-Tabs are contributed by reference (`viewKey`), resolved against
-`ViewRegistry` at render time, so the core never sees the actual React
-component.
+Any fragment may need to open the settings dialog (for example straight to its
+own tab) or add a tab to it. With this package a fragment does both through a
+command and a slot value, without importing React. A tab names its content by a
+`viewKey` string; the renderer, `@statewalker/settings.view.react`, maps the key
+to a component and draws the dialog.
 
 ## How to use
 
@@ -26,101 +21,90 @@ component.
 pnpm add @statewalker/settings.core
 ```
 
-Activate the default export (also at `./fragment`) **after** the substrate
-fragments and **before** any fragment that contributes to `settings:tabs`:
+No peer dependencies. No DOM or Node APIs.
+
+| Import | Gives |
+| --- | --- |
+| `@statewalker/settings.core` | `Settings`, `OpenSettingsCommand`, `CloseSettingsCommand`, `settingsTabSlot`, types (no default export) |
+| `@statewalker/settings.core/fragment` | default export `initSettings(ctx)`: sets the `Settings` adapter and registers the command handlers; returns `cleanup` |
+
+Boot it after the workspace substrate and before fragments that contribute tabs:
 
 ```ts
 import initSettings from "@statewalker/settings.core/fragment";
 
-const cleanup = initSettings(ctx); // registers Settings adapter + command handlers
-// ... later
-await cleanup();
-```
-
-Open the dialog from anywhere via the command:
-
-```ts
-import { OpenSettingsCommand, CloseSettingsCommand } from "@statewalker/settings.core";
-import { Commands } from "@statewalker/shared-commands";
-
-const commands = workspace.requireAdapter(Commands);
-await commands.call(OpenSettingsCommand, { tabId: "providers" }); // tabId optional
-await commands.call(CloseSettingsCommand);
+const cleanup = initSettings(ctx);
 ```
 
 ## Examples
 
-### Contributing a settings tab
+Open or close the dialog:
 
-A logic fragment contributes a `SettingsTab` to the slot; its paired
-renderer fragment registers the actual component into `ViewRegistry` under
-`viewKey`:
+```ts
+import { CloseSettingsCommand, OpenSettingsCommand } from "@statewalker/settings.core";
+import { Commands } from "@statewalker/shared-commands";
+
+const commands = workspace.requireAdapter(Commands);
+await commands.call(OpenSettingsCommand, { tabId: "providers" }).promise; // tabId is optional
+await commands.call(CloseSettingsCommand, undefined).promise;
+```
+
+Contribute a tab:
 
 ```ts
 import { settingsTabSlot, type SettingsTab } from "@statewalker/settings.core";
 import { Slots } from "@statewalker/shared-slots";
 
-const slots = workspace.requireAdapter(Slots);
 const tab: SettingsTab = {
-  id: "providers",       // becomes the activeTabId / hash anchor
-  title: "Providers",    // sidebar label
-  viewKey: "settings:providers", // resolved via ViewRegistry at render time
-  order: 10,             // lower appears first; default 100
+  id: "providers", // becomes activeTabId
+  title: "Providers", // sidebar label
+  viewKey: "settings:providers", // the renderer maps it to a component
+  order: 10, // lower comes first; default 100
 };
-const stop = slots.provide(settingsTabSlot, tab);
+const remove = workspace.requireAdapter(Slots).provide(settingsTabSlot, tab);
 ```
 
-### Reading dialog state in a (logic) consumer
+Follow the dialog state:
 
 ```ts
 import { Settings } from "@statewalker/settings.core";
 
 const settings = workspace.requireAdapter(Settings);
-settings.isOpen;        // boolean
-settings.activeTabId;   // string | null
-settings.setActiveTab("keyboard"); // React-side action; notifies subscribers
+const off = settings.onUpdate(() => console.log(settings.isOpen, settings.activeTabId));
+settings.setActiveTab("keyboard");
 ```
-
-`Settings` extends `BaseClass`, so React consumers subscribe via
-`useSyncExternalStore` on `BaseClass.onUpdate`. The open/close transitions
-go through `_setOpen`, which is manager-only — fire the commands instead.
 
 ## Internals
 
-### Architectural decisions
+### Why open and close go through commands
 
-- **State / commands / slot, no React.** The `.core` half of the ADR-0002
-  split. Tabs are identified by `viewKey` (slot pattern C), so contributors
-  never import React; the renderer binds the component into `ViewRegistry`.
-- **One-shot manager.** `SettingsManager` registers the `settings:open` /
-  `settings:close` handlers at boot and survives `onLoad` / `onUnload`
-  cycles, because dialog open-state is local UI and does not depend on
-  workspace lifecycle.
-- **Silent commands.** Both commands are `Command.silent`, so consumers fire
-  them without importing the `Settings` adapter directly.
+`Settings` extends `BaseClass` (`@statewalker/shared-baseclass`), so
+`onUpdate(cb)` reports every change. Its `_setOpen(open, tabId?)` is meant for
+the command handlers only; other code fires `settings:open` / `settings:close`
+and does not need the adapter. `setActiveTab` is public because the dialog
+switches tabs itself. `settings:open` without `tabId` keeps the current
+`activeTabId` (which is `null` until a tab is chosen).
 
-### Constraints
+### Why the handlers live for the whole session
 
-- The `Settings` adapter holds only `isOpen` + `activeTabId`. There is no
-  persistence of which tab was last open beyond the in-memory adapter.
-- `_setOpen` is intended for the manager (and the dialog's `onOpenChange`);
-  application code should use the commands.
+The dialog state is local UI and does not depend on which workspace is loaded.
+The internal `SettingsManager` registers both handlers at boot and keeps them
+across workspace `onLoad` / `onUnload` until `cleanup` runs.
+
+### What breaks
+
+- Both commands are `Command.silent`. If `initSettings` was not booted, the
+  promise returned by `commands.call(...)` never settles; nothing is logged.
+- State is in memory only. A reload opens with the dialog closed and no active tab.
 
 ### Dependencies
 
-- `@statewalker/shared-baseclass` — `BaseClass` observable for the `Settings`
-  adapter.
-- `@statewalker/shared-commands` — `Command` builder + `Commands` adapter.
-- `@statewalker/shared-registry` — LIFO cleanup in init / manager.
+- `@statewalker/shared-baseclass` — change notifications for `Settings`.
+- `@statewalker/shared-commands` — the two commands.
+- `@statewalker/shared-registry` — `cleanup` of the fragment and manager.
 - `@statewalker/shared-slots` — the `settings:tabs` slot.
-- `@statewalker/workspace.core` — `getWorkspace` + adapter wiring.
-
-## Related
-
-- `@statewalker/settings.view.react` —
-  the renderer fragment (settings button + dialog) that consumes this
-  fragment's state, commands, and `settings:tabs` slot.
+- `@statewalker/workspace.core` — `getWorkspace` and adapter registration.
 
 ## License
 
-MIT — see the monorepo root `LICENSE`.
+MIT

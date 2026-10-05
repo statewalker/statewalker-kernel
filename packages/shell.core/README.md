@@ -2,13 +2,20 @@
 
 ## What it is
 
-The React-free logic half of the workbench application shell ("dock"). It owns the `dock:*` command surface (`show-panel` / `close-panel` / `focus-panel` / `set-panel-title`), the extension-point slots that describe the shell's chrome (`dock:side-panels`, `dock:header-items`, `dock:overlays`), and the `DockHost` workspace adapter — a thin, command-driven controller over a [`dockview-react`](https://dockview.dev/) `DockviewApi`. It contains no JSX; its renderer counterpart is `@statewalker/shell.view.react`.
+The React-free logic of the application shell (the "dock"). It declares the
+`dock:*` commands (`show-panel`, `close-panel`, `focus-panel`,
+`set-panel-title`), the slots that describe the shell's chrome
+(`dock:side-panels`, `dock:header-items`, `dock:overlays`), and the `DockHost`
+workspace adapter: a command-driven controller over a dockview `DockviewApi`.
+Its fragment handles the four `dock:*` commands.
 
 ## Why it exists
 
-The workbench is assembled from independent fragments wired together through a `Workspace` (commands, slots, spec store). The shell is the frame those fragments dock into: a header strip, optional resizable side panels, a central tabbed dock area, and overlay mounts. Per ADR 0002, the shell is split into a logic package (this one) and a renderer package so that any fragment can *drive* the dock — open a panel, retitle a tab, contribute a side panel — by calling commands and contributing slot values, without importing React or knowing how DockView works.
-
-`DockHost` solves a concrete boot-ordering problem: the `dock:*` command handlers are registered during boot (`init`), but the `<DockviewReact>` host only mounts later inside the React tree. Panel-open calls that fire in that window are queued and replayed once the api comes online.
+Fragments need to open panels, retitle tabs, and add side panels or header
+items, without importing React or knowing DockView. With this package they call
+commands and contribute slot values; only `DockHost` touches the DockView api.
+The renderer, `@statewalker/shell.view.react`, mounts DockView and draws the
+chrome contributed through the slots.
 
 ## How to use
 
@@ -16,140 +23,146 @@ The workbench is assembled from independent fragments wired together through a `
 pnpm add @statewalker/shell.core
 ```
 
-The package is consumed two ways:
+No peer dependencies. `dockview-core` is a dependency (for the `DockviewApi`
+type). The fragment needs a `Workspace` (`@statewalker/workspace.core`) with
+`SpecStore` from `@statewalker/render.core`.
 
-1. **As a fragment** — its default export (`@statewalker/shell.core/fragment`) is an `init(ctx)` that attaches `DockHost` to the workspace and registers the four `dock:*` handlers. The host app activates it during boot.
-2. **As a command/slot vocabulary** — other fragments import the command declarations and slot definitions to drive the shell or contribute chrome.
+| Import | Gives |
+| --- | --- |
+| `@statewalker/shell.core` | `DockHost`, the `dock:*` commands, the three slots, types (no default export) |
+| `@statewalker/shell.core/fragment` | default export `initDock(ctx)`: registers the `dock:*` handlers; returns `cleanup` |
 
 ```ts
-import { Commands } from "@statewalker/shared-commands";
-import { ShowDockPanelCommand } from "@statewalker/shell.core";
+import initDock from "@statewalker/shell.core/fragment";
 
-const commands = workspace.requireAdapter(Commands);
-await commands.call(ShowDockPanelCommand, {
-  panelId: "file:/notes/todo.md",
-  specId: "spec-abc",          // resolved by the renderer's JsonPanel via SpecStore
-  title: "todo.md",
-});
+const cleanup = initDock(ctx);
 ```
 
 ## Examples
 
-### Open, focus, retitle, and close a panel
+Open, retitle, focus and close a panel:
 
 ```ts
 import { Commands } from "@statewalker/shared-commands";
 import {
-  ShowDockPanelCommand,
+  ClosePanelCommand,
   FocusPanelCommand,
   SetPanelTitleCommand,
-  ClosePanelCommand,
+  ShowDockPanelCommand,
 } from "@statewalker/shell.core";
 
 const commands = workspace.requireAdapter(Commands);
 
-// Open a panel docked to the right of an already-open reference panel.
 await commands.call(ShowDockPanelCommand, {
   panelId: "preview",
-  specId: "spec-preview",
-  position: "right",
-  referencePanelId: "editor",
-});
-
-await commands.call(SetPanelTitleCommand, { panelId: "preview", title: "Preview" });
-await commands.call(FocusPanelCommand, { panelId: "preview" });
-await commands.call(ClosePanelCommand, { panelId: "preview" });
+  specId: "spec-preview", // a spec in SpecStore; the panel renders it
+  position: "right", // "left" | "right" | "top" | "bottom" | "within"
+  referencePanelId: "editor", // dock relative to this panel if it is open
+  title: "Preview",
+}).promise;
+await commands.call(SetPanelTitleCommand, { panelId: "preview", title: "Preview 2" }).promise;
+await commands.call(FocusPanelCommand, { panelId: "preview" }).promise;
+await commands.call(ClosePanelCommand, { panelId: "preview" }).promise;
 ```
 
-`ShowDockPanelCommand` is idempotent on `panelId`: opening an already-open panel just focuses it (unless `activate: false`). All four commands are `Command.silent` and resolve once the dock mutation is applied; pre-mount `show-panel` calls resolve when the queued panel actually opens.
-
-### Contribute shell chrome via slots
+Contribute shell chrome (`viewKey` is a string the renderer maps to a component):
 
 ```ts
 import { Slots } from "@statewalker/shared-slots";
-import {
-  dockSidePanelsSlot,
-  dockHeaderItemsSlot,
-  dockOverlaysSlot,
-} from "@statewalker/shell.core";
+import { dockHeaderItemsSlot, dockOverlaysSlot, dockSidePanelsSlot } from "@statewalker/shell.core";
 
 const slots = workspace.requireAdapter(Slots);
-
-// A left side panel; the renderer looks up `viewKey` in the `core:views` slot.
 slots.provide(dockSidePanelsSlot, {
   id: "explorer",
   side: "left",
-  order: 10,
+  order: 10, // lower is closer to the screen edge
   viewKey: "explorer:tree",
   defaultSize: "20%",
   minSize: "180px",
 });
-
-slots.provide(dockHeaderItemsSlot, {
-  id: "workspace-switcher",
-  slot: "leading",
-  order: 0,
-  viewKey: "workspace:switcher",
-});
-
-slots.provide(dockOverlaysSlot, {
-  id: "settings-dialog",
-  viewKey: "settings:dialog",
-});
+slots.provide(dockHeaderItemsSlot, { id: "workspace-switcher", slot: "leading", order: 0, viewKey: "workspace:switcher" });
+slots.provide(dockOverlaysSlot, { id: "settings-dialog", viewKey: "settings:dialog" });
 ```
 
-`viewKey` is data here — the logic side never holds a component. The renderer (`shell.view.react`) resolves each `viewKey` against `coreViewsSlot` at render time.
-
-### Reading dock state directly
+Watch dock state:
 
 ```ts
 import { DockHost } from "@statewalker/shell.core";
 
 const dock = workspace.requireAdapter(DockHost);
-dock.getActivePanelId();                       // string | undefined
-dock.getPanelIds();                            // readonly string[]
-const off = dock.onActivePanelChange((id) => console.log("active:", id));
+const offActive = dock.onActivePanelChange((id) => console.log("active:", id));
 const offLayout = dock.onLayoutChange(() => console.log(dock.getPanelIds()));
 ```
 
 ## Internals
 
-### Architectural decisions
+### Why panel opens are queued
 
-- **Command-driven, not imperative.** Fragments never touch `DockviewApi`. They call `dock:*` commands; only `DockManager` (the fragment's orchestrator) listens for them and forwards to `DockHost`. This keeps the dock the single owner of panel lifecycle and tab semantics.
-- **One panel kind.** The `show-panel` payload deliberately carries no DockView `component` field — every panel is rendered through the renderer's single `"json"` component, which resolves a spec from `render.core`'s `SpecStore`. New panel *kinds* are expressed as new specs/catalogs, not new DockView components.
-- **Spec eviction on close.** `ClosePanelCommand` removes the panel and, when its `specId` is no longer referenced by any other open panel, deletes the spec from `SpecStore` — unless the spec record is marked `meta.persistent === true`. This prevents orphaned specs from accumulating while letting long-lived specs survive a close/reopen.
-- **`DockManager` owns wiring, `DockHost` owns state.** Per the workbench's controller/manager split, the manager registers handlers and tears them down through a `newRegistry()` disposer set; the host holds the api, the pending queue, and the listener sets.
+The `dock:*` handlers are registered at boot, but DockView mounts later inside
+the React tree and hands its api to `DockHost.setApi`. `showOrFocus` calls made
+before that are queued; `setApi` opens them in order and resolves their
+promises. So a `dock:show-panel` issued at boot resolves only once the panel is
+actually open. `closePanel` before mount removes the panel from the queue;
+`focusPanel` and `setPanelTitle` before mount do nothing.
 
-### Algorithms
+### Every panel is a json-render spec
 
-- **Pre-mount queue.** `DockHost.showOrFocus` dispatches immediately if the api is attached, otherwise pushes `{ options, resolve }` onto a queue. `setApi` drains the queue synchronously (resolving each promise) before subscribing to layout/active-panel events.
-- **Reference-panel anchoring.** When `referencePanelId` names an open panel, the new panel docks relative to it using `position` as the direction (default `"within"`, i.e. an extra tab in that group). If the reference panel is not open, placement falls back silently to the default.
-- **Layout persistence + remount survival.** Layout is debounced to a microtask and written to `localStorage` (`chat-mini:dock-layout`). On `detach` the current layout is snapshotted in memory; the next `setApi` prefers that snapshot over the persisted copy, so React StrictMode / HMR remounts of `<DockviewReact>` don't lose panels added since the last persist.
-- **Bus tracing.** `installBusTrace` is a no-op unless `localStorage["chat-mini:bus-trace"] === "1"`, in which case it monkey-patches `Commands.listen` and `Slots.provide` on the workspace instances to log registration and claim/dispatch. Zero overhead when disabled.
+The `show-panel` payload has no DockView `component` field. Every panel is added
+with component `"json"` and `params: { specId }`; the renderer looks the spec up
+in `SpecStore`. A new kind of panel is a new spec and catalog, not a new
+DockView component.
 
-### Constraints
+### How a panel is placed
 
-- Layout persistence is `localStorage`-keyed today; the code notes a planned move to `SystemFiles/dock-layout.json` once the workspace `open()`/`close()` lifecycle is wired up. `DockManager` is consequently one-shot (no re-entrant `onLoad`/`onUnload`).
-- `getActivePanelId()` / `getPanelIds()` return empty/undefined while no api is attached. `onActivePanelChange` does **not** fire on subscribe — read the current value once if you need an initial snapshot.
-- The package is React-free by contract; rendering the chrome contributed via slots is the renderer's job.
+- An open `panelId` is focused, not duplicated (unless `activate: false`). This
+  is why callers build panel ids from the content, for example the file URI.
+- With `referencePanelId` naming an open panel, the panel docks relative to it,
+  in `position` (default `"within"`: a new tab in that panel's group). If the
+  reference is not open, it is ignored.
+- `title` defaults to `panelId`.
+
+### When a spec is deleted
+
+`dock:close-panel` deletes the closed panel's spec from `SpecStore` when no other
+open panel uses the same `specId` and the spec's `meta.persistent` is not
+`true`. Persistent specs survive close and reopen.
+
+### How the layout is saved and restored
+
+`DockHost` saves `api.toJSON()` into the `LayoutStore` adapter
+(`@statewalker/render.core`) once per microtask after layout changes, and
+re-applies the saved layout on `workspace.onLoad`. On `detach` it keeps an
+in-memory snapshot, which the next `setApi` applies first, so a React StrictMode
+or HMR remount does not lose panels added since the last save.
+
+### What breaks
+
+- `DockHost` finds `LayoutStore` with `getAdapter`, which does not create it. If
+  no fragment has resolved `LayoutStore` with `requireAdapter`, the layout is
+  neither saved nor restored, without any message.
+- A layout that DockView cannot apply logs
+  `[chat-mini:dock] failed to restore in-memory layout` and falls back to the
+  saved layout. Save errors log `[chat-mini:dock] failed to persist layout`.
+- The commands are `Command.silent`: without `initDock`, their promises never
+  settle.
+- `onActivePanelChange` is not called on subscribe; read `getActivePanelId()`
+  first if you need the current value. Before mount, `getPanelIds()` is empty.
+
+### Tracing command and slot traffic
+
+Set `localStorage["chat-mini:bus-trace"] = "1"` and reload: the fragment wraps
+`Commands.listen` and `Slots.provide` and logs registrations and claims with
+`console.debug`. When the key is absent, nothing is wrapped.
 
 ### Dependencies
 
-- `dockview-react` (pinned `6.0.3`) — the `DockviewApi` type and panel/layout primitives `DockHost` controls. The host *component* lives in the renderer; this package only references the api type.
-- `@statewalker/shared-commands` — the `Command` builder and `Commands` bus for the `dock:*` handlers.
-- `@statewalker/shared-slots` — `defineSlot` / `Slots` for the three extension-point slots.
-- `@statewalker/shared-registry` — `newRegistry()` disposer set used by `DockManager`.
-- `@statewalker/render.core` — `SpecStore` for the close-time spec-eviction pass.
-- `@statewalker/workspace.core` — `Workspace` / `getWorkspace` adapter host the fragment attaches to.
-
-## Related
-
-- `@statewalker/shell.view.react` — the React renderer: `<DockViewHost>`, `MainShell`, `ShellHeader`, the `"json"` panel, and the `dock:tab-icons` slot.
-- `@statewalker/ui.view.react` — the substrate that renders `MainShell` under `SHELL_ROOT_VIEW_KEY` and provides the slot/adapter hooks.
-- `@statewalker/render.core` — `SpecStore` and the catalogs slot the dock's panels resolve against.
-- `@statewalker/workspace.core` — the workspace, commands, and slots the fragment wires into.
+- `dockview-core` — the `DockviewApi` type `DockHost` drives.
+- `@statewalker/shared-commands` — the `dock:*` commands.
+- `@statewalker/shared-slots` — the chrome slots.
+- `@statewalker/shared-registry` — `cleanup` of the handlers.
+- `@statewalker/render.core` — `SpecStore` (eviction on close) and `LayoutStore`.
+- `@statewalker/workspace.core` — `getWorkspace` and `onLoad`.
 
 ## License
 
-MIT — see the monorepo root `LICENSE`.
+MIT

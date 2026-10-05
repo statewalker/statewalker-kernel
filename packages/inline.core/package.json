@@ -3,7 +3,7 @@
   "version": "0.4.1",
   "private": false,
   "type": "module",
-  "description": "Inline-content logic fragment: declares inline-content:components and inline-content:renderers slot keys.",
+  "description": "Inline-content logic fragment: InlineContentSpec / InlineComponentDescriptor types and the inline-content:components slot.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/statewalker/statewalker-kernel.git",

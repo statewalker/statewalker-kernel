@@ -2,24 +2,19 @@
 
 ## What it is
 
-The React-free logic half of the inline-content subsystem. It declares the
-`inline-content:components` discoverability slot and the two cross-cutting types
-that describe an inline content block: `InlineContentSpec` (what a structured
-message carries) and `InlineComponentDescriptor` (what each component advertises
-about itself). The actual React components and the rendering lookup table live
-in its paired renderer,
-`@statewalker/inline.view.react`.
+The React-free contract for inline content blocks: structured, interactive
+blocks (a metric card, a small chart, a file reference) that an assistant
+message embeds instead of plain prose. It declares the
+`inline-content:components` discovery slot and the two types that describe a
+block: `InlineContentSpec` (what a message carries) and
+`InlineComponentDescriptor` (what a component advertises about itself).
 
 ## Why it exists
 
-Inline content lets an assistant message embed structured, interactive blocks —
-a metric card, a small chart, a clickable file reference — instead of plain
-prose. Per ADR-0002 the subsystem is split: this package holds only the
-framework-neutral contract (the spec shape and the discoverability slot) so
-tooling, plug-in managers, and the agent can enumerate available components
-without depending on React. The React-typed rendering slot
-(`inline-content:renderers`) and the components themselves belong to the
-renderer side.
+Tooling, plug-in managers and the agent need to list the available inline
+components without loading React. This package holds only that data contract.
+The components and the `inline-content:renderers` lookup slot, whose values are
+React components, live in the renderer package `@statewalker/inline.view.react`.
 
 ## How to use
 
@@ -27,17 +22,16 @@ renderer side.
 pnpm add @statewalker/inline.core
 ```
 
-Two entry points:
+No peer dependencies. No DOM or Node APIs.
 
-- `@statewalker/inline.core` — the types and the
-  `inlineComponentSlot` declaration.
-- `@statewalker/inline.core/fragment` — the default-exported
-  `initInlineContent(ctx)` logic-fragment init. The descriptor slot is pure data,
-  so init is a no-op that just returns a `cleanup` thunk.
+| Import | Gives |
+| --- | --- |
+| `@statewalker/inline.core` | `inlineComponentSlot`, `InlineContentSpec`, `InlineComponentDescriptor` |
+| `@statewalker/inline.core/fragment` | default export `initInlineContent(ctx)`, the logic-fragment init; returns a `cleanup` function |
 
 ## Examples
 
-The structured block an assistant message carries:
+The block an assistant message carries:
 
 ```ts
 import type { InlineContentSpec } from "@statewalker/inline.core";
@@ -46,7 +40,6 @@ const spec: InlineContentSpec = {
   componentId: "metric-card",
   props: { label: "Revenue", value: "$1.2M", delta: "+8%", trend: "positive" },
 };
-// props is intentionally `unknown` — the component casts at its render boundary.
 ```
 
 Advertise a component for discovery:
@@ -60,46 +53,36 @@ const descriptor: InlineComponentDescriptor = {
   label: "Metric Card",
   description: "Single-value KPI card with optional delta and trend.",
 };
-workspace.requireAdapter(Slots).provide(inlineComponentSlot, descriptor);
+const remove = workspace.requireAdapter(Slots).provide(inlineComponentSlot, descriptor);
 ```
 
 ## Internals
 
-### Architectural decisions
+### Why `props` is `unknown`
 
-- **`props: unknown`.** The spec holds props opaquely (same way json-render's
-  `SpecStore` holds specs) so the registry stays decoupled from any one
-  component's prop shape; each component validates and casts at its own render
-  boundary.
-- **Slot pattern C — descriptor slot paired with a dedicated registry.**
-  `inlineComponentSlot` (`inline-content:components`) is a plain `defineSlot`
-  carrying descriptors for enumeration only. The rendering lookup is a separate
-  keyed slot owned by the renderer, because its value is React-typed.
+`InlineContentSpec.props` is opaque so the contract does not depend on any
+component's prop shape. Each component validates and casts its props when it
+renders. `SpecStore` in `@statewalker/render.core` holds json-render specs the
+same way.
 
-### Algorithms
+### Discovery and rendering are separate slots
 
-None — this package is pure type and slot declarations.
+`inlineComponentSlot` carries descriptors only, for listing. Resolving a
+`componentId` to a component uses a separate keyed slot owned by the renderer,
+because its values are React-typed. A descriptor in this slot does not mean a
+renderer is registered: the renderer fragment contributes both.
 
-### Constraints
+### The fragment init does nothing
 
-- No rendering happens here; resolving a `componentId` to a component is the
-  renderer's job.
-- A descriptor in the components slot does not imply a registered renderer; the
-  two are contributed in tandem by the renderer fragment.
+The slot is a plain declaration exported from the main entry point, so
+`initInlineContent` only returns an empty `cleanup`. It exists so a host boots
+this package like every other fragment.
 
 ### Dependencies
 
-`@statewalker/shared-slots` (`defineSlot`) and `@statewalker/shared-registry`
-(init `cleanup`). Nothing else — deliberately minimal so the contract stays
-framework-neutral.
-
-## Related
-
-- `@statewalker/inline.view.react` — the
-  paired React renderer that owns the `inline-content:renderers` slot, the
-  `<InlineContent>` resolver, and the built-in components (the `.core` ↔
-  `.view.react` pair).
+- `@statewalker/shared-slots` — `defineSlot`.
+- `@statewalker/shared-registry` — the `cleanup` returned by init.
 
 ## License
 
-MIT — see the monorepo root `LICENSE`.
+MIT

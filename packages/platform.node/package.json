@@ -3,7 +3,7 @@
   "version": "0.5.1",
   "private": false,
   "type": "module",
-  "description": "Node implementation of the platform.api commands — filesystem-backed durable preferences.",
+  "description": "Node implementation of the @statewalker/platform.core commands — filesystem-backed durable preferences.",
   "bugs": {
     "url": "https://github.com/statewalker/statewalker-kernel/issues"
   },
