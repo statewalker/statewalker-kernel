@@ -21,7 +21,7 @@ export interface PickDirectoryResult {
   label: string;
 }
 
-export const PickDirectoryCommand = Command.silent(PICK_DIRECTORY_COMMAND_KEY)
+export const PickDirectoryCommand = Command.async(PICK_DIRECTORY_COMMAND_KEY)
   .input(passthrough<PickDirectoryPayload>())
   .output(passthrough<PickDirectoryResult>())
   .build();

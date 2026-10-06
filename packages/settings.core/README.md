@@ -93,8 +93,8 @@ across workspace `onLoad` / `onUnload` until `cleanup` runs.
 
 ### What breaks
 
-- Both commands are `Command.silent`. If `initSettings` was not booted, the
-  promise returned by `commands.call(...)` never settles; nothing is logged.
+- If `initSettings` was not booted, the promise returned by
+  `commands.call(...)` rejects at once with a `CommandError` with `kind: "no-handlers"`.
 - State is in memory only. A reload opens with the dialog closed and no active tab.
 
 ### Dependencies

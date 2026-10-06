@@ -134,9 +134,9 @@ re-implementing the policy, so all callers agree on the winner.
   `No mime-renderer registered for "<mime>"`.
 - Unknown extension: the MIME type is `application/octet-stream`, which usually
   has no renderer, so the error above names `application/octet-stream`.
-- The commands are `Command.silent`: if no handler is registered (the fragment
-  was not booted, or for `files:open`, `@statewalker/explorer.core` was not),
-  the returned promise never settles. There is no error.
+- If no handler is registered (the fragment was not booted, or for
+  `files:open`, `@statewalker/explorer.core` was not), the returned promise
+  rejects at once with a `CommandError` with `kind: "no-handlers"`.
 
 ### Constraints
 

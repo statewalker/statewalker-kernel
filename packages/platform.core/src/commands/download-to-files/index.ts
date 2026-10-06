@@ -21,7 +21,7 @@ export interface DownloadToFilesResult {
   bytes: number;
 }
 
-export const DownloadToFilesCommand = Command.silent(DOWNLOAD_TO_FILES_COMMAND_KEY)
+export const DownloadToFilesCommand = Command.async(DOWNLOAD_TO_FILES_COMMAND_KEY)
   .input(passthrough<DownloadToFilesPayload>())
   .output(passthrough<DownloadToFilesResult>())
   .build();

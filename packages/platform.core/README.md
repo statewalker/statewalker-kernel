@@ -97,9 +97,9 @@ command.reject(new UserCancelledError());
 
 ## Internals
 
-### A call with no handler waits forever
+### A call with no handler fails at once
 
-Every declaration uses the `silent` dispatch policy of `@statewalker/shared-commands`: when no handler is registered at call time, the call neither resolves nor rejects, and a handler registered later does not pick it up. On a host that does not implement a command (for example the pickers or the clipboard under `@statewalker/platform.node`), or when the call is made before the host fragment has started, `await ...promise` hangs with no error. Start the platform fragment before the fragments that call it, and guard calls with a timeout where the host may lack the command.
+Every declaration uses the `async` dispatch policy of `@statewalker/shared-commands`: when no handler is registered at call time, the call rejects immediately with `CommandError` with `kind: "no-handlers"` (`commandKey` names the command). A handler registered later does not pick up earlier calls. This happens on a host that does not implement a command (for example the pickers or the clipboard under `@statewalker/platform.node`), or when the call is made before the host fragment has started: start the platform fragment before the fragments that call it, and catch the error where the host may lack the command. A handler that takes the call without settling it (a listener that only observes) still leaves it pending.
 
 ### Cancellation is a type, not a string
 

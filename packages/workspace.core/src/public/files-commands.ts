@@ -31,7 +31,7 @@ export interface LoadDirectoryPayload {
   /** Recursive listing (descends into subdirectories). */
   recursive?: boolean;
 }
-export const LoadDirectoryCommand = Command.silent("files:load-directory")
+export const LoadDirectoryCommand = Command.async("files:load-directory")
   .input(passthrough<LoadDirectoryPayload>())
   .output(passthrough<readonly DirectoryEntry[]>())
   .build();
@@ -39,7 +39,7 @@ export const LoadDirectoryCommand = Command.silent("files:load-directory")
 export interface LoadFilePayload {
   path: string;
 }
-export const LoadFileCommand = Command.silent("files:load-file")
+export const LoadFileCommand = Command.async("files:load-file")
   .input(passthrough<LoadFilePayload>())
   .output(passthrough<LoadedFile>())
   .build();
@@ -48,7 +48,7 @@ export interface WriteFilePayload {
   path: string;
   content: Uint8Array | string;
 }
-export const WriteFileCommand = Command.silent("files:write-file")
+export const WriteFileCommand = Command.async("files:write-file")
   .input(passthrough<WriteFilePayload>())
   .output(passthrough<void>())
   .build();
@@ -57,7 +57,7 @@ export interface MoveFilePayload {
   fromPath: string;
   toPath: string;
 }
-export const MoveFileCommand = Command.silent("files:move-file")
+export const MoveFileCommand = Command.async("files:move-file")
   .input(passthrough<MoveFilePayload>())
   .output(passthrough<void>())
   .build();
@@ -65,7 +65,7 @@ export const MoveFileCommand = Command.silent("files:move-file")
 export interface DeleteFilePayload {
   path: string;
 }
-export const DeleteFileCommand = Command.silent("files:delete-file")
+export const DeleteFileCommand = Command.async("files:delete-file")
   .input(passthrough<DeleteFilePayload>())
   .output(passthrough<void>())
   .build();
@@ -74,7 +74,7 @@ export interface MkdirPayload {
   /** Workspace-relative path of the directory to create. */
   path: string;
 }
-export const MkdirCommand = Command.silent("files:mkdir")
+export const MkdirCommand = Command.async("files:mkdir")
   .input(passthrough<MkdirPayload>())
   .output(passthrough<void>())
   .build();
@@ -83,7 +83,7 @@ export interface RenamePayload {
   fromPath: string;
   toPath: string;
 }
-export const RenameCommand = Command.silent("files:rename")
+export const RenameCommand = Command.async("files:rename")
   .input(passthrough<RenamePayload>())
   .output(passthrough<void>())
   .build();

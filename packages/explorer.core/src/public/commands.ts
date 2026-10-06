@@ -15,7 +15,7 @@ export interface RenamePromptPayload {
  * basename on confirm, rejects on cancel. The handler lives in
  * `file-explorer-react` so the panel renderer owns the dialog.
  */
-export const RenamePromptCommand = Command.silent("file-explorer:rename-prompt")
+export const RenamePromptCommand = Command.async("file-explorer:rename-prompt")
   .input(passthrough<RenamePromptPayload>())
   .output(passthrough<{ name: string }>())
   .build();
@@ -27,7 +27,7 @@ export interface MkdirPromptPayload {
  * Open the mkdir prompt UI under `parentPath`. Resolves with the
  * new directory name on confirm, rejects on cancel.
  */
-export const MkdirPromptCommand = Command.silent("file-explorer:mkdir-prompt")
+export const MkdirPromptCommand = Command.async("file-explorer:mkdir-prompt")
   .input(passthrough<MkdirPromptPayload>())
   .output(passthrough<{ name: string }>())
   .build();
@@ -40,7 +40,7 @@ export interface ConfirmDeletePayload {
  * on cancel. The actual deletion is performed by the caller via
  * `files:delete-file`.
  */
-export const ConfirmDeleteCommand = Command.silent("file-explorer:confirm-delete")
+export const ConfirmDeleteCommand = Command.async("file-explorer:confirm-delete")
   .input(passthrough<ConfirmDeletePayload>())
   .output(passthrough<void>())
   .build();
@@ -55,7 +55,7 @@ export interface ConfirmCopyMovePayload {
  * rejects on cancel. The caller iterates and dispatches
  * `files:move-file` (move) or single-file copy operations.
  */
-export const ConfirmCopyMoveCommand = Command.silent("file-explorer:confirm-copy-move")
+export const ConfirmCopyMoveCommand = Command.async("file-explorer:confirm-copy-move")
   .input(passthrough<ConfirmCopyMovePayload>())
   .output(passthrough<void>())
   .build();
@@ -77,7 +77,7 @@ export interface NewFileExplorerPanelPayload {
  * (the suffix after `file-explorer:`) so callers can compose with
  * `dock:focus-panel` etc.
  */
-export const NewFileExplorerPanelCommand = Command.silent("file-explorer:new-panel")
+export const NewFileExplorerPanelCommand = Command.async("file-explorer:new-panel")
   .input(passthrough<NewFileExplorerPanelPayload>())
   .output(passthrough<{ panelId: string }>())
   .build();
