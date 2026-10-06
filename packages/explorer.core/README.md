@@ -196,7 +196,8 @@ React lifecycle and StrictMode concerns.
   `ConfirmCopyMoveCommand` (`file-explorer:rename-prompt`, `mkdir-prompt`,
   `confirm-delete`, `confirm-copy-move`) are declared as prompts that resolve on
   confirm and reject on cancel, but no package registers a handler for them.
-  They are `Command.silent`, so a call never settles.
+  They use the `async` dispatch policy, so a call fails at once with a
+  `CommandError` with `kind: "no-handlers"`.
 
 ### Constraints
 

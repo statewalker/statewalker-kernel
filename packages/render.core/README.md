@@ -152,7 +152,7 @@ when its last panel closes, unless `meta.persistent === true`.
   starts empty. Read and write failures log
   `[layout-store] failed to read dock-layout.json` /
   `[layout-store] failed to persist dock-layout.json`; `connect()` never rejects.
-- The commands are `Command.silent`: without `initSpecStore`, their promises never settle.
+- Without `initSpecStore`, a call rejects at once with a `CommandError` with `kind: "no-handlers"`.
 
 ### Constraints
 

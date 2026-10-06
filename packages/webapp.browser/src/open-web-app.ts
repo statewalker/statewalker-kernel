@@ -24,7 +24,7 @@ export interface OpenWebAppPayload {
 }
 
 /** Command: host `project` and open (or focus) its web-app dock tab. */
-export const OpenWebAppCommand = Command.silent("webapp:open")
+export const OpenWebAppCommand = Command.async("webapp:open")
   .input(passthrough<OpenWebAppPayload>())
   .output(passthrough<void>())
   .build();

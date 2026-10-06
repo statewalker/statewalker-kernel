@@ -7,7 +7,7 @@ export interface PreferenceSetPayload {
   value: unknown;
 }
 
-export const PreferenceSetCommand = Command.silent(PREFERENCE_SET_COMMAND_KEY)
+export const PreferenceSetCommand = Command.async(PREFERENCE_SET_COMMAND_KEY)
   .input(passthrough<PreferenceSetPayload>())
   .output(passthrough<void>())
   .build();

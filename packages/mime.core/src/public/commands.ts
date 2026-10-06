@@ -16,7 +16,7 @@ export interface VisualizeFilePayload {
    */
   referencePanelId?: string;
 }
-export const VisualizeFileCommand = Command.silent("files:visualize")
+export const VisualizeFileCommand = Command.async("files:visualize")
   .input(passthrough<VisualizeFilePayload>())
   .output(passthrough<void>())
   .build();
@@ -43,7 +43,7 @@ export interface OpenPayload {
  * — directories navigate the panel identified by `target`, files
  * delegate to `files:visualize`.
  */
-export const OpenCommand = Command.silent("files:open")
+export const OpenCommand = Command.async("files:open")
   .input(passthrough<OpenPayload>())
   .output(passthrough<void>())
   .build();

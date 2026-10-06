@@ -24,7 +24,7 @@ export interface ShowDockPanelPayload {
  * (vision audit C7 / proposal §5.5) — the dock fragment is the only
  * place that knows the panel kind is `"json"`.
  */
-export const ShowDockPanelCommand = Command.silent("dock:show-panel")
+export const ShowDockPanelCommand = Command.async("dock:show-panel")
   .input(passthrough<ShowDockPanelPayload>())
   .output(passthrough<void>())
   .build();
@@ -32,7 +32,7 @@ export const ShowDockPanelCommand = Command.silent("dock:show-panel")
 export interface ClosePanelPayload {
   panelId: string;
 }
-export const ClosePanelCommand = Command.silent("dock:close-panel")
+export const ClosePanelCommand = Command.async("dock:close-panel")
   .input(passthrough<ClosePanelPayload>())
   .output(passthrough<void>())
   .build();
@@ -40,7 +40,7 @@ export const ClosePanelCommand = Command.silent("dock:close-panel")
 export interface FocusPanelPayload {
   panelId: string;
 }
-export const FocusPanelCommand = Command.silent("dock:focus-panel")
+export const FocusPanelCommand = Command.async("dock:focus-panel")
   .input(passthrough<FocusPanelPayload>())
   .output(passthrough<void>())
   .build();
@@ -55,7 +55,7 @@ export interface SetPanelTitlePayload {
  * file tabs, etc. — so the dock fragment owns the mechanism rather
  * than each catalog reinventing it.
  */
-export const SetPanelTitleCommand = Command.silent("dock:set-panel-title")
+export const SetPanelTitleCommand = Command.async("dock:set-panel-title")
   .input(passthrough<SetPanelTitlePayload>())
   .output(passthrough<void>())
   .build();

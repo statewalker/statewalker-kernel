@@ -52,7 +52,7 @@ Every get reads `/preferences.json` and every set reads, changes one key and wri
 
 ### Commands this package does not answer
 
-Pickers, clipboard, `download-blob`, `download-to-files` and URL state have no Node handler. Their declarations use the `silent` policy, so a call to one of them on Node never settles: no result, no error. Do not await them in code that may run headless without a timeout.
+Pickers, clipboard, `download-blob`, `download-to-files` and URL state have no Node handler. A call to one of them on Node rejects at once with a `CommandError` with `kind: "no-handlers"`; code that may run headless should catch it.
 
 ### Dependencies
 

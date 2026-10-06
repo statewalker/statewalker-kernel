@@ -153,11 +153,11 @@ describe("spec:create / spec:patch commands", () => {
     const store = ws.requireAdapter(SpecStore);
     const sizeBefore = countSpecs(store);
     await cleanup();
-    // After cleanup, commands.call(CreateSpecCommand, ...) falls through to
-    // CreateSpecCommand's declared default (() => {}), which silently
-    // resolves with no payload — critically, no SpecStore.create is
-    // called anymore.
-    commands.call(CreateSpecCommand, { catalogId: "c", spec: 1 });
+    // After cleanup no handler is left: the call fails at once with
+    // "no-handlers", and no SpecStore.create is called anymore.
+    await expect(
+      commands.call(CreateSpecCommand, { catalogId: "c", spec: 1 }).promise,
+    ).rejects.toMatchObject({ kind: "no-handlers", commandKey: "spec:create" });
     expect(countSpecs(store)).toBe(sizeBefore);
   });
 });

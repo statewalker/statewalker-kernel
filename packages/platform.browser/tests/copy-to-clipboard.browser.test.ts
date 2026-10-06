@@ -41,11 +41,11 @@ describe("copy-to-clipboard browser handler", () => {
     }
   });
 
-  it("unregister leaves subsequent fires unsettled (noop default)", () => {
+  it("after unregister a call fails at once with no-handlers", async () => {
     const ctx = {};
     const unregister = registerCopyToClipboardBrowser(getCommands(ctx));
     unregister();
     const command = getCommands(ctx).call(CopyToClipboardCommand, { text: "x" });
-    expect(command.settled).toBe(false);
+    await expect(command.promise).rejects.toMatchObject({ kind: "no-handlers" });
   });
 });

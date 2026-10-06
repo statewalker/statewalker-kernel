@@ -144,8 +144,8 @@ or HMR remount does not lose panels added since the last save.
 - A layout that DockView cannot apply logs
   `[chat-mini:dock] failed to restore in-memory layout` and falls back to the
   saved layout. Save errors log `[chat-mini:dock] failed to persist layout`.
-- The commands are `Command.silent`: without `initDock`, their promises never
-  settle.
+- Without `initDock`, a call rejects at once with a `CommandError` with
+  `kind: "no-handlers"`.
 - `onActivePanelChange` is not called on subscribe; read `getActivePanelId()`
   first if you need the current value. Before mount, `getPanelIds()` is empty.
 
