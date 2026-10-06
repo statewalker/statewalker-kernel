@@ -11,7 +11,7 @@ export interface CreateSpecResult {
   specId: string;
 }
 
-export const CreateSpecCommand = Command.silent("spec:create")
+export const CreateSpecCommand = Command.async("spec:create")
   .input(passthrough<CreateSpecPayload>())
   .output(passthrough<CreateSpecResult>())
   .build();
@@ -21,7 +21,7 @@ export interface PatchSpecPayload {
   patch: SpecPatch;
 }
 
-export const PatchSpecCommand = Command.silent("spec:patch")
+export const PatchSpecCommand = Command.async("spec:patch")
   .input(passthrough<PatchSpecPayload>())
   .output(passthrough<void>())
   .build();

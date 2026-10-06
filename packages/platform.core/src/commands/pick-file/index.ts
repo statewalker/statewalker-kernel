@@ -13,7 +13,7 @@ export interface PickFileResult {
   names: string[];
 }
 
-export const PickFileCommand = Command.silent(PICK_FILE_COMMAND_KEY)
+export const PickFileCommand = Command.async(PICK_FILE_COMMAND_KEY)
   .input(passthrough<PickFilePayload>())
   .output(passthrough<PickFileResult>())
   .build();

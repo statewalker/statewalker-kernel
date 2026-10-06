@@ -11,13 +11,13 @@ export interface OpenSettingsPayload {
  * `SettingsManager`; consumers fire the command without importing
  * the adapter directly.
  */
-export const OpenSettingsCommand = Command.silent("settings:open")
+export const OpenSettingsCommand = Command.async("settings:open")
   .input(passthrough<OpenSettingsPayload>())
   .output(passthrough<void>())
   .build();
 
 /** Close the settings dialog. */
-export const CloseSettingsCommand = Command.silent("settings:close")
+export const CloseSettingsCommand = Command.async("settings:close")
   .input(passthrough<void>())
   .output(passthrough<void>())
   .build();

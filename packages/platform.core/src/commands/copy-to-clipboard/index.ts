@@ -6,7 +6,7 @@ export interface CopyToClipboardPayload {
   text: string;
 }
 
-export const CopyToClipboardCommand = Command.silent(COPY_TO_CLIPBOARD_COMMAND_KEY)
+export const CopyToClipboardCommand = Command.async(COPY_TO_CLIPBOARD_COMMAND_KEY)
   .input(passthrough<CopyToClipboardPayload>())
   .output(passthrough<void>())
   .build();

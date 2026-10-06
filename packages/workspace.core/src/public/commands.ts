@@ -26,7 +26,7 @@ export interface ChangeWorkspaceResult {
   workspace: Workspace;
 }
 
-export const ChangeWorkspaceCommand = Command.silent(CHANGE_WORKSPACE_COMMAND_KEY)
+export const ChangeWorkspaceCommand = Command.async(CHANGE_WORKSPACE_COMMAND_KEY)
   .input(passthrough<ChangeWorkspacePayload>())
   .output(passthrough<ChangeWorkspaceResult>())
   .build();

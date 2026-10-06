@@ -10,7 +10,7 @@ export interface PreferenceGetResult {
   value: unknown | undefined;
 }
 
-export const PreferenceGetCommand = Command.silent(PREFERENCE_GET_COMMAND_KEY)
+export const PreferenceGetCommand = Command.async(PREFERENCE_GET_COMMAND_KEY)
   .input(passthrough<PreferenceGetPayload>())
   .output(passthrough<PreferenceGetResult>())
   .build();

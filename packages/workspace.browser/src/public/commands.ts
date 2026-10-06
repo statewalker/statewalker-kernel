@@ -32,7 +32,7 @@ export type WorkspaceVoidResult = Record<string, never>;
  * `requestPermission()` call is allowed by the browser.
  */
 export const WORKSPACE_RECONNECT_COMMAND_KEY = "workspace:reconnect";
-export const WorkspaceReconnectCommand = Command.silent(WORKSPACE_RECONNECT_COMMAND_KEY)
+export const WorkspaceReconnectCommand = Command.async(WORKSPACE_RECONNECT_COMMAND_KEY)
   .input(passthrough<WorkspaceVoidPayload>())
   .output(passthrough<WorkspaceVoidResult>())
   .build();
@@ -45,7 +45,7 @@ export const WorkspaceReconnectCommand = Command.silent(WORKSPACE_RECONNECT_COMM
  * runtime is fully torn down before the next pick lands.
  */
 export const WORKSPACE_DISCONNECT_COMMAND_KEY = "workspace:disconnect";
-export const WorkspaceDisconnectCommand = Command.silent(WORKSPACE_DISCONNECT_COMMAND_KEY)
+export const WorkspaceDisconnectCommand = Command.async(WORKSPACE_DISCONNECT_COMMAND_KEY)
   .input(passthrough<WorkspaceVoidPayload>())
   .output(passthrough<WorkspaceVoidResult>())
   .build();

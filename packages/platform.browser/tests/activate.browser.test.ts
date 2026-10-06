@@ -51,18 +51,16 @@ describe("platform.browser initPlatformWeb(ctx)", () => {
       getCommands(ctx).call(PreferenceSetCommand, { key: "t", value: 1 }).promise,
     ).resolves.toBeUndefined();
 
-    // After cleanup, every platform command stays unsettled (no listener,
-    // silent policy leaves it pending so the caller can supply external
-    // resolution if needed).
+    // After cleanup no platform command has a handler left: a call fails at
+    // once with "no-handlers" instead of waiting forever.
     await cleanup();
     for (const key of PLATFORM_COMMAND_KEYS) {
-      const decl = Command.silent(key)
+      const decl = Command.async(key)
         .input(passthrough<Record<string, unknown>>())
         .output(passthrough<unknown>())
         .build();
       const cmd = getCommands(ctx).call(decl, {});
-      await Promise.resolve();
-      expect(cmd.settled).toBe(false);
+      await expect(cmd.promise).rejects.toMatchObject({ kind: "no-handlers", commandKey: key });
     }
   });
 });

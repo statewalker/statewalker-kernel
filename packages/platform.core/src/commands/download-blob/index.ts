@@ -7,7 +7,7 @@ export interface DownloadBlobPayload {
   filename: string;
 }
 
-export const DownloadBlobCommand = Command.silent(DOWNLOAD_BLOB_COMMAND_KEY)
+export const DownloadBlobCommand = Command.async(DOWNLOAD_BLOB_COMMAND_KEY)
   .input(passthrough<DownloadBlobPayload>())
   .output(passthrough<void>())
   .build();
