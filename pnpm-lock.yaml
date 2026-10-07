@@ -17,79 +17,79 @@ catalogs:
       version: 0.21.0
     '@statewalker/shared-adapters':
       specifier: ^0.1.0
-      version: 0.1.2
+      version: 0.1.3
     '@statewalker/shared-baseclass':
       specifier: ^0.1.0
-      version: 0.1.2
+      version: 0.1.3
     '@statewalker/shared-commands':
       specifier: ^0.2.0
-      version: 0.2.3
+      version: 0.2.4
     '@statewalker/shared-logger':
       specifier: ^0.1.0
-      version: 0.1.3
+      version: 0.1.4
     '@statewalker/shared-logger-pino':
       specifier: ^0.1.0
-      version: 0.1.3
+      version: 0.1.4
     '@statewalker/shared-registry':
       specifier: ^0.1.0
-      version: 0.1.2
+      version: 0.1.3
     '@statewalker/shared-slots':
       specifier: ^0.2.0
-      version: 0.2.2
+      version: 0.2.3
     '@statewalker/vcs-commands':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.2
     '@statewalker/vcs-core':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.3
     '@statewalker/vcs-store-files':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.2
     '@statewalker/vcs-transport':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.2
     '@statewalker/vcs-transport-adapters':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.3
     '@statewalker/vcs-utils-node':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.2
     '@statewalker/vcs-working-tree':
       specifier: ^0.3.0
-      version: 0.3.1
+      version: 0.3.2
     '@statewalker/vcs-workspace':
       specifier: ^0.3.0
-      version: 0.3.0
+      version: 0.3.2
     '@statewalker/webrun-builder':
       specifier: ^0.2.0
-      version: 0.2.0
+      version: 0.2.1
     '@statewalker/webrun-dataflow':
       specifier: ^0.1.1
-      version: 0.1.2
+      version: 0.1.3
     '@statewalker/webrun-files':
       specifier: ^0.10.0
-      version: 0.10.1
+      version: 0.10.2
     '@statewalker/webrun-files-browser':
       specifier: ^0.10.0
-      version: 0.10.1
+      version: 0.10.2
     '@statewalker/webrun-files-composite':
       specifier: ^0.10.0
-      version: 0.10.2
+      version: 0.10.3
     '@statewalker/webrun-files-mem':
       specifier: ^0.10.0
-      version: 0.10.2
+      version: 0.10.3
     '@statewalker/webrun-files-node':
       specifier: ^0.10.0
-      version: 0.10.2
+      version: 0.10.3
     '@statewalker/webrun-modules':
       specifier: ^0.3.0
-      version: 0.3.2
+      version: 0.3.3
     '@statewalker/webrun-site-builder':
       specifier: ^0.2.0
-      version: 0.2.1
+      version: 0.2.2
     '@statewalker/webrun-site-host':
       specifier: ^0.2.1
-      version: 0.2.3
+      version: 0.2.4
     '@types/node':
       specifier: ^26.6.4
       version: 26.6.4
@@ -234,22 +234,22 @@ importers:
         version: link:../mime.core
       '@statewalker/shared-baseclass':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
       '@statewalker/shell.core':
         specifier: workspace:^
         version: link:../shell.core
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -259,7 +259,7 @@ importers:
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
@@ -274,10 +274,10 @@ importers:
     dependencies:
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
     devDependencies:
       tsdown:
         specifier: 'catalog:'
@@ -296,22 +296,22 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
       '@statewalker/shell.core':
         specifier: workspace:^
         version: link:../shell.core
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -333,29 +333,29 @@ importers:
         version: link:../platform.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-logger':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.4
       '@statewalker/shared-logger-pino':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.4
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-browser':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       jsdom:
         specifier: 'catalog:'
         version: 30.1.2
@@ -376,16 +376,16 @@ importers:
     dependencies:
       '@statewalker/shared-adapters':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-baseclass':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -410,23 +410,23 @@ importers:
         version: link:../platform.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-node':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -447,23 +447,23 @@ importers:
     dependencies:
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
@@ -478,16 +478,16 @@ importers:
     dependencies:
       '@statewalker/shared-baseclass':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -509,13 +509,13 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-slots':
         specifier: 'catalog:'
-        version: 0.2.2
+        version: 0.2.3
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -525,10 +525,10 @@ importers:
     devDependencies:
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
@@ -546,7 +546,7 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shell.core':
         specifier: workspace:^
         version: link:../shell.core
@@ -555,14 +555,14 @@ importers:
         version: link:../webapp.core
       '@statewalker/webrun-site-host':
         specifier: 'catalog:'
-        version: 0.2.3(@statewalker/webrun-files@0.10.1)
+        version: 0.2.4(@statewalker/webrun-files@0.10.2)
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -580,23 +580,23 @@ importers:
     dependencies:
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-modules':
         specifier: 'catalog:'
-        version: 0.3.2
+        version: 0.3.3
       '@statewalker/webrun-site-builder':
         specifier: 'catalog:'
-        version: 0.2.1(@statewalker/webrun-files@0.10.1)
+        version: 0.2.2(@statewalker/webrun-files@0.10.2)
       '@statewalker/webrun-site-host':
         specifier: 'catalog:'
-        version: 0.2.3(@statewalker/webrun-files@0.10.1)
+        version: 0.2.4(@statewalker/webrun-files@0.10.2)
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -614,41 +614,41 @@ importers:
     dependencies:
       '@statewalker/vcs-commands':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.2
       '@statewalker/vcs-core':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.3
       '@statewalker/vcs-store-files':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.2
       '@statewalker/vcs-transport':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.2
       '@statewalker/vcs-transport-adapters':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.3
       '@statewalker/vcs-working-tree':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.2
       '@statewalker/vcs-workspace':
         specifier: 'catalog:'
-        version: 0.3.0
+        version: 0.3.2
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-composite':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
     devDependencies:
       '@statewalker/vcs-utils-node':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.3.2
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
@@ -666,19 +666,19 @@ importers:
     dependencies:
       '@statewalker/shared-baseclass':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-browser':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/workspace.core':
         specifier: workspace:^
         version: link:../workspace.core
@@ -703,32 +703,32 @@ importers:
     dependencies:
       '@statewalker/shared-adapters':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-baseclass':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)
+        version: 0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)
       '@statewalker/shared-logger':
         specifier: 'catalog:'
-        version: 0.1.3
+        version: 0.1.4
       '@statewalker/webrun-builder':
         specifier: 'catalog:'
-        version: 0.2.0
+        version: 0.2.1
       '@statewalker/webrun-dataflow':
         specifier: 'catalog:'
-        version: 0.1.2
+        version: 0.1.3
       '@statewalker/webrun-files':
         specifier: 'catalog:'
-        version: 0.10.1
+        version: 0.10.2
       '@statewalker/webrun-files-composite':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
     devDependencies:
       '@statewalker/webrun-files-mem':
         specifier: 'catalog:'
-        version: 0.10.2
+        version: 0.10.3
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
@@ -1249,89 +1249,83 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@statewalker/content-store@0.2.2':
-    resolution: {integrity: sha512-9WtfmtEGUsmrAWqlf3b0xhYBOZS/ngPyvzyeNjOzl4eXdPriLBUzuU5Sv8SnJJ4N2CAE+44VerkLiPuZ+dZsgA==}
+  '@statewalker/shared-adapters@0.1.3':
+    resolution: {integrity: sha512-hmF316wz5IwYcbHpKW42jwYJzssFZPcHgUz+jBOduYSPv+10TC/kA3NlnDjp2rSL+Woq0AJu57AdOJZDW6L6Pg==}
 
-  '@statewalker/files-sync@0.2.2':
-    resolution: {integrity: sha512-LdmWpz+fRb1jwRMfDI06poYKsejZah58KzThFtxUxn6NgmFJWPq2fm4PNO/hgLPcMO3SnsP2QjD4Xy5nSx8tMg==}
+  '@statewalker/shared-baseclass@0.1.3':
+    resolution: {integrity: sha512-/emx12zO5WQvyM/pAlB/lrmlQtgEeWakrUIbzYhCJFYbtDlNq8LcZWqnHbYXNGOYDJlQdPRbb2btNpn99AAEvA==}
 
-  '@statewalker/merge-core@0.2.1':
-    resolution: {integrity: sha512-iya+teTIE4GWUWDiihpqEFnXunAxJqPspxKLso5ICsUux3hQAEL23OvJWlLmyNDyz34mCIBVM3n5D5YEIm+FEA==}
+  '@statewalker/shared-commands@0.2.4':
+    resolution: {integrity: sha512-uVumbQjw4jQZaDy+eF7pyqW4pl00MW6xFDsqFnDSTcGe1V3QGItzd9eAmBPA+Hcz+dsoJyePJVu36qYjfhEBtQ==}
 
-  '@statewalker/shared-adapters@0.1.2':
-    resolution: {integrity: sha512-1PIsx05Jv+9GMM6MtzVsU2Kp4nh+hxNfN/hX4sJZgY/CUjzJPWzFlGZc/BH1suHvUz6hIfR9LGgTFSzHidAoJg==}
+  '@statewalker/shared-logger-pino@0.1.4':
+    resolution: {integrity: sha512-6lWR2LELMODWRYwx+LhMyjqU6gNY3llgzL76EfO7RhI0zIs6OYijv3PAn/DAp1uUrmV3HDpOOa+IJg0tVn0Hbg==}
 
-  '@statewalker/shared-baseclass@0.1.2':
-    resolution: {integrity: sha512-rlg8y3QBG4cLYwJMxP/1cz+emKOgwNdF3bb+p1zbZM5N8Su+W9aba1haJkBd0KTneKx1v4eGImL8PZd+4jVH+g==}
+  '@statewalker/shared-logger@0.1.4':
+    resolution: {integrity: sha512-r893XNge/0TVLJgw+gIze7L0B6T1uElBCCBDnJ7dr/hXchFpRYHLKNC1LDx4LrAt0iCmE06djMakznE9WLlynQ==}
 
-  '@statewalker/shared-commands@0.2.3':
-    resolution: {integrity: sha512-icb50PRNMZmkhc82BAu4/0CZp4ePeh3sXNdPsL2N4//U3impSC53RDbMnmMMQbe7uWfbIny9dujyu9IOtEMvOQ==}
+  '@statewalker/shared-registry@0.1.3':
+    resolution: {integrity: sha512-JUNLccgnxp1x8EJdis6eSDwuS6umSXhhyjP6Ism1Yz+W2DL+jO7EXWS2t3DFTZf6QevBAbX3Hp1poCz9luihBQ==}
 
-  '@statewalker/shared-logger-pino@0.1.3':
-    resolution: {integrity: sha512-mQih5D8iNxj3V2vNWA6hG5M+oxRah8lMyx6UYyGox/2xslVeoJAvjlL7YjxrgjoYBBa7NowU1Bi+qLvg8/PKYg==}
+  '@statewalker/shared-slots@0.2.3':
+    resolution: {integrity: sha512-uL3wAg4ZKpngNsnBwluQlSbeI2gK5yCRCqeRhARrjKMZnHmeA1Bisv9Vx5EraByl6ZWN+cl3quiwrobxbKEDfA==}
 
-  '@statewalker/shared-logger@0.1.3':
-    resolution: {integrity: sha512-VoyiUQ1ileNpwokLn3g5/sNi2GpqDigRzg5k4qGx/chWY3RN1km9cYlU4KEvypxBEn1HLl8SbJsP2kZFB+u30g==}
+  '@statewalker/vcs-commands@0.3.2':
+    resolution: {integrity: sha512-OhZbuNy4SXLuRREX3Qta/jdzE4U4oiwwLXu4htca62snmOO9IabwmCi7po/aSGieHl0gR5Oj+ETY7hv0wgr8Dw==}
 
-  '@statewalker/shared-registry@0.1.2':
-    resolution: {integrity: sha512-x6/5Nx2pBF10+08/wPBZGtr5IFbF+B7PGtZ+6zZJ7ucmMDEE5rZYN8/3hI8e3i1UVQJDDP2/pAwiIoKD3weyzg==}
+  '@statewalker/vcs-core@0.3.3':
+    resolution: {integrity: sha512-CAFhul+epgEZ1IXId9363Ki5PGpiurkeqvnnqJ2S3znGxiQ5MQbGgdJcBKbsnHGhhRJwTAAxqr5gGw8/p4f/iQ==}
 
-  '@statewalker/shared-slots@0.2.2':
-    resolution: {integrity: sha512-aJlrWiJen5hcPQBP3C1sWSboJbqReAcJka/9m93Kh+QTxCgdLzZfBx75Zc6hcLiNW5dFLHDLHSAJ/gUbq2UqNg==}
+  '@statewalker/vcs-store-files@0.3.2':
+    resolution: {integrity: sha512-2dorNiqy8Xjr5qRJZlPsd9PFcFX3w/GjF1bTVpv/eT3QRD0TjruN9TCH3k19Rqq9Q9Z0sYIXTgtfc7CQ8jHkhQ==}
 
-  '@statewalker/storage@0.2.1':
-    resolution: {integrity: sha512-CJN5bd0aLStnK3W7rw+CQa9zW8GyDM/BaH34JW2rXrJGnAcj+JgltnJ/yA4ZUS7N5BF1vueBk/BWw+cWvI4svQ==}
+  '@statewalker/vcs-store-mem@0.3.2':
+    resolution: {integrity: sha512-Zr3Wn0Mims/7nU6tqUrLRBlPmjfKBhP2DijQs/KAz25zPI33+fSiHJQy3pK4jg8SbbxH33v69D7mK2SAIpZ2yg==}
 
-  '@statewalker/vcs-commands@0.3.1':
-    resolution: {integrity: sha512-miin4/Gws+5LEwxbpEVEfr5SiKtCQhw6FKp0qkCSRX1tXZYJYrq6VPCpzYI7oRnZZbNwBSIY+udpr7hIjdp0zQ==}
+  '@statewalker/vcs-transport-adapters@0.3.3':
+    resolution: {integrity: sha512-Tt81BgaV+UICis5OO3Hb1SapfVVHjxUuYmP9M5EwFKXptqPi56JdzzvvrHWEIUcQX1FAp9I9vbj28x3+x99rlw==}
 
-  '@statewalker/vcs-core@0.3.1':
-    resolution: {integrity: sha512-5R/putHE3s0Xl+baAQczceLzEFqCZ6xBLwMQ6H63FHPGg3uZaxUpnq8cnxgCVqAdvNTlhlruYEJlmMTKLyJ5ww==}
+  '@statewalker/vcs-transport@0.3.2':
+    resolution: {integrity: sha512-aw9Exfit9tYBDeaEfBNVRY2Asl3AhqlVdNMH8B7oztYg6lCenIwfo3/VwLzTIHkajTORwT6woXYXpMe7iNdKHw==}
 
-  '@statewalker/vcs-store-files@0.3.1':
-    resolution: {integrity: sha512-ntJ+RMStmnM/E/KCn/HOmzwA9rMtTGuBZ1486eCSa4xE93z4VXwhhtBUAdwtWiUmCI6HTW6mDYVqBD7bVLvTCQ==}
+  '@statewalker/vcs-utils-node@0.3.2':
+    resolution: {integrity: sha512-w8/hwe8K4KzqezO/VRb5MOnf8MwTni6SfAT56GlwXznSjMVQXWkKXhBcFSwf+CJFw5ZHru02xMcuJUj4Se4Bzg==}
 
-  '@statewalker/vcs-store-mem@0.3.1':
-    resolution: {integrity: sha512-wGnUzbyJHEXEaMWnwH+1ELOQ1HQONVkdSaOHoo9rrsWKJRIFDgStnO0h5tBM9TChpAFgFBPJ3D877kDJrDsHlg==}
+  '@statewalker/vcs-utils@0.3.2':
+    resolution: {integrity: sha512-jb2FQymu/+ARea7zTwp88CAY7/8xoLRoysVajq8nS6Djxw5yRjTXvg1IrHfepQUHdaE4cOwhEtyfsFsTiiI7PA==}
 
-  '@statewalker/vcs-transport-adapters@0.3.1':
-    resolution: {integrity: sha512-UcLuz1fqf7QTwPgS5o4PESyXPJBpI6frjHMoJVG+WRZuIOriOcnyyZei94YEAhJtcbWgDlW5eZq1J3zgtJM5pg==}
+  '@statewalker/vcs-working-tree@0.3.2':
+    resolution: {integrity: sha512-GlalgmUPX1q9nA+gA/scpxkI09EKcMonQmgUxiBE75T9zbQnSa7D57IGPd2rXheB/411iaX89//NajAhkA0Apg==}
 
-  '@statewalker/vcs-transport@0.3.1':
-    resolution: {integrity: sha512-Nq8b5ZYuhCdyCQTVE6qohjq8gI4hxbaw46M8pCCTvbj/HmXy0cCqnOcL1XSsHdFrCXp6NYkl9QqFICy0omxW3Q==}
+  '@statewalker/vcs-workspace@0.3.2':
+    resolution: {integrity: sha512-Hh1EfWDxnQGHLcoH3dF1J1qDTvNHsZX5RJv2XatYKga2g+Qr3W85KZj38y/Zm8lqTxEktGEW7NT0IsyKW/CVEQ==}
 
-  '@statewalker/vcs-utils-node@0.3.1':
-    resolution: {integrity: sha512-zNis7Tq9+mla7+gsb2GyrIlN2tfErW3FIv3pwzSo4dMkpy7z3lIM/ekuoLA0eKYqSuliLm0ZVlp1O70wwwXljw==}
+  '@statewalker/webrun-builder@0.2.1':
+    resolution: {integrity: sha512-SoLZ88zccPEQ0KqZkIS/OZIiUJbDFsDeZzzIYTu/ymRJKKHfZPOLdVsr2iHGxn7NJWJTs0yA8CRKrZNhx1ImcQ==}
 
-  '@statewalker/vcs-utils@0.3.1':
-    resolution: {integrity: sha512-8eFppTXoezkawLOktjFLpvqI9bfK8AKwkwWYAh9KN2cavkPOCwds+tqUG+MluWgHzFv6FF1oRa56GNHdkmoXmQ==}
+  '@statewalker/webrun-content-store@0.2.3':
+    resolution: {integrity: sha512-bBeJvqED7seyTwzrZlHmV8Vm4ocrbJBQTnFf80Mqk8ZLW8yA66QmdQO1QOO5HndhZpFpD5hOOtOaH38d3+yRdA==}
 
-  '@statewalker/vcs-working-tree@0.3.1':
-    resolution: {integrity: sha512-c3xInP6aIkbSsHUj1JL6NqhXWSzW63GcvEdL1TlfiqUWpInALeickmBtud89rPDa0de5wOoa1+jJ4H3e/mQfWQ==}
+  '@statewalker/webrun-dataflow@0.1.3':
+    resolution: {integrity: sha512-SrvSkwk8PQIPm3bgg3ZoXc1c5Abce1Wdjo5+qVCO4hRC2SpypOk8TsgqdPA4ydEs+mqrFWphZcNt96fv5UtfLg==}
 
-  '@statewalker/vcs-workspace@0.3.0':
-    resolution: {integrity: sha512-WVu42W1FZgApyW5ep8XOpPfeDKh7HEZcxi1ab8g2o/mcRrVZzEUH2tMrpQZTEonXlpxGCuAPicgl0tfEaIbVIA==}
+  '@statewalker/webrun-files-browser@0.10.2':
+    resolution: {integrity: sha512-2Fq90Q2YYPcWpvmJed6vc81OmxcqpDXITO0V1ntFEN2UMimeiebwFnMBUbgwac1m/rQoPTMNdN0ME1wcJcEKrA==}
 
-  '@statewalker/webrun-builder@0.2.0':
-    resolution: {integrity: sha512-JxWBE7IiFHAvdqY6eKS35UaC7P5lWJNc/hDd7Rc5hh7FW6QgroRL9AT+5SSJPOnAMPDKcASlKOiK54dyEqtWqQ==}
+  '@statewalker/webrun-files-composite@0.10.3':
+    resolution: {integrity: sha512-fpW7cq8FNCmuyD7J+qwEz1pSQ4a+Mc5VpJhmj92OReGlh551NzDeChdjyZ8Y25kqtm0Y4QLlGt8YfPed05RAag==}
 
-  '@statewalker/webrun-dataflow@0.1.2':
-    resolution: {integrity: sha512-VEvFSDTlNkUf43LPG2DG+racpwGFYbee/dmEATeIbVPMcWGemdr0I5Sf56ZEvQCKCuXwQdCqc04yQPAsnBkBfA==}
+  '@statewalker/webrun-files-mem@0.10.3':
+    resolution: {integrity: sha512-a6SnfQerlKqJybvK4oxd0VsvREHv91yo20JsU4s4EhiewdT3o6q3qzDKS9hZoMGBaOPOyqoQY9ViGnHjdXeiEA==}
 
-  '@statewalker/webrun-files-browser@0.10.1':
-    resolution: {integrity: sha512-yG00c1/ByOha5KrM/NmxrnfqqiQHv7BJrppAnqd19Dx8CCHBkpWFTCrC7qdJZxfSKC8lqY3TgvEnqeiiPz/4Tg==}
+  '@statewalker/webrun-files-node@0.10.3':
+    resolution: {integrity: sha512-h74IPpnC1VSh+YJhQO3KQbQ1HFS5ygwIiuMOqiwimUITeljlNrWjaUAksPhHyXRK9M/ZKUk+XBxmDWZndcQRhw==}
 
-  '@statewalker/webrun-files-composite@0.10.2':
-    resolution: {integrity: sha512-4UkUPJc4QrRQObkRnDylwpwas9rA86hSsnP7iv1E8Y/cr1UWnXRU5BZJ+aYi2d6Hjh5jtbuDugaYD9VxNWbq7w==}
+  '@statewalker/webrun-files-sync@0.2.3':
+    resolution: {integrity: sha512-G/O1deY+LpXzmS/hdGfi3H3XHlevEgXIuID/das1EI48mPELCWBn2sOUbKgWdnSstgSw0IxQeOk+0EVEHdo3RA==}
 
-  '@statewalker/webrun-files-mem@0.10.2':
-    resolution: {integrity: sha512-y2d1d3DLHLom5IXrLRNDNyFCxJkQfnKOblH05YTFFvIwUllM6yb/ahKzOIiH7N2goeK2SS/gvpV0NKvBTdINIg==}
-
-  '@statewalker/webrun-files-node@0.10.2':
-    resolution: {integrity: sha512-fqK98opEB8Y9PJJNXl3A66oWt8OWCB/0vzxYT9iFYLU16zqWt8+dUZAqIvGj5hb+kADWR+io5cwnH8XwQ/VwKg==}
-
-  '@statewalker/webrun-files@0.10.1':
-    resolution: {integrity: sha512-E2tQbiMHhGzRBHp3BK5zqsNSo7kUeg+kCUF2rZCxlWwFZrKorMAe5CEecWUqmyQffG7fWJgfNjyU9oEre2sKMA==}
+  '@statewalker/webrun-files@0.10.2':
+    resolution: {integrity: sha512-hqsaY8BwRqvV7f6v6n82iIFEfaFZTLHrBk03o8pwfOPYMXMvtAdk9RYT/pDwp9cWubmePylc0Xpyuh+JC4hVtw==}
 
   '@statewalker/webrun-http-browser@0.6.2':
     resolution: {integrity: sha512-JzvPffTu7cJ4BKiqd0oE8+tMNmbD1jAa2n/iHZDmiQKQYMdqd3hmX+/BIyIffGVI46MTYPxcQHgydDHIW9a5Qg==}
@@ -1339,21 +1333,27 @@ packages:
   '@statewalker/webrun-http-streams@0.2.4':
     resolution: {integrity: sha512-GnWD2PflO1b33y2NCwqoqUThB7vzbMTlFSWs+cBGfkcYycws3JlQ6INaxpHrriYuXGB3a/Flq69XVdHlyJwLaw==}
 
-  '@statewalker/webrun-modules@0.3.2':
-    resolution: {integrity: sha512-aovnsPbLGrmjtKEFAM4qEvOBwMsFAf3KER3FwlCwq+iKkqOPDEl+tmqaX/Xnky1mQUFLs7TVxmxKB55/Y/A9nw==}
+  '@statewalker/webrun-merge@0.2.2':
+    resolution: {integrity: sha512-Sl/WDSR5KbXxCbHUEYYHh18lPA6NlXEnU5d7ytierG4inU++dYaGbOwZ43P/X5yWYNzBfy4Odx8Q3+55hxtuvQ==}
+
+  '@statewalker/webrun-modules@0.3.3':
+    resolution: {integrity: sha512-3Lt4sG38QlQArVDlWIgbKaHOskSsuSZLDYVx+6Ntl3wSkAn+0io7wDPgJxGrlmkg/CzoR+OooNueJF7GVWGgFg==}
 
   '@statewalker/webrun-rpc@0.4.2':
     resolution: {integrity: sha512-XR5oukg2U+WA/DIHuaJNVnzTqm9UjK1Q1TyPL0VV3A51bnns1MHZnD3AmlcIxuh5/c0U8ANWP8A/OBVfXrPXlg==}
 
-  '@statewalker/webrun-site-builder@0.2.1':
-    resolution: {integrity: sha512-EE6xd3cG2qjWGs4EAfU6I6C0gNnczyRueXjUXbEMdJ9lxObEiv5Yo9CRa0/XA/c04lt6VpqlstMfPfhgb4fqqg==}
+  '@statewalker/webrun-site-builder@0.2.2':
+    resolution: {integrity: sha512-+qIRtF3DujfjMLKViSiDgpwUruPL3SQUvXOqSAw7CLL/YoVFE/KgRlnup299Fd2yW/5FiPvdKEFYvVbTv8ATFA==}
     peerDependencies:
       '@statewalker/webrun-files': ^0.9.0 || ^0.10.0
 
-  '@statewalker/webrun-site-host@0.2.3':
-    resolution: {integrity: sha512-c0PsVLXv3q/jCB7oWsqh3E4NTssSqKDzDL+eFDCa0TElw4iPpfsa9qvYcsyIB+5wc4nhYjyVxPXVUk6djTDsSg==}
+  '@statewalker/webrun-site-host@0.2.4':
+    resolution: {integrity: sha512-IHXbFItBjqKDeDA2W1TRRKlVl8/yHLZzhYITd4ZXpYJ79R+aNu4/Blk/szEZW4SumA5bBc7zI54FcNZeCq39bw==}
     peerDependencies:
       '@statewalker/webrun-files': ^0.9.0 || ^0.10.0
+
+  '@statewalker/webrun-storage@0.2.2':
+    resolution: {integrity: sha512-O14peslfjR0XV09jAdKkHNp9p5mnslkLVL3oLqqKHe9J0x9FLntQgZn9FZht/bguDqJzPGj7udOhf4qfjhGAXQ==}
 
   '@statewalker/webrun-streams@0.2.1':
     resolution: {integrity: sha512-2HrWr6cMdLeXUwrWlqiufiAA+u2FdAcY932uhHZrEtCsePTsC1g9lP6qQ1abSAVZHzYE0NTLpzZIYLXk/U1b1Q==}
@@ -1967,8 +1967,8 @@ packages:
   mz@2.7.0:
     resolution: {integrity: sha512-z81GNO7nnYMEhrGh9LeymoE4+Yr0Wn5McHIZMK5cfQCl+NDX08sCZgUc9/6MHni9IWuFLm1Z3HTCXu2z9fN62Q==}
 
-  nanoid@3.3.19:
-    resolution: {integrity: sha512-Y2tUNy4ouw6tq5oDSKeQYGOyhkUBhNOcGV/02KC+6kd9eDGqdZd++mjMiIDilrBYvjEnCYvVtsuHCuP+okSfug==}
+  nanoid@3.3.20:
+    resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
@@ -2036,8 +2036,8 @@ packages:
     resolution: {integrity: sha512-TfySrs/5nm8fQJDcBDuUng3VOUKsd7S+zqvbOTiGXHfxX4wK31ard+hoNuvkicM/2YFzlpDgABOevKSsB4G/FA==}
     engines: {node: '>= 6'}
 
-  postcss@8.5.28:
-    resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
+  postcss@8.5.29:
+    resolution: {integrity: sha512-49cGhUbXj8Qenv0iTMxA1cFBzxXoctpC9Ujd77t1WcbJIr6nF/eI7g/8MgxrYldFRuAXvja7xQRwavoW7kgrxQ==}
     engines: {node: ^10 || ^12 || >=14}
 
   proc-log@7.0.0:
@@ -2776,25 +2776,11 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@statewalker/content-store@0.2.2':
-    dependencies:
-      '@statewalker/storage': 0.2.1
-      '@statewalker/webrun-files': 0.10.1
+  '@statewalker/shared-adapters@0.1.3': {}
 
-  '@statewalker/files-sync@0.2.2':
-    dependencies:
-      '@statewalker/merge-core': 0.2.1
-      '@statewalker/webrun-files': 0.10.1
+  '@statewalker/shared-baseclass@0.1.3': {}
 
-  '@statewalker/merge-core@0.2.1':
-    dependencies:
-      '@statewalker/webrun-files': 0.10.1
-
-  '@statewalker/shared-adapters@0.1.2': {}
-
-  '@statewalker/shared-baseclass@0.1.2': {}
-
-  '@statewalker/shared-commands@0.2.3(@types/json-schema@7.0.15)(zod@4.6.5)':
+  '@statewalker/shared-commands@0.2.4(@types/json-schema@7.0.15)(zod@4.6.5)':
     dependencies:
       '@standard-community/standard-json': 0.3.6(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(zod@4.6.5)
       '@standard-schema/spec': 1.1.0
@@ -2809,113 +2795,119 @@ snapshots:
       - zod
       - zod-to-json-schema
 
-  '@statewalker/shared-logger-pino@0.1.3':
+  '@statewalker/shared-logger-pino@0.1.4':
     dependencies:
-      '@statewalker/shared-logger': 0.1.3
+      '@statewalker/shared-logger': 0.1.4
       pino: 10.4.0
       pino-pretty: 13.1.3
 
-  '@statewalker/shared-logger@0.1.3':
+  '@statewalker/shared-logger@0.1.4':
     dependencies:
-      '@statewalker/shared-adapters': 0.1.2
+      '@statewalker/shared-adapters': 0.1.3
 
-  '@statewalker/shared-registry@0.1.2': {}
+  '@statewalker/shared-registry@0.1.3': {}
 
-  '@statewalker/shared-slots@0.2.2': {}
+  '@statewalker/shared-slots@0.2.3': {}
 
-  '@statewalker/storage@0.2.1':
+  '@statewalker/vcs-commands@0.3.2':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-store-files': 0.3.2
+      '@statewalker/vcs-store-mem': 0.3.2
+      '@statewalker/vcs-transport': 0.3.2
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/vcs-working-tree': 0.3.2
 
-  '@statewalker/vcs-commands@0.3.1':
+  '@statewalker/vcs-core@0.3.3':
     dependencies:
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-store-files': 0.3.1
-      '@statewalker/vcs-store-mem': 0.3.1
-      '@statewalker/vcs-transport': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
-      '@statewalker/vcs-working-tree': 0.3.1
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/webrun-storage': 0.2.2
 
-  '@statewalker/vcs-core@0.3.1':
+  '@statewalker/vcs-store-files@0.3.2':
     dependencies:
-      '@statewalker/storage': 0.2.1
-      '@statewalker/vcs-utils': 0.3.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/vcs-working-tree': 0.3.2
 
-  '@statewalker/vcs-store-files@0.3.1':
+  '@statewalker/vcs-store-mem@0.3.2':
     dependencies:
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
-      '@statewalker/vcs-working-tree': 0.3.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/vcs-working-tree': 0.3.2
 
-  '@statewalker/vcs-store-mem@0.3.1':
+  '@statewalker/vcs-transport-adapters@0.3.3':
     dependencies:
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
-      '@statewalker/vcs-working-tree': 0.3.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-transport': 0.3.2
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/webrun-storage': 0.2.2
 
-  '@statewalker/vcs-transport-adapters@0.3.1':
+  '@statewalker/vcs-transport@0.3.2':
     dependencies:
-      '@statewalker/storage': 0.2.1
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-transport': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
-
-  '@statewalker/vcs-transport@0.3.1':
-    dependencies:
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-utils': 0.3.2
       '@statewalker/webrun-http-streams': 0.2.4
       '@statewalker/webrun-streams': 0.2.1
 
-  '@statewalker/vcs-utils-node@0.3.1':
+  '@statewalker/vcs-utils-node@0.3.2':
     dependencies:
-      '@statewalker/vcs-utils': 0.3.1
-      '@statewalker/webrun-files-node': 0.10.2
+      '@statewalker/vcs-utils': 0.3.2
+      '@statewalker/webrun-files-node': 0.10.3
 
-  '@statewalker/vcs-utils@0.3.1':
+  '@statewalker/vcs-utils@0.3.2':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
-      '@statewalker/webrun-files-mem': 0.10.2
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-files-mem': 0.10.3
       pako: 3.0.2
 
-  '@statewalker/vcs-working-tree@0.3.1':
+  '@statewalker/vcs-working-tree@0.3.2':
     dependencies:
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-utils': 0.3.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-utils': 0.3.2
 
-  '@statewalker/vcs-workspace@0.3.0':
+  '@statewalker/vcs-workspace@0.3.2':
     dependencies:
-      '@statewalker/content-store': 0.2.2
-      '@statewalker/files-sync': 0.2.2
-      '@statewalker/vcs-core': 0.3.1
-      '@statewalker/vcs-transport': 0.3.1
-      '@statewalker/vcs-working-tree': 0.3.1
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/vcs-core': 0.3.3
+      '@statewalker/vcs-transport': 0.3.2
+      '@statewalker/vcs-working-tree': 0.3.2
+      '@statewalker/webrun-content-store': 0.2.3
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-files-sync': 0.2.3
 
-  '@statewalker/webrun-builder@0.2.0':
+  '@statewalker/webrun-builder@0.2.1':
     dependencies:
-      '@statewalker/webrun-dataflow': 0.1.2
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-dataflow': 0.1.3
+      '@statewalker/webrun-files': 0.10.2
 
-  '@statewalker/webrun-dataflow@0.1.2': {}
-
-  '@statewalker/webrun-files-browser@0.10.1':
+  '@statewalker/webrun-content-store@0.2.3':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-storage': 0.2.2
 
-  '@statewalker/webrun-files-composite@0.10.2':
+  '@statewalker/webrun-dataflow@0.1.3': {}
+
+  '@statewalker/webrun-files-browser@0.10.2':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-files': 0.10.2
 
-  '@statewalker/webrun-files-mem@0.10.2':
+  '@statewalker/webrun-files-composite@0.10.3':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-files': 0.10.2
 
-  '@statewalker/webrun-files-node@0.10.2':
+  '@statewalker/webrun-files-mem@0.10.3':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-files': 0.10.2
 
-  '@statewalker/webrun-files@0.10.1': {}
+  '@statewalker/webrun-files-node@0.10.3':
+    dependencies:
+      '@statewalker/webrun-files': 0.10.2
+
+  '@statewalker/webrun-files-sync@0.2.3':
+    dependencies:
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-merge': 0.2.2
+
+  '@statewalker/webrun-files@0.10.2': {}
 
   '@statewalker/webrun-http-browser@0.6.2':
     dependencies:
@@ -2928,11 +2920,15 @@ snapshots:
     dependencies:
       '@statewalker/webrun-streams': 0.2.1
 
-  '@statewalker/webrun-modules@0.3.2':
+  '@statewalker/webrun-merge@0.2.2':
+    dependencies:
+      '@statewalker/webrun-files': 0.10.2
+
+  '@statewalker/webrun-modules@0.3.3':
     dependencies:
       '@jspm/core': 2.1.0
-      '@statewalker/webrun-files': 0.10.1
-      '@statewalker/webrun-files-mem': 0.10.2
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-files-mem': 0.10.3
       acorn: 8.18.0
       acorn-globals: 7.0.1
       cjs-module-lexer: 2.2.1
@@ -2947,16 +2943,20 @@ snapshots:
     dependencies:
       '@statewalker/webrun-streams': 0.2.1
 
-  '@statewalker/webrun-site-builder@0.2.1(@statewalker/webrun-files@0.10.1)':
+  '@statewalker/webrun-site-builder@0.2.2(@statewalker/webrun-files@0.10.2)':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
+      '@statewalker/webrun-files': 0.10.2
 
-  '@statewalker/webrun-site-host@0.2.3(@statewalker/webrun-files@0.10.1)':
+  '@statewalker/webrun-site-host@0.2.4(@statewalker/webrun-files@0.10.2)':
     dependencies:
-      '@statewalker/webrun-files': 0.10.1
-      '@statewalker/webrun-files-mem': 0.10.2
+      '@statewalker/webrun-files': 0.10.2
+      '@statewalker/webrun-files-mem': 0.10.3
       '@statewalker/webrun-http-browser': 0.6.2
-      '@statewalker/webrun-site-builder': 0.2.1(@statewalker/webrun-files@0.10.1)
+      '@statewalker/webrun-site-builder': 0.2.2(@statewalker/webrun-files@0.10.2)
+
+  '@statewalker/webrun-storage@0.2.2':
+    dependencies:
+      '@statewalker/webrun-files': 0.10.2
 
   '@statewalker/webrun-streams@0.2.1': {}
 
@@ -3412,7 +3412,7 @@ snapshots:
       object-assign: 4.1.1
       thenify-all: 1.6.0
 
-  nanoid@3.3.19: {}
+  nanoid@3.3.20: {}
 
   npm-package-arg@14.0.0:
     dependencies:
@@ -3490,9 +3490,9 @@ snapshots:
 
   pirates@4.0.7: {}
 
-  postcss@8.5.28:
+  postcss@8.5.29:
     dependencies:
-      nanoid: 3.3.19
+      nanoid: 3.3.20
       picocolors: 1.1.1
       source-map-js: 1.2.2
 
@@ -3717,7 +3717,7 @@ snapshots:
     dependencies:
       lightningcss: 1.33.0
       picomatch: 4.0.7
-      postcss: 8.5.28
+      postcss: 8.5.29
       rolldown: 1.2.12
       tinyglobby: 0.2.17
     optionalDependencies:
