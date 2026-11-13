@@ -96,6 +96,10 @@ export class ProjectBuilder {
   private scanBatch?: number;
   private tuning: EngineTuning = {};
   private store?: Promise<KV>;
+  /** Closes the open store's guard (see `reopen`). */
+  private closeStore?: () => void;
+  /** Accessor calls in flight (not serialised with runs); `reopen` waits for them. */
+  private readonly inflight = new Set<Promise<unknown>>();
   /** Bumped whenever the builder set or the tuning changes. */
   private generation = 0;
   private built?: Built;
@@ -269,8 +273,20 @@ export class ProjectBuilder {
    */
   async reopen(): Promise<void> {
     await this.chain;
+    while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
+    this.closeStore?.();
+    this.closeStore = undefined;
     this.store = undefined;
     this.built = undefined;
+  }
+
+  /** Track an accessor call, so `reopen` waits for it. */
+  private track<T>(call: () => Promise<T>): Promise<T> {
+    const p = call();
+    this.inflight.add(p);
+    const done = () => this.inflight.delete(p);
+    p.then(done, done);
+    return p;
   }
 
   /**
@@ -278,7 +294,11 @@ export class ProjectBuilder {
    * change. For a builder registered after the current engine was made (during a run), it
    * applies when the next engine is made, before the next run.
    */
-  async restartFrom(builderId: string): Promise<void> {
+  restartFrom(builderId: string): Promise<void> {
+    return this.track(() => this.restart(builderId));
+  }
+
+  private async restart(builderId: string): Promise<void> {
     const built = this.running ?? this.current();
     const engine = await built.engine;
     if (built.ids.has(builderId)) await engine.invalidate(builderId);
@@ -287,35 +307,40 @@ export class ProjectBuilder {
   }
 
   /** Queued tasks per builder, and the dead letters of the registered builders. */
-  async status(): Promise<BuildStatus> {
-    const built = this.running ?? this.current();
-    const engine = await built.engine;
-    const status = await engine.status();
-    const deadLetters = (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
-    return { ...status, deadLetters: deadLetters.length };
+  status(): Promise<BuildStatus> {
+    return this.track(async () => {
+      const built = this.running ?? this.current();
+      const engine = await built.engine;
+      const status = await engine.status();
+      const deadLetters = (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+      return { ...status, deadLetters: deadLetters.length };
+    });
   }
 
   /** Dead letters of the registered builders. */
-  async deadLetters(): Promise<DeadLetter[]> {
-    const built = this.running ?? this.current();
-    const engine = await built.engine;
-    return (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+  deadLetters(): Promise<DeadLetter[]> {
+    return this.track(async () => {
+      const built = this.running ?? this.current();
+      const engine = await built.engine;
+      return (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+    });
   }
 
-  async get(collection: string, key: string): Promise<Json | undefined> {
-    return (await this.getEngine()).get(collection, key);
+  get(collection: string, key: string): Promise<Json | undefined> {
+    return this.track(async () => (await this.getEngine()).get(collection, key));
   }
 
-  async list(collection: string): Promise<Row[]> {
-    return (await this.getEngine()).list(collection);
+  list(collection: string): Promise<Row[]> {
+    return this.track(async () => (await this.getEngine()).list(collection));
   }
 
-  async keys(collection: string): Promise<string[]> {
-    return (await this.getEngine()).keys(collection);
+  keys(collection: string): Promise<string[]> {
+    return this.track(async () => (await this.getEngine()).keys(collection));
   }
 
   /**
-   * The engine over the registered builders. While a run is in progress this is the run's
+   * The engine over the registered builders. Invalid after `reopen()`: a call through an
+   * engine obtained before it throws. While a run is in progress this is the run's
    * engine; otherwise it is remade (over the same store) when the builders changed.
    */
   getEngine(): Promise<BuildEngine> {
@@ -342,13 +367,17 @@ export class ProjectBuilder {
 
   private openStore(): Promise<KV> {
     if (!this.store) {
+      let open = true;
+      this.closeStore = () => {
+        open = false;
+      };
       const store = openStore(
         this.persistence ?? {
           kind: "files",
           files: this.project.workspace.files,
           path: joinPath(this.project.path, DEFAULT_SYSTEM_FOLDER, "state", "build"),
         },
-      );
+      ).then((kv) => guarded(kv, () => open));
       this.store = store;
       store.catch(() => {
         if (this.store === store) this.store = undefined;
@@ -422,4 +451,28 @@ export class ProjectBuilder {
       dispose: b.dispose ? (key, outputs) => b.dispose?.(key, outputs, project) : undefined,
     };
   }
+}
+
+/**
+ * A store that refuses every call once closed: an engine kept from before `reopen()` must
+ * not write a store another instance now owns (a `FilesKV` allows one writer per folder).
+ */
+function guarded(kv: KV, isOpen: () => boolean): KV {
+  const check = () => {
+    if (!isOpen()) throw new Error("ProjectBuilder: the store was reopened; get a new engine");
+  };
+  return {
+    get: (key) => {
+      check();
+      return kv.get(key);
+    },
+    scan: (prefix, opts) => {
+      check();
+      return kv.scan(prefix, opts);
+    },
+    commit: (writes) => {
+      check();
+      return kv.commit(writes);
+    },
+  };
 }
