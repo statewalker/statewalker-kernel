@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/workspace.browser",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "private": false,
   "type": "module",
   "description": "Workspace-bridge logic fragment: WorkspaceShellAdapter + workspace:* intents.",

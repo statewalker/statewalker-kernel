@@ -1,5 +1,18 @@
 # @statewalker/workspace-vcs.core
 
+## 0.7.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies [c3599dc]
+  - @statewalker/workspace.core@0.6.0
+
 ## 0.6.1
 
 ### Patch Changes

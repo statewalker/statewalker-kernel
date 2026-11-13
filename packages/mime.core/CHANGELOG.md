@@ -1,5 +1,22 @@
 # @statewalker/mime.core
 
+## 0.6.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies [c3599dc]
+  - @statewalker/render.core@0.6.0
+  - @statewalker/shell.core@0.6.0
+  - @statewalker/workspace.core@0.6.0
+
 ## 0.5.2
 
 ### Patch Changes
