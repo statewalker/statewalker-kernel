@@ -6,7 +6,7 @@ import {
   NatureBuilders,
   ProjectBuilder,
   type RegisteredBuilder,
-  SOURCES_SIGNAL,
+  SOURCES_COLLECTION,
 } from "../public/builders/index.js";
 import type { Project } from "../public/types/project.js";
 import { Workspace } from "../public/types/workspace.js";
@@ -22,16 +22,11 @@ class Marker {
 function echoBuilder(processed: string[]): RegisteredBuilder {
   return {
     id: "Echo",
-    inputs: [SOURCES_SIGNAL],
+    inputs: [SOURCES_COLLECTION],
     outputs: ["content"],
-    async *handler(p) {
-      const builder = p.requireAdapter(ProjectBuilder);
-      for await (const u of builder.readUpdates({ signal: SOURCES_SIGNAL, cell: "Echo" })) {
-        processed.push(u.uri);
-        await u.handled();
-        yield { signal: "content", uri: u.uri, stamp: u.stamp };
-      }
-      return true;
+    run(ctx) {
+      processed.push(ctx.key);
+      ctx.emit("content", ctx.key, true);
     },
   };
 }
@@ -42,12 +37,6 @@ async function workspace(files: Record<string, string>): Promise<Workspace> {
   const ws = new Workspace().setFileSystem(fs, "A");
   await ws.open();
   return ws;
-}
-
-async function drain(builder: ProjectBuilder): Promise<void> {
-  for await (const _ of builder.run()) {
-    /* consume */
-  }
 }
 
 describe("applyNature(workspace, nature)", () => {
@@ -70,7 +59,7 @@ describe("applyNature(workspace, nature)", () => {
     // The builders reach the project through the NatureBuilders provider, and run.
     const provider = p.requireAdapter(NatureBuilders);
     const detach = applyNature(p, provider);
-    await drain(p.requireAdapter(ProjectBuilder));
+    await p.requireAdapter(ProjectBuilder).run();
     expect(processed.sort()).toEqual(["a.txt", "b.txt"]);
 
     // The disposer unregisters both the adapter and the builder provider.

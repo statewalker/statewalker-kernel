@@ -103,8 +103,9 @@ request ──> SiteHandler
 
 ### The build is two builders on the project's `ProjectBuilder`
 
-- `WebAppDeps` (`depsBuilder`) reacts only to `package.json`. It re-derives the lock and writes `lock.json` into the cache, then emits `app-deps`.
-- `WebAppTranspile` (`transpileBuilder`) waits for `app-deps`, then handles changes under the client and server folders. If the cache has no `t/<target>/` yet (cold build), it primes each changed module, which pulls and transforms its whole reachable graph. Otherwise it only deletes the changed module's cache entry and lets the next request re-transform it. Removed sources also have their cache entry deleted, so a deleted module is not served from cache.
+- `WebAppDeps` (`depsBuilder`) does work only for `package.json`: it re-derives the lock, writes `lock.json` into the cache and emits the lock text as `app-deps/package.json`.
+- `WebAppTranspile` (`transpileBuilder`) has one task per module under the client and server folders; it reads `app-deps`, so the deps task runs first and a cold build primes against the fresh `lock.json`. Each changed module's cache entry is dropped and the module primed again: on a cold cache the prime pulls and transforms its whole reachable graph, on a warm one it re-transforms the module (its deps are cache hits). A removed (or newly ignored) module's cache entry is deleted by the builder's `dispose`, so it is not served from cache.
+- Both are plain `ProjectBuilder` builders: their state is in the project's engine store, a builder registered after the project's files were scanned still covers them, and a wiped `.project/webapp/` (a `package.json` but no `lock.json`) makes `build()` re-run both.
 
 The cache lives in the project (`.project/webapp/`, written as real files: `raw/`, `t/<target>/`, `lock.json`), so a warm start reads files only, with no transform and no network.
 
@@ -118,7 +119,7 @@ Dependency "react" has non-exact version "^18.3.1". webapp.core requires exact x
 
 ### What breaks
 
-- A failing transpile is logged (`transpile failed`, with the uri) and rethrown, so `build()` rejects. The update stays unhandled and is retried on the next run.
+- A failing transpile (a syntax error, or a newly imported dependency that cannot be fetched) is logged (`transpile failed`, with the uri) and rethrown: the engine retries it, then keeps it as a dead letter and `build()` rejects. The module's previous cache entry is gone, so it is re-transformed on request; the next `build()` retries the task.
 - During hot refresh, rebuild errors are caught and dropped; the only trace is the `transpile failed` log entry.
 - A changed `package.json` re-writes `lock.json`, but a module server that is already running does not re-pin; the new versions take effect on the next session or host start.
 - `build()` and `startHotRefresh()` do nothing on a project that is not a web-app (`startHotRefresh()` returns `undefined`). `buildSiteHandler` does not check `isWebApp`; it builds a handler with the configured or default entries either way.
@@ -127,7 +128,7 @@ Dependency "react" has non-exact version "^18.3.1". webapp.core requires exact x
 
 - Nature: `WebAppNature` (`exists`, `build`, `scan`, `startHotRefresh`), `HotRefreshHandle`, `registerWebApp(workspace)`, `webAppNatureOf(project)`, `buildSiteHandler(project, opts)`, `BuildSiteHandlerOptions`.
 - Configuration: `resolveWebAppConfig(files)`, `WebAppConfig`, `WebAppDetection`, `DEFAULT_CLIENT_ENTRY`, `DEFAULT_SERVER_ENTRY`, `DEFAULT_API_MOUNT`, `DEFAULT_WATCH_INTERVAL_MS`, `NATURE_CONFIG_PATH`.
-- Builders: `depsBuilder(ctx)`, `transpileBuilder(ctx)`, `WebAppBuilderContext`, `APP_DEPS_SIGNAL`, `APP_MODULES_SIGNAL`, `DEPS_BUILDER_ID`, `TRANSPILE_BUILDER_ID`.
+- Builders: `depsBuilder(ctx)`, `transpileBuilder(ctx)`, `WebAppBuilderContext`, `APP_DEPS_COLLECTION`, `APP_MODULES_COLLECTION`, `DEPS_BUILDER_ID`, `TRANSPILE_BUILDER_ID`.
 - Module server: `newWebAppModuleServer(options)`, `WebAppModuleServerOptions`, `WEBAPP_CACHE_ROOT` (`.project/webapp`), `WEBAPP_DEPS_PATH` (`/deps/`).
 - Lock: `deriveLock(appFiles)`, `toExactVersion(range, dependency?)`, `NonExactVersionError`.
 - Files: `PrefixFilesApi` (a `FilesApi` rooted at a path prefix of another one), `appFilesOf`, `cacheFilesOf`, `dataFilesOf`, `systemFolderOf`.

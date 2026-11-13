@@ -1,12 +1,23 @@
+import type { BuilderDef, RowRef, TaskContext } from "@statewalker/webrun-builder";
 import type { Project } from "../types/project.js";
 
 /**
- * Project-bound aliases of the generic builder types from `@statewalker/webrun-builder`.
- * Binding `THost = Project` here lets every existing consumer keep its unparameterized
- * `RegisteredBuilder` / `BuilderProvider` / `BuilderHandler` usage while the engine
- * itself stays project-agnostic. The host-agnostic types pass through unchanged
- * via the package root's `export *`, so this shim only re-binds the Project ones.
+ * A builder contributed to a project's pipeline: an `@statewalker/webrun-builder`
+ * `BuilderDef` whose `run` / `dispose` also receive the project (resources, adapters,
+ * logger), so a nature's builders need not close over a project.
  */
-export type RegisteredBuilder = import("@statewalker/webrun-builder").RegisteredBuilder<Project>;
-export type BuilderProvider = import("@statewalker/webrun-builder").BuilderProvider<Project>;
-export type BuilderHandler = import("@statewalker/webrun-builder").BuilderHandler<Project>;
+export interface RegisteredBuilder extends Omit<BuilderDef, "run" | "dispose"> {
+  /**
+   * The builder's code version (default `""`). `ProjectBuilder` remembers, in its store, the
+   * version of every builder it ran: a builder it has not seen before — or whose version
+   * changed — gets all its tasks re-run (`restartFrom`), so it covers files scanned earlier.
+   */
+  version?: string | number;
+  run(ctx: TaskContext, project: Project): void | Promise<void>;
+  dispose?(key: string, outputs: readonly RowRef[], project: Project): void | Promise<void>;
+}
+
+/** Something that contributes builders to a project (a nature, or part of one). */
+export interface BuilderProvider {
+  builders(): readonly RegisteredBuilder[];
+}

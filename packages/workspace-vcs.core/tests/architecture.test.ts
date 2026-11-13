@@ -298,21 +298,17 @@ describe("architecture — behaviourally, nothing commits on its own", () => {
     // `registerVcs` ran in `beforeEach`; `init()` and `add()` are the whole surface a
     // caller touches. Nothing along that path may have contributed a builder.
     const builder = (await projectOf("a")).requireAdapter(ProjectBuilder);
-    expect((await builder.status()).builders).toEqual([]);
+    expect(builder.registeredBuilders()).toEqual([]);
 
     // And driving the engine to convergence still commits nothing — the backstop for
     // a builder registered by some path this test does not walk.
-    for await (const _ of builder.run()) {
-      /* drain */
-    }
+    await builder.run();
 
     // Tick, then drive it AGAIN: the first drain is not the last word either, since a
     // registration that lands while it is running joins a graph the run already built.
     await new Promise((resolve) => setTimeout(resolve, 20));
-    for await (const _ of builder.run()) {
-      /* re-drain */
-    }
-    expect((await builder.status()).builders).toEqual([]);
+    await builder.run();
+    expect(builder.registeredBuilders()).toEqual([]);
     expect(await nature.log()).toEqual([]);
   });
 });

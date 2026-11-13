@@ -58,7 +58,7 @@ inline.core                                              (shared-* only)
 
 Every package is public; there are no private packages or apps in this repository.
 
-Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-dataflow`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
+Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
 
 ## How to run it
 
@@ -122,7 +122,9 @@ Most `.core` packages export a `./fragment` entry (an `init(ctx)` for the backbo
 
 ### Releases
 
-Packages are published to npm from CI with changesets and npm provenance. After CI passes on `main`, a release job adds changesets for packages whose packed contents differ from the published version and opens a "chore: version packages" pull request; merging it publishes. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
+Every merge to `main` publishes (`.github/workflows/ci.yml`, jobs `release` and `publish`). After CI passes on `main`, the release job adds changesets for packages whose packed contents differ from npm's `latest`, applies all pending changesets (`changeset version`), commits "chore: version packages" to `main`, and packs what npm lacks; the publish job uploads it with npm trusted publishing and provenance and tags a GitHub release per package. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
+
+One-time set-up: npm's trusted publisher for each package names this repository, `ci.yml` and the `npm` environment; the workflow token may push to `main`. A package npm has never seen is skipped with a warning until its first version is published by hand.
 
 ### License
 
