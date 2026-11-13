@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/platform.core",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": false,
   "type": "module",
   "description": "Platform-capability command declarations (pickers, downloads, clipboard, preferences, URL state) shared by statewalker fragments.",
