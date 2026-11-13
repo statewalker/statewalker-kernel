@@ -349,8 +349,12 @@ export class ProjectBuilder {
 
   /** Track an accessor call, so `reopen` waits for it (or wait for a pending `reopen`). */
   private track<T>(call: () => Promise<T>): Promise<T> {
+    // A pending reopen queues behind the run in progress; while a run holds the turn the
+    // call is served by the run's engine (and tracked, so the reopen waits for it) instead
+    // of waiting: a `steps()` consumer awaiting a read between steps would otherwise
+    // deadlock with the reopen queued behind its own suspended run.
     const reopening = this.reopening;
-    if (reopening) return reopening.then(() => this.track(call));
+    if (reopening && !this.running) return reopening.then(() => this.track(call));
     const p = call();
     this.inflight.add(p);
     const done = () => this.inflight.delete(p);

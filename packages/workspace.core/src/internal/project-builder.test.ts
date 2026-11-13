@@ -649,6 +649,24 @@ describe("ProjectBuilder — steps()", () => {
     expect(order).toEqual(["step", "step", "run", "reopen"]);
   });
 
+  it("reads between steps do not deadlock with a pending reopen()", async () => {
+    const p = await project(files(4));
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder([]));
+    const steps = builder.steps();
+    await steps.next(); // suspended after the scan
+    const reopened = builder.reopen(); // queued behind the suspended run
+    const status = await Promise.race([
+      builder.status(),
+      new Promise<"stuck">((r) => setTimeout(() => r("stuck"), 200)),
+    ]);
+    expect(status).not.toBe("stuck");
+    expect(await builder.keys("content")).toEqual([]); // read from the run's engine
+    for (let n = await steps.next(); !n.done; n = await steps.next());
+    await reopened;
+    expect(await builder.keys("content")).toHaveLength(4); // after the reopen
+  });
+
   it("an exception in the loop releases the turn and the engine", async () => {
     const p = await project(files(4));
     const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
