@@ -7,6 +7,12 @@ import type { Project } from "../types/project.js";
  * logger), so a nature's builders need not close over a project.
  */
 export interface RegisteredBuilder extends Omit<BuilderDef, "run" | "dispose"> {
+  /**
+   * The builder's code version (default `""`). `ProjectBuilder` remembers, in its store, the
+   * version of every builder it ran: a builder it has not seen before — or whose version
+   * changed — gets all its tasks re-run (`restartFrom`), so it covers files scanned earlier.
+   */
+  version?: string | number;
   run(ctx: TaskContext, project: Project): void | Promise<void>;
   dispose?(key: string, outputs: readonly RowRef[], project: Project): void | Promise<void>;
 }

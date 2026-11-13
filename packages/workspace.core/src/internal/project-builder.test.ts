@@ -24,15 +24,20 @@ async function project(files: Record<string, string>, fs = new MemFilesApi()): P
 }
 
 /** A builder that records every source it processes and every one it disposes. */
-function echoBuilder(processed: string[], disposed: string[] = []): RegisteredBuilder {
+function echoBuilder(
+  processed: string[],
+  disposed: string[] = [],
+  id = "Echo",
+  output = "content",
+): RegisteredBuilder {
   return {
-    id: "Echo",
+    id,
     inputs: [SOURCES_COLLECTION],
-    outputs: ["content"],
+    outputs: [output],
     run(ctx, p) {
       if (!p?.workspace) throw new Error("the project is passed to run()");
       processed.push(ctx.key);
-      ctx.emit("content", ctx.key, true);
+      ctx.emit(output, ctx.key, true);
     },
     dispose(key) {
       disposed.push(key);
@@ -182,7 +187,7 @@ describe("ProjectBuilder — restartFrom and failures", () => {
     expect(second).toEqual(["a.txt"]);
     unregister();
     await builder.run();
-    expect((await builder.getEngine()).list("content")).toBeDefined();
+    expect(builder.registeredBuilders()).toEqual([]);
   });
 });
 
@@ -210,6 +215,172 @@ describe("ProjectBuilder — progress and scan batches", () => {
     expect(result.scanned).toMatchObject({ changed: 3, more: false });
     expect(progress).toContain("Echo");
     expect(progress).toContain("Count");
+  });
+});
+
+describe("ProjectBuilder — builders registered late, changes during a run", () => {
+  it("a builder registered after a run covers the files scanned before", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder(echoBuilder([]));
+    await builder.run();
+    const late: string[] = [];
+    builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    expect(late.sort()).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it("a run with no builders, then a registered one, processes every file", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    await builder.run();
+    const processed: string[] = [];
+    builder.registerBuilder(echoBuilder(processed));
+    await builder.run();
+    expect(processed).toEqual(["a.txt"]);
+  });
+
+  it("a new session with an extra builder runs it over the persisted sources", async () => {
+    const fs = new MemFilesApi();
+    const first = await project({ "/proj/a.txt": "a" }, fs);
+    first.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder([]));
+    await first.requireAdapter(ProjectBuilder).run();
+
+    const second = await project({}, fs);
+    const echo: string[] = [];
+    const late: string[] = [];
+    const b2 = second.requireAdapter(ProjectBuilder);
+    b2.registerBuilder(echoBuilder(echo));
+    b2.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await b2.run();
+    expect(echo).toEqual([]); // unchanged builder: nothing to do
+    expect(late).toEqual(["a.txt"]);
+  });
+
+  it("a changed builder version re-runs its tasks", async () => {
+    const fs = new MemFilesApi();
+    const first = await project({ "/proj/a.txt": "a" }, fs);
+    const processed: string[] = [];
+    first.requireAdapter(ProjectBuilder).registerBuilder({ ...echoBuilder(processed), version: 1 });
+    await first.requireAdapter(ProjectBuilder).run();
+    const second = await project({}, fs);
+    second
+      .requireAdapter(ProjectBuilder)
+      .registerBuilder({ ...echoBuilder(processed), version: 1 });
+    await second.requireAdapter(ProjectBuilder).run();
+    expect(processed).toEqual(["a.txt"]);
+    const third = await project({}, fs);
+    third.requireAdapter(ProjectBuilder).registerBuilder({ ...echoBuilder(processed), version: 2 });
+    await third.requireAdapter(ProjectBuilder).run();
+    expect(processed).toEqual(["a.txt", "a.txt"]);
+  });
+
+  it("re-registering keeps the state of a memory store", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configurePersistence({ kind: "memory" });
+    builder.registerBuilder(echoBuilder(processed));
+    await builder.run();
+    builder.registerBuilder(echoBuilder(processed)); // same id, same version
+    await builder.run();
+    expect(processed).toEqual(["a.txt"]);
+    expect(await builder.keys("content")).toEqual(["a.txt"]);
+  });
+
+  it("registering and reading during a run keeps one engine: no work is lost or repeated", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) files[`/proj/f${i}.txt`] = String(i);
+    const fs = new MemFilesApi();
+    const p = await project(files, fs);
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    const processed: string[] = [];
+    let release!: () => void;
+    const midway = new Promise<void>((r) => {
+      release = r;
+    });
+    builder.registerBuilder({
+      ...echoBuilder(processed),
+      async run(ctx) {
+        processed.push(ctx.key);
+        if (processed.length === 6) release();
+        await new Promise((r) => setTimeout(r, 1));
+        ctx.emit("content", ctx.key, true);
+      },
+    });
+    const running = builder.run();
+    await midway;
+    const other: string[] = [];
+    builder.registerBuilder(echoBuilder(other, [], "Other", "other"));
+    await builder.status();
+    await builder.list("content");
+    await builder.restartFrom("Other");
+    await running;
+    expect(processed).toHaveLength(20);
+    await builder.run();
+    expect(processed).toHaveLength(20); // nothing re-executed
+    expect(other).toHaveLength(20);
+
+    const reopened = await project({}, fs);
+    const rb = reopened.requireAdapter(ProjectBuilder);
+    rb.registerBuilder(echoBuilder(processed));
+    rb.registerBuilder(echoBuilder(other, [], "Other", "other"));
+    expect((await rb.run()).executed).toBe(0);
+  });
+
+  it("dead letters of a builder no longer registered do not fail runs", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    const unregister = builder.registerBuilder({
+      id: "Bad",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["bad"],
+      run() {
+        throw new Error("boom");
+      },
+    });
+    await expect(builder.run()).rejects.toThrow(/Bad/);
+    unregister();
+    builder.registerBuilder(echoBuilder([]));
+    const result = await builder.run();
+    expect(result.failures).toEqual([]);
+    expect(await builder.deadLetters()).toEqual([]);
+  });
+
+  it("a batched scan stops after one rotation when files keep changing", async () => {
+    const fs = new MemFilesApi();
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/log.txt": "" }, fs);
+    let runs = 0;
+    const builder = p.requireAdapter(ProjectBuilder).configureScanBatch(1);
+    builder.registerBuilder({
+      id: "Log",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["o"],
+      async run(ctx) {
+        runs++;
+        await fs.write("/proj/log.txt", [enc.encode("x".repeat(runs))]);
+        await fs.write("/proj/log2.txt", [enc.encode("x".repeat(runs))]);
+        ctx.emit("o", ctx.key, 1);
+      },
+    });
+    const result = await builder.run();
+    expect(runs).toBeLessThan(10);
+    expect(result.scanned.more).toBe(true);
+  });
+
+  it("maxTasks bounds the whole run across scan batches", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configureScanBatch(1);
+    builder.registerBuilder(echoBuilder(processed));
+    const result = await builder.run({ maxTasks: 2 });
+    expect(processed).toHaveLength(2);
+    expect(result.pending).toBe(true);
+  });
+
+  it("configureScanBatch rejects a non-positive or fractional size", () => {
+    const builder = new ProjectBuilder({} as Project);
+    expect(() => builder.configureScanBatch(0)).toThrow(RangeError);
+    expect(() => builder.configureScanBatch(1.5)).toThrow(RangeError);
   });
 });
 

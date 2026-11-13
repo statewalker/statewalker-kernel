@@ -1,3 +1,4 @@
+import { ProjectBuilder } from "@statewalker/workspace.core";
 import { describe, expect, it } from "vitest";
 import { cacheFilesOf, systemFolderOf } from "../src/prefix-files-api.js";
 import { WebAppNature } from "../src/web-app-nature.js";
@@ -32,6 +33,28 @@ describe("WebAppNature", () => {
     const after = await snapshot(cache);
 
     expect(after).toEqual(before);
+  });
+
+  it("scan() after the project pipeline already ran (without the web-app builders) still builds", async () => {
+    const { project } = await setupProject();
+    await project.requireAdapter(ProjectBuilder).run(); // sources scanned, no web-app builders yet
+    await new WebAppNature(project).scan();
+
+    const cache = cacheFilesOf(project);
+    expect(await cache.exists("/t/browser")).toBe(true);
+    expect(await cache.exists("/lock.json")).toBe(true);
+  });
+
+  it("scan() rebuilds a wiped cache although the engine state survived", async () => {
+    const { project, workspace } = await setupProject();
+    const nature = new WebAppNature(project);
+    await nature.scan();
+    await workspace.files.remove(`${systemFolderOf(project)}/webapp`);
+    await nature.scan();
+
+    const cache = cacheFilesOf(project);
+    expect(await cache.exists("/t/browser")).toBe(true);
+    expect(await cache.exists("/lock.json")).toBe(true);
   });
 
   it("scan() on a non-web-app project registers no builders and writes nothing under .project", async () => {

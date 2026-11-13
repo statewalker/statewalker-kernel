@@ -78,11 +78,13 @@ project's files into the `sources` collection and runs the engine to convergence
 what changed is redone; state persists under `.project/state/build`):
 
 ```ts
+import { readText } from "@statewalker/webrun-files";
 import { ProjectBuilder, SOURCES_COLLECTION } from "@statewalker/workspace.core";
 
 const builder = project.requireAdapter(ProjectBuilder);
 builder.registerBuilder({
   id: "WordCount",
+  version: 1,                            // bump when the code changes: all its tasks re-run
   inputs: [SOURCES_COLLECTION],          // one task per project file
   outputs: ["word-counts"],
   async run(ctx, project) {
@@ -99,6 +101,16 @@ const { executed, scanned, failures } = await builder.run();
 // builder.configureScanBatch(50): scan 50 changed files at a time, each batch run through the
 // whole pipeline before the next, so a large project shows partial results early.
 // builder.configureEngine({ concurrency: 8 }): run 8 tasks of a batch at once (LLM / I/O steps).
+```
+
+The store is opened once per `ProjectBuilder`; registering builders (at any time, even during
+a run) makes a new engine over it before the next run. A builder the store has not run before
+(or registered with another `version`) has all its tasks queued, so a nature applied after the
+project was built still covers every file. `restartFrom(id)` re-runs one builder's tasks;
+downstream builders re-run only where its outputs change (restart a downstream builder whose
+code changed by its own id). Dead letters of builders that are not registered are ignored.
+
+```ts
 await builder.list("word-counts"); // [{ key: "notes.md", value: 120 }, …]
 ```
 
