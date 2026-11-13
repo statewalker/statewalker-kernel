@@ -7,7 +7,7 @@ catalog:
   "@json-render/core": ^0.21.0
   "dockview-core": ^8.4.0
   "idb-keyval": "^6.3.0"
-  "@statewalker/webrun-builder": "^0.3.1"
+  "@statewalker/webrun-builder": "^0.4.0"
   "@statewalker/vcs-utils-node": "^0.3.0"
   "@statewalker/vcs-workspace": "^0.3.0"
   "@statewalker/vcs-working-tree": "^0.3.0"
