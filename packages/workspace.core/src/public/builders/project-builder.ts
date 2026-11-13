@@ -371,9 +371,15 @@ export class ProjectBuilder {
     // An absent builder's queued tasks (left by an interrupted run, or a restart) are dropped
     // by the engine, which does not know it: it must catch up when registered again.
     const { queued } = await engine.status();
+    let marked = false;
     for (const [id, entry] of Object.entries(record.builders)) {
-      if (!built.ids.has(id) && (queued[id] ?? 0) > 0) entry.epoch = -1;
+      if (!built.ids.has(id) && (queued[id] ?? 0) > 0 && entry.epoch !== -1) {
+        entry.epoch = -1;
+        marked = true;
+      }
     }
+    // Saved now: the run drops those tasks, and it may fail before `recordRun`.
+    if (marked) await store.commit([{ key: BUILDERS_KEY, value: JSON.stringify(record) }]);
     for (const id of built.ids) {
       const version = built.versions.get(id) ?? "";
       const known = record.builders[id];
