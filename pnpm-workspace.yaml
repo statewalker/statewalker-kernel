@@ -19,7 +19,7 @@ catalog:
   "@statewalker/webrun-site-builder": ^0.2.0
   "@statewalker/webrun-modules": "^0.3.0"
   # 0.1.7 and 0.2.0 on npm leak catalog:/workspace: specifiers and cannot install; 0.2.1 is clean.
-  "@statewalker/webrun-site-host": ^0.2.1
+  "@statewalker/webrun-site-host": ^0.3.0
   "@statewalker/shared-slots": ^0.2.0
   "@statewalker/shared-commands": ^0.2.0
   "@statewalker/webrun-files-node": "^0.10.0"
