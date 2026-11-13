@@ -317,6 +317,69 @@ describe("ProjectBuilder — builders registered late, changes during a run", ()
     expect(late.sort()).toEqual(["a.txt", "a.txt", "b.txt"]); // caught up: every task re-run
   });
 
+  it("work left by an interrupted run is caught up after a session without the builder", async () => {
+    const fs = new MemFilesApi();
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 5; i++) files[`/proj/f${i}.txt`] = String(i);
+    const s1 = await project(files, fs);
+    const late: string[] = [];
+    const b1 = s1.requireAdapter(ProjectBuilder);
+    b1.registerBuilder(echoBuilder([]));
+    b1.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await b1.run({ maxTasks: 7 }); // Late is left with queued tasks
+
+    const s2 = await project({}, fs);
+    s2.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder([]));
+    await s2.requireAdapter(ProjectBuilder).run(); // Late absent: its queue is dropped
+
+    const s3 = await project({}, fs);
+    const b3 = s3.requireAdapter(ProjectBuilder);
+    b3.registerBuilder(echoBuilder([]));
+    b3.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await b3.run();
+    expect(await b3.keys("late")).toHaveLength(5);
+  });
+
+  it("a restart asked outside a run survives a run without the builder", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    const late: string[] = [];
+    builder.registerBuilder(echoBuilder([]));
+    const drop = builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    await builder.restartFrom("Late");
+    drop();
+    await builder.run();
+    builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    expect(late).toEqual(["a.txt", "a.txt"]);
+  });
+
+  it("a new version registered during a run re-runs the builder's tasks next run", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    const v2: string[] = [];
+    let release!: () => void;
+    const started = new Promise<void>((r) => {
+      release = r;
+    });
+    builder.registerBuilder({
+      ...echoBuilder([]),
+      version: 1,
+      async run(ctx) {
+        release();
+        await new Promise((r) => setTimeout(r, 5));
+        ctx.emit("content", ctx.key, true);
+      },
+    });
+    const running = builder.run();
+    await started;
+    builder.registerBuilder({ ...echoBuilder(v2), version: 2 });
+    await running;
+    await builder.run();
+    expect(v2.sort()).toEqual(["a.txt", "b.txt"]);
+  });
+
   it("status() counts only the dead letters of registered builders", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const builder = p.requireAdapter(ProjectBuilder);

@@ -62,6 +62,8 @@ interface BuildersRecord {
 interface Built {
   generation: number;
   ids: ReadonlySet<string>;
+  /** The code version of each builder the engine was made with. */
+  versions: ReadonlyMap<string, string>;
   engine: Promise<BuildEngine>;
 }
 
@@ -244,7 +246,12 @@ export class ProjectBuilder {
         if (!scan.more || run.pending || opts?.signal?.aborted) break;
         if (pass > Math.ceil(scan.seen / (this.scanBatch ?? 1))) break;
       }
-      await this.recordRun(built, record, scanned.changed + scanned.removed + stats.executed > 0);
+      await this.recordRun(
+        engine,
+        built,
+        record,
+        scanned.changed + scanned.removed + stats.executed > 0,
+      );
       const failed = (await engine.deadLetters()).filter((d) => ids.has(d.builder));
       if (failed.length > 0 && (opts?.failOnError ?? true)) {
         const [first] = failed;
@@ -316,6 +323,7 @@ export class ProjectBuilder {
     const built: Built = {
       generation: this.generation,
       ids: new Set(builders.map((b) => b.id)),
+      versions: new Map(builders.map((b) => [b.id, String(b.version ?? "")])),
       engine,
     };
     this.built = built;
@@ -360,8 +368,14 @@ export class ProjectBuilder {
     const store = await this.openStore();
     const raw = await store.get(BUILDERS_KEY);
     const record: BuildersRecord = raw ? JSON.parse(raw) : { epoch: 0, builders: {} };
+    // An absent builder's queued tasks (left by an interrupted run, or a restart) are dropped
+    // by the engine, which does not know it: it must catch up when registered again.
+    const { queued } = await engine.status();
+    for (const [id, entry] of Object.entries(record.builders)) {
+      if (!built.ids.has(id) && (queued[id] ?? 0) > 0) entry.epoch = -1;
+    }
     for (const id of built.ids) {
-      const version = String(this.builders.get(id)?.version ?? "");
+      const version = built.versions.get(id) ?? "";
       const known = record.builders[id];
       const behind = !known || known.version !== version || known.epoch !== record.epoch;
       if (behind || this.pendingRestarts.has(id)) await engine.invalidate(id);
@@ -370,13 +384,23 @@ export class ProjectBuilder {
     return record;
   }
 
-  /** After a run: the registered builders are up to date with the (possibly new) epoch. */
-  private async recordRun(built: Built, record: BuildersRecord, changed: boolean): Promise<void> {
+  /**
+   * After a run: the registered builders are up to date with the (possibly new) epoch —
+   * except those with tasks still queued (an interrupted run), which stay behind.
+   */
+  private async recordRun(
+    engine: BuildEngine,
+    built: Built,
+    record: BuildersRecord,
+    changed: boolean,
+  ): Promise<void> {
     const store = await this.openStore();
     const epoch = changed ? record.epoch + 1 : record.epoch;
+    const { queued } = await engine.status();
     const builders = { ...record.builders };
     for (const id of built.ids) {
-      builders[id] = { version: String(this.builders.get(id)?.version ?? ""), epoch };
+      const behind = (queued[id] ?? 0) > 0;
+      builders[id] = { version: built.versions.get(id) ?? "", epoch: behind ? -1 : epoch };
     }
     await store.commit([{ key: BUILDERS_KEY, value: JSON.stringify({ epoch, builders }) }]);
   }
