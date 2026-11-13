@@ -105,7 +105,8 @@ const { executed, scanned, failures } = await builder.run();
 
 The store is opened once per `ProjectBuilder`; registering builders (at any time, even during
 a run) makes a new engine over it before the next run. A builder the store has not run before
-(or registered with another `version`) has all its tasks queued, so a nature applied after the
+(or registered with another `version`, or absent from a run that changed something) has all its
+tasks queued before the next run, so a nature applied after the
 project was built still covers every file. `restartFrom(id)` re-runs one builder's tasks;
 downstream builders re-run only where its outputs change (restart a downstream builder whose
 code changed by its own id). Dead letters of builders that are not registered are ignored.

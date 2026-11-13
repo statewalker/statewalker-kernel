@@ -44,10 +44,20 @@ export interface ProjectBuildOptions extends RunOptions {
 }
 
 /**
- * Where `ProjectBuilder` keeps the versions of the builders it ran: a key outside the
+ * Where `ProjectBuilder` keeps its record of the builders it ran: a key outside the
  * engine's own namespaces (single-letter prefixes followed by U+0001).
  */
-const VERSIONS_KEY = "project-builder\u0001versions";
+const BUILDERS_KEY = "project-builder\u0001builders";
+
+/**
+ * `epoch` counts the runs that changed something (a source written or removed, a task
+ * executed); each builder records its code version and the epoch it was last run at. A
+ * builder registered again is caught up only if something changed while it was absent.
+ */
+interface BuildersRecord {
+  epoch: number;
+  builders: Record<string, { version: string; epoch: number }>;
+}
 
 interface Built {
   generation: number;
@@ -69,9 +79,10 @@ interface Built {
  * `<systemFolder>/state/build` folder (a `FilesKV` over the workspace files), so a new
  * session continues incrementally; `configurePersistence` picks another store. The store is
  * opened once; when the builder set changes, a new engine over the same store is made
- * between runs (a run in progress, and the reads made meanwhile, keep the run's engine). A
- * builder the store has not run before (or whose `version` changed) has all its tasks
- * queued, so it covers the files scanned before it was registered.
+ * between runs (a run in progress, and the reads made meanwhile, keep the run's engine).
+ * Before each run, a builder the store has not run before, ran at another `version`, or that
+ * was absent while something changed has all its tasks queued, so it covers the files
+ * scanned before it was registered.
  *
  * Invariant: the logger is resolved once at construction (`loggerOf`), so the host must
  * register its `LoggerAdapter` BEFORE resolving `ProjectBuilder`.
@@ -177,6 +188,7 @@ export class ProjectBuilder {
     try {
       const engine = await built.engine;
       const ids = built.ids;
+      const record = await this.catchUp(engine, built);
       const ignore = this.sourceIgnore ? await this.sourceIgnore() : undefined;
       if (opts?.retryFailed ?? true) {
         for (const d of await engine.deadLetters()) {
@@ -212,7 +224,9 @@ export class ProjectBuilder {
         cursor = scan.cursor ?? cursor;
         // `maxTasks` bounds the whole run, across passes.
         const maxTasks =
-          opts?.maxTasks === undefined ? undefined : opts.maxTasks - stats.executed - stats.failed;
+          opts?.maxTasks === undefined
+            ? undefined
+            : opts.maxTasks - stats.executed - stats.skipped - stats.failed;
         if (maxTasks !== undefined && maxTasks <= 0) {
           stats.pending = true;
           break;
@@ -230,6 +244,7 @@ export class ProjectBuilder {
         if (!scan.more || run.pending || opts?.signal?.aborted) break;
         if (pass > Math.ceil(scan.seen / (this.scanBatch ?? 1))) break;
       }
+      await this.recordRun(built, record, scanned.changed + scanned.removed + stats.executed > 0);
       const failed = (await engine.deadLetters()).filter((d) => ids.has(d.builder));
       if (failed.length > 0 && (opts?.failOnError ?? true)) {
         const [first] = failed;
@@ -257,8 +272,13 @@ export class ProjectBuilder {
     else throw new Error(`ProjectBuilder: unknown builder "${builderId}"`);
   }
 
+  /** Queued tasks per builder, and the dead letters of the registered builders. */
   async status(): Promise<BuildStatus> {
-    return (await this.getEngine()).status();
+    const built = this.running ?? this.current();
+    const engine = await built.engine;
+    const status = await engine.status();
+    const deadLetters = (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+    return { ...status, deadLetters: deadLetters.length };
   }
 
   /** Dead letters of the registered builders. */
@@ -323,30 +343,42 @@ export class ProjectBuilder {
   }
 
   private async makeEngine(builders: RegisteredBuilder[]): Promise<BuildEngine> {
-    const store = await this.openStore();
-    const engine = new BuildEngine({
-      store,
+    return new BuildEngine({
+      store: await this.openStore(),
       builders: builders.map((b) => this.bind(b)),
       logger: this.log,
       ...this.tuning,
     });
-    // Queue every task of a builder this store has not run (or ran at another version).
-    const raw = await store.get(VERSIONS_KEY);
-    const known = (raw ? JSON.parse(raw) : {}) as Record<string, string>;
-    const versions: Record<string, string> = {};
-    for (const b of builders) {
-      const version = String(b.version ?? "");
-      versions[b.id] = version;
-      if (known[b.id] !== version || this.pendingRestarts.has(b.id)) {
-        await engine.invalidate(b.id);
-      }
-      this.pendingRestarts.delete(b.id);
+  }
+
+  /**
+   * Before a run: queue every task of a builder the store has not run, ran at another
+   * version, or last ran before something changed (it was not registered meanwhile, so its
+   * tasks were not queued), and apply the restarts asked for during the previous run.
+   */
+  private async catchUp(engine: BuildEngine, built: Built): Promise<BuildersRecord> {
+    const store = await this.openStore();
+    const raw = await store.get(BUILDERS_KEY);
+    const record: BuildersRecord = raw ? JSON.parse(raw) : { epoch: 0, builders: {} };
+    for (const id of built.ids) {
+      const version = String(this.builders.get(id)?.version ?? "");
+      const known = record.builders[id];
+      const behind = !known || known.version !== version || known.epoch !== record.epoch;
+      if (behind || this.pendingRestarts.has(id)) await engine.invalidate(id);
+      this.pendingRestarts.delete(id);
     }
-    // Unregistered builders are dropped: registered again later, they start over (their
-    // inputs may have changed meanwhile without queuing them).
-    const json = JSON.stringify(versions);
-    if (json !== raw) await store.commit([{ key: VERSIONS_KEY, value: json }]);
-    return engine;
+    return record;
+  }
+
+  /** After a run: the registered builders are up to date with the (possibly new) epoch. */
+  private async recordRun(built: Built, record: BuildersRecord, changed: boolean): Promise<void> {
+    const store = await this.openStore();
+    const epoch = changed ? record.epoch + 1 : record.epoch;
+    const builders = { ...record.builders };
+    for (const id of built.ids) {
+      builders[id] = { version: String(this.builders.get(id)?.version ?? ""), epoch };
+    }
+    await store.commit([{ key: BUILDERS_KEY, value: JSON.stringify({ epoch, builders }) }]);
   }
 
   /** A project builder as an engine builder: the project is passed through. */

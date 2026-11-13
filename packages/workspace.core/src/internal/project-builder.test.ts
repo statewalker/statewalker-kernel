@@ -275,6 +275,65 @@ describe("ProjectBuilder — builders registered late, changes during a run", ()
     expect(processed).toEqual(["a.txt", "a.txt"]);
   });
 
+  it("reads before a known builder is registered do not make it re-run", async () => {
+    const fs = new MemFilesApi();
+    const files = { "/proj/a.txt": "a", "/proj/b.txt": "b" };
+    const first = await project(files, fs);
+    first.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder([]));
+    first.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder([], [], "Late", "late"));
+    await first.requireAdapter(ProjectBuilder).run();
+
+    const second = await project({}, fs);
+    const b2 = second.requireAdapter(ProjectBuilder);
+    const late: string[] = [];
+    b2.registerBuilder(echoBuilder([]));
+    await b2.status();
+    await b2.keys("content");
+    b2.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    expect((await b2.run()).executed).toBe(0);
+    expect(late).toEqual([]);
+  });
+
+  it("a builder absent from runs that changed something catches up when registered again", async () => {
+    const fs = new MemFilesApi();
+    const p = await project({ "/proj/a.txt": "a" }, fs);
+    const builder = p.requireAdapter(ProjectBuilder);
+    const late: string[] = [];
+    builder.registerBuilder(echoBuilder([]));
+    const unregister = builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    unregister();
+    await builder.run(); // nothing changed: Late stays current
+    builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    expect(late).toEqual(["a.txt"]); // ran once: it was current when registered again
+
+    const drop = builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    drop();
+    await fs.write("/proj/b.txt", [enc.encode("b")]);
+    await builder.run(); // b.txt arrives while Late is absent
+    builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    expect(late.sort()).toEqual(["a.txt", "a.txt", "b.txt"]); // caught up: every task re-run
+  });
+
+  it("status() counts only the dead letters of registered builders", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const builder = p.requireAdapter(ProjectBuilder);
+    const unregister = builder.registerBuilder({
+      id: "Bad",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["bad"],
+      run() {
+        throw new Error("boom");
+      },
+    });
+    await builder.run({ failOnError: false });
+    expect((await builder.status()).deadLetters).toBe(1);
+    unregister();
+    expect((await builder.status()).deadLetters).toBe(0);
+  });
+
   it("re-registering keeps the state of a memory store", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const processed: string[] = [];
