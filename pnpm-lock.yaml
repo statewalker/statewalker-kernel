@@ -61,8 +61,8 @@ catalogs:
       specifier: ^0.3.0
       version: 0.3.2
     '@statewalker/webrun-builder':
-      specifier: ^0.3.1
-      version: 0.3.1
+      specifier: ^0.4.0
+      version: 0.4.0
     '@statewalker/webrun-files':
       specifier: ^0.10.0
       version: 0.10.2
@@ -712,7 +712,7 @@ importers:
         version: 0.1.4
       '@statewalker/webrun-builder':
         specifier: 'catalog:'
-        version: 0.3.1
+        version: 0.4.0
       '@statewalker/webrun-files':
         specifier: 'catalog:'
         version: 0.10.2
@@ -1294,8 +1294,8 @@ packages:
   '@statewalker/vcs-workspace@0.3.2':
     resolution: {integrity: sha512-Hh1EfWDxnQGHLcoH3dF1J1qDTvNHsZX5RJv2XatYKga2g+Qr3W85KZj38y/Zm8lqTxEktGEW7NT0IsyKW/CVEQ==}
 
-  '@statewalker/webrun-builder@0.3.1':
-    resolution: {integrity: sha512-Ei+jNAiqu+7v3e47ldNZhB4ESXbH5TimUJZBq4hoKyGUmUfOYWSxfFPIVk/p7sJ7eBr8X2qLHWhJmWh3HyHemg==}
+  '@statewalker/webrun-builder@0.4.0':
+    resolution: {integrity: sha512-+xRavZskZ/f3ITqeXYbSCAq2J9RVTTpXEEX06XIv4suGiQqHbf9TXAxKH9UJVA6aTNwW4wi74rzz86KVoNjIBw==}
 
   '@statewalker/webrun-content-store@0.2.3':
     resolution: {integrity: sha512-bBeJvqED7seyTwzrZlHmV8Vm4ocrbJBQTnFf80Mqk8ZLW8yA66QmdQO1QOO5HndhZpFpD5hOOtOaH38d3+yRdA==}
@@ -2889,7 +2889,7 @@ snapshots:
       '@statewalker/webrun-files': 0.10.2
       '@statewalker/webrun-files-sync': 0.2.3
 
-  '@statewalker/webrun-builder@0.3.1':
+  '@statewalker/webrun-builder@0.4.0':
     dependencies:
       '@statewalker/webrun-files': 0.10.2
 
