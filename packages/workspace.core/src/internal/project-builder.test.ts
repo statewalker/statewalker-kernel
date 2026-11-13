@@ -3,18 +3,17 @@ import { describe, expect, it } from "vitest";
 import {
   applyNature,
   type BuilderProvider,
+  MemKV,
   ProjectBuilder,
   type RegisteredBuilder,
-  SOURCES_REMOVED_SIGNAL,
-  SOURCES_SIGNAL,
+  SOURCES_COLLECTION,
 } from "../public/builders/index.js";
 import type { Project } from "../public/types/project.js";
 import { Workspace } from "../public/types/workspace.js";
 
 const enc = new TextEncoder();
 
-async function project(files: Record<string, string>): Promise<Project> {
-  const fs = new MemFilesApi();
+async function project(files: Record<string, string>, fs = new MemFilesApi()): Promise<Project> {
   for (const [path, body] of Object.entries(files)) await fs.write(path, [enc.encode(body)]);
   const ws = new Workspace();
   ws.setFileSystem(fs, "A");
@@ -24,28 +23,21 @@ async function project(files: Record<string, string>): Promise<Project> {
   return p;
 }
 
-/** A builder that records every source URI it processes. */
-function echoBuilder(processed: string[]): RegisteredBuilder {
+/** A builder that records every source it processes and every one it disposes. */
+function echoBuilder(processed: string[], disposed: string[] = []): RegisteredBuilder {
   return {
     id: "Echo",
-    inputs: [SOURCES_SIGNAL],
+    inputs: [SOURCES_COLLECTION],
     outputs: ["content"],
-    async *handler(p) {
-      const builder = p.requireAdapter(ProjectBuilder);
-      for await (const u of builder.readUpdates({ signal: SOURCES_SIGNAL, cell: "Echo" })) {
-        processed.push(u.uri);
-        await u.handled();
-        yield { signal: "content", uri: u.uri, stamp: u.stamp };
-      }
-      return true;
+    run(ctx, p) {
+      if (!p?.workspace) throw new Error("the project is passed to run()");
+      processed.push(ctx.key);
+      ctx.emit("content", ctx.key, true);
+    },
+    dispose(key) {
+      disposed.push(key);
     },
   };
-}
-
-async function drain(builder: ProjectBuilder): Promise<void> {
-  for await (const _ of builder.run()) {
-    /* consume progress */
-  }
 }
 
 describe("ProjectBuilder — convergence", () => {
@@ -55,8 +47,10 @@ describe("ProjectBuilder — convergence", () => {
     const builder = p.requireAdapter(ProjectBuilder);
     builder.registerBuilder(echoBuilder(processed));
 
-    await drain(builder);
+    const result = await builder.run();
     expect(processed.sort()).toEqual(["a.txt", "b.txt"]);
+    expect(result.scanned).toMatchObject({ changed: 2, removed: 0 });
+    expect(await builder.keys("content")).toEqual(["a.txt", "b.txt"]);
   });
 
   it("a second run with no filesystem change processes nothing new", async () => {
@@ -65,100 +59,157 @@ describe("ProjectBuilder — convergence", () => {
     const builder = p.requireAdapter(ProjectBuilder);
     builder.registerBuilder(echoBuilder(processed));
 
-    await drain(builder);
+    await builder.run();
     const afterFirst = processed.length;
-    await drain(builder);
+    expect((await builder.run()).executed).toBe(0);
     expect(processed.length).toBe(afterFirst);
+  });
+
+  it("a removed file is disposed and retracted", async () => {
+    const fs = new MemFilesApi();
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" }, fs);
+    const disposed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder(echoBuilder([], disposed));
+    await builder.run();
+    await fs.remove("/proj/b.txt");
+    await builder.run();
+    expect(disposed).toEqual(["b.txt"]);
+    expect(await builder.keys("content")).toEqual(["a.txt"]);
   });
 });
 
-describe("ProjectBuilder — restartFrom", () => {
+describe("ProjectBuilder — persistence", () => {
+  it("keeps its state in .project/state/build: a new session continues incrementally", async () => {
+    const fs = new MemFilesApi();
+    const first = await project({ "/proj/a.txt": "a" }, fs);
+    const processed: string[] = [];
+    first.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder(processed));
+    await first.requireAdapter(ProjectBuilder).run();
+    expect(await fs.exists("/proj/.project/state/build")).toBe(true);
+
+    const second = await project({}, fs);
+    second.requireAdapter(ProjectBuilder).registerBuilder(echoBuilder(processed));
+    expect((await second.requireAdapter(ProjectBuilder).run()).executed).toBe(0);
+    expect(processed).toEqual(["a.txt"]);
+  });
+
+  it("configurePersistence picks another store", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    const store = new MemKV();
+    const builder = p
+      .requireAdapter(ProjectBuilder)
+      .configurePersistence({ kind: "custom", store });
+    builder.registerBuilder(echoBuilder([]));
+    await builder.run();
+    expect(store.size).toBeGreaterThan(0);
+  });
+});
+
+describe("ProjectBuilder — restartFrom and failures", () => {
   it("reprocesses a builder after restartFrom", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const processed: string[] = [];
     const builder = p.requireAdapter(ProjectBuilder);
     builder.registerBuilder(echoBuilder(processed));
 
-    await drain(builder);
+    await builder.run();
     expect(processed).toEqual(["a.txt"]);
-
     await builder.restartFrom("Echo");
-    await drain(builder);
+    await builder.run();
     expect(processed).toEqual(["a.txt", "a.txt"]);
   });
-});
 
-/** A builder that never marks its updates handled → never drains, forcing the
- * scheduler to re-select it every pass (stand-in for a genuinely stuck pipeline). */
-function stuckBuilder(): RegisteredBuilder {
-  return {
-    id: "Stuck",
-    inputs: [SOURCES_SIGNAL],
-    outputs: ["content"],
-    // biome-ignore lint/correctness/useYield: deliberately interrupts without handling input
-    async *handler() {
-      return false;
-    },
-  };
-}
+  it("rejects when a task keeps failing, and retries it on the next run", async () => {
+    const p = await project({ "/proj/a.txt": "a" });
+    let broken = true;
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder({
+      id: "Flaky",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["out"],
+      run(ctx) {
+        if (broken) throw new Error("boom");
+        ctx.emit("out", ctx.key, 1);
+      },
+    });
+    await expect(builder.run()).rejects.toThrow(
+      /1 task\(s\) failed; first: Flaky\/a.txt: Error: boom/,
+    );
+    broken = false;
+    await builder.run();
+    expect(await builder.keys("out")).toEqual(["a.txt"]);
+  });
 
-/** A terminal builder that snapshots the cumulative set of indexed URIs on every
- * run — so a test can observe how many times (and with what content) it "dumps". */
-function indexBuilder(dumps: string[][]): RegisteredBuilder {
-  const indexed = new Set<string>();
-  return {
-    id: "Index",
-    inputs: ["content"],
-    outputs: [],
-    // biome-ignore lint/correctness/useYield: terminal stage, maintains state, emits no signal
-    async *handler(p) {
-      const builder = p.requireAdapter(ProjectBuilder);
-      let touched = false;
-      for await (const u of builder.readUpdates({ signal: "content", cell: "Index" })) {
-        indexed.add(u.uri);
-        touched = true;
-        await u.handled();
-      }
-      if (touched) dumps.push([...indexed].sort());
-      return true;
-    },
-  };
-}
+  it("failOnError: false reports failures; retryFailed: false keeps them until their input changes", async () => {
+    const fs = new MemFilesApi();
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" }, fs);
+    let calls = 0;
+    const builder = p.requireAdapter(ProjectBuilder);
+    builder.registerBuilder({
+      id: "Picky",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["out"],
+      run(ctx) {
+        if (ctx.key === "b.txt") {
+          calls++;
+          throw new Error("unparseable");
+        }
+        ctx.emit("out", ctx.key, 1);
+      },
+    });
+    const opts = { failOnError: false, retryFailed: false };
+    const first = await builder.run(opts);
+    expect(first.failures).toEqual([
+      expect.objectContaining({ builder: "Picky", key: "b.txt", error: "Error: unparseable" }),
+    ]);
+    const tries = calls;
+    const second = await builder.run(opts);
+    expect(calls).toBe(tries); // not retried
+    expect(second.failures).toHaveLength(1);
+    expect(await builder.keys("out")).toEqual(["a.txt"]);
+  });
 
-describe("ProjectBuilder — stall backstop", () => {
-  it("aborts loudly instead of silently 'converging' when no progress is made", async () => {
+  it("re-registering an id replaces the builder; unregistering removes it", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const builder = p.requireAdapter(ProjectBuilder);
-    builder.configureYield({ maxStalledPasses: 5 });
-    builder.registerBuilder(stuckBuilder());
-
-    await expect(drain(builder)).rejects.toThrow(/no scheduling progress/);
+    const first: string[] = [];
+    const second: string[] = [];
+    builder.registerBuilder(echoBuilder(first));
+    const unregister = builder.registerBuilder(echoBuilder(second));
+    await builder.run();
+    expect(first).toEqual([]);
+    expect(second).toEqual(["a.txt"]);
+    unregister();
+    await builder.run();
+    expect((await builder.getEngine()).list("content")).toBeDefined();
   });
 });
 
-describe("ProjectBuilder — scanBatchSize", () => {
-  it("emits sources in batches so downstream stages run and dump per batch", async () => {
+describe("ProjectBuilder — progress and scan batches", () => {
+  it("forwards onProgress and runs a batched scan to completion", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
-    const dumps: string[][] = [];
-    const builder = p.requireAdapter(ProjectBuilder);
-    builder.configureYield({ scanBatchSize: 1 });
+    const dumps: number[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configureScanBatch(1);
     builder.registerBuilder(echoBuilder([]));
-    builder.registerBuilder(indexBuilder(dumps));
-
-    await drain(builder);
-    // One full-pipeline traversal per batch → the index dumps incrementally.
-    expect(dumps).toEqual([["a.txt"], ["a.txt", "b.txt"], ["a.txt", "b.txt", "c.txt"]]);
-  });
-
-  it("without a batch size the whole corpus is one transaction (single dump)", async () => {
-    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
-    const dumps: string[][] = [];
-    const builder = p.requireAdapter(ProjectBuilder);
-    builder.registerBuilder(echoBuilder([]));
-    builder.registerBuilder(indexBuilder(dumps));
-
-    await drain(builder);
-    expect(dumps).toEqual([["a.txt", "b.txt", "c.txt"]]);
+    builder.registerBuilder({
+      id: "Count",
+      kind: "reduce",
+      inputs: ["content"],
+      outputs: ["count"],
+      async run(ctx) {
+        const n = (await ctx.list("content")).length;
+        dumps.push(n);
+        ctx.emit("count", "n", n);
+      },
+    });
+    const progress: string[] = [];
+    const result = await builder.run({ onProgress: (e) => progress.push(e.builder) });
+    // One full-pipeline pass per batch: the reduce sees the corpus grow.
+    expect(dumps).toEqual([1, 2, 3]);
+    expect(result.scanned).toMatchObject({ changed: 3, more: false });
+    expect(progress).toContain("Echo");
+    expect(progress).toContain("Count");
   });
 });
 
@@ -166,17 +217,15 @@ describe("ProjectBuilder — nature (BuilderProvider)", () => {
   it("applyNature registers a provider's builders and they run", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
     const processed: string[] = [];
-    const nature: BuilderProvider = {
-      builders: () => [echoBuilder(processed)],
-    };
+    const nature: BuilderProvider = { builders: () => [echoBuilder(processed)] };
     applyNature(p, nature);
 
-    await drain(p.requireAdapter(ProjectBuilder));
+    await p.requireAdapter(ProjectBuilder).run();
     expect(processed.sort()).toEqual(["a.txt", "b.txt"]);
   });
 });
 
-describe("ProjectBuilder — .projectignore", () => {
+describe("ProjectBuilder — .projectignore and configureSourceIgnore", () => {
   it("skips sources matched by .projectignore", async () => {
     const p = await project({
       "/proj/keep.txt": "k",
@@ -187,34 +236,10 @@ describe("ProjectBuilder — .projectignore", () => {
     const builder = p.requireAdapter(ProjectBuilder);
     builder.registerBuilder(echoBuilder(processed));
 
-    await drain(builder);
+    await builder.run();
     expect(processed).toEqual(["keep.txt"]);
   });
-});
 
-/** A builder that records processed sources AND removed ones. */
-function echoWithRemovals(processed: string[], removed: string[]): RegisteredBuilder {
-  return {
-    id: "Echo",
-    inputs: [SOURCES_SIGNAL, SOURCES_REMOVED_SIGNAL],
-    outputs: ["content"],
-    async *handler(p) {
-      const builder = p.requireAdapter(ProjectBuilder);
-      for await (const u of builder.readUpdates({ signal: SOURCES_SIGNAL, cell: "Echo" })) {
-        processed.push(u.uri);
-        await u.handled();
-        yield { signal: "content", uri: u.uri, stamp: u.stamp };
-      }
-      for await (const u of builder.readUpdates({ signal: SOURCES_REMOVED_SIGNAL, cell: "Echo" })) {
-        removed.push(u.uri);
-        await u.handled();
-      }
-      return true;
-    },
-  };
-}
-
-describe("ProjectBuilder — configureSourceIgnore", () => {
   it("composes the injected predicate with .projectignore", async () => {
     const p = await project({
       "/proj/keep.txt": "k",
@@ -227,25 +252,25 @@ describe("ProjectBuilder — configureSourceIgnore", () => {
     builder.registerBuilder(echoBuilder(processed));
     builder.configureSourceIgnore(async () => (uri) => uri === "nature-skip.txt");
 
-    await drain(builder);
+    await builder.run();
     expect(processed).toEqual(["keep.txt"]);
   });
 
   it("re-invokes the provider each scan, pruning a newly-excluded source", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
     const processed: string[] = [];
-    const removed: string[] = [];
+    const disposed: string[] = [];
     const excluded = new Set<string>();
     const builder = p.requireAdapter(ProjectBuilder);
-    builder.registerBuilder(echoWithRemovals(processed, removed));
+    builder.registerBuilder(echoBuilder(processed, disposed));
     builder.configureSourceIgnore(async () => (uri) => excluded.has(uri));
 
-    await drain(builder);
+    await builder.run();
     expect(processed.sort()).toEqual(["a.txt", "b.txt"]);
 
-    // Exclude b on the next scan: it should be emitted as a removed source.
     excluded.add("b.txt");
-    await drain(builder);
-    expect(removed).toEqual(["b.txt"]);
+    await builder.run();
+    expect(disposed).toEqual(["b.txt"]);
+    expect(await builder.keys("content")).toEqual(["a.txt"]);
   });
 });

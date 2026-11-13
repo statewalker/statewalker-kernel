@@ -56,7 +56,6 @@
     "@statewalker/shared-commands": "catalog:",
     "@statewalker/shared-logger": "catalog:",
     "@statewalker/webrun-builder": "catalog:",
-    "@statewalker/webrun-dataflow": "catalog:",
     "@statewalker/webrun-files": "catalog:",
     "@statewalker/webrun-files-composite": "catalog:"
   },

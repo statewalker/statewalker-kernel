@@ -14,11 +14,6 @@ import { resolveWebAppConfig, type WebAppConfig } from "./web-app-config.js";
 import { newWebAppModuleServer } from "./web-app-module-server.js";
 
 /** Drive a build generator to completion. */
-async function drain(gen: AsyncGenerator<unknown>): Promise<void> {
-  for await (const _ of gen) {
-    /* consume */
-  }
-}
 
 /** Top-level source folder of an entry path (`client/index.html` → `client`). */
 function topDir(entry: string): string {
@@ -91,7 +86,7 @@ export class WebAppNature extends ProjectAdapter {
   async build(): Promise<void> {
     const ctx = await this.context();
     if (!ctx) return;
-    await drain(this.registerBuilders(ctx).run());
+    await this.registerBuilders(ctx).run();
   }
 
   /** Alias of `build()` — mirrors the wiki nature's `scan()` entry point. */
@@ -116,7 +111,12 @@ export class WebAppNature extends ProjectAdapter {
     });
     let building = Promise.resolve();
     const trigger = () => {
-      building = building.then(() => drain(builder.run())).catch(() => {});
+      building = building
+        .then(() => builder.run())
+        .then(
+          () => undefined,
+          () => undefined,
+        );
     };
     watcher.watch(`${ctx.clientDir}/**`, trigger);
     watcher.watch(`${ctx.serverDir}/**`, trigger);

@@ -72,25 +72,33 @@ workspace.adaptersRegistry.register("project", WordCount, (p) => new WordCount(p
 const n = await project?.requireAdapter(WordCount).count("README.md");
 ```
 
-Registering a builder and running a build:
+Registering a builder and running a build. A builder is an `@statewalker/webrun-builder`
+`BuilderDef` whose `run(ctx, project)` also receives the project; `run()` mirrors the
+project's files into the `sources` collection and runs the engine to convergence (only
+what changed is redone; state persists under `.project/state/build`):
 
 ```ts
-import { ProjectBuilder, SOURCES_SIGNAL } from "@statewalker/workspace.core";
+import { ProjectBuilder, SOURCES_COLLECTION } from "@statewalker/workspace.core";
 
 const builder = project.requireAdapter(ProjectBuilder);
 builder.registerBuilder({
-  id: "Counter",
-  inputs: [SOURCES_SIGNAL],
-  outputs: [],
-  async *handler(project) {
-    for await (const u of builder.readUpdates({ signal: SOURCES_SIGNAL, cell: "Counter" })) {
-      await u.handled();
-    }
-    return true;
+  id: "WordCount",
+  inputs: [SOURCES_COLLECTION],          // one task per project file
+  outputs: ["word-counts"],
+  async run(ctx, project) {
+    const text = await readText(project.workspace.files, `${project.path}/${ctx.key}`);
+    ctx.emit("word-counts", ctx.key, text.split(/\s+/).length);
+  },
+  dispose(key) {
+    // the file is gone: clean up anything written outside the engine
   },
 });
-for await (const _ of builder.run()) {
-}
+const { executed, scanned, failures } = await builder.run();
+// run({ retryFailed: false, failOnError: false }): leave failed tasks (an expensive LLM step)
+// until their input changes, and report them in `failures` instead of rejecting.
+// builder.configureScanBatch(50): scan 50 changed files at a time, each batch run through the
+// whole pipeline before the next, so a large project shows partial results early.
+await builder.list("word-counts"); // [{ key: "notes.md", value: 120 }, …]
 ```
 
 Watching a project for changes:
@@ -169,20 +177,18 @@ The workspace caches resources (up to 1000) and projects (up to 256) in LRUs wit
 - Workspace adapters: `SystemFiles`, `Secrets`, `Settings`, `initWorkspace({ workspace, filesApi, systemDir?, label? })`.
 - Resource/project adapters: `ResourceAdapter`, `ContentReadAdapter`, `ContentWriteAdapter`, `TextAdapter`, `JsonAdapter`, `Json`, `ProjectAdapter`, `newReference`, `Reference`.
 - Logging: `LoggerAdapter`, `ConsoleLoggerAdapter`, `loggerOf`, `loggerMetaOf`, `NULL_LOGGER`, `Logger`, `LoggerLevel`.
-- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `SOURCES_SIGNAL`, `SOURCES_REMOVED_SIGNAL`, ...), with `RegisteredBuilder`, `BuilderProvider`, `BuilderHandler` bound to `Project`; `ProjectBuilder`; `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
+- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `registeredBuilders`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
 - Commands: `ChangeWorkspaceCommand` (`workspace:change`), `PickDirectoryCommand` (`platform:pick-directory`), `LoadDirectoryCommand`, `LoadFileCommand`, `WriteFileCommand`, `MoveFileCommand`, `DeleteFileCommand`, `MkdirCommand`, `RenameCommand` (`files:*`), their payload/result types, `DirectoryEntry`, `LoadedFile`, `CHANGE_WORKSPACE_COMMAND_KEY`, `PICK_DIRECTORY_COMMAND_KEY`.
 
 ### Dependencies
 
 - `@statewalker/webrun-files` - the `FilesApi` contract and path helpers.
 - `@statewalker/webrun-files-composite` - `CompositeFilesApi`, which gives `SystemFiles` its view of the system folder.
-- `@statewalker/webrun-builder` - the generic signal-driven build engine behind `ProjectBuilder`.
+- `@statewalker/webrun-builder` - the incremental build engine (builders over collections) behind `ProjectBuilder`.
 - `@statewalker/shared-baseclass` - observable base (`onUpdate`) of the hosts.
 - `@statewalker/shared-adapters` - `newAdapter` for `getWorkspace` / workspace config in a fragment context.
 - `@statewalker/shared-commands` - command descriptors and the `Commands` adapter.
 - `@statewalker/shared-logger` - the `Logger` type and console logger.
-
-`@statewalker/webrun-dataflow` is listed in `dependencies` but no source file imports it.
 
 ## License
 

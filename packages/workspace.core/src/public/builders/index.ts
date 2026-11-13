@@ -1,15 +1,12 @@
-// Re-export the generic engine surface (values + host-agnostic types)…
+// The generic engine surface (builders over collections, stores, scanSources, …).
 export * from "@statewalker/webrun-builder";
+// The same JSON value type exists in both; the package root keeps workspace.core's.
+export type { Json } from "../adapters/json-adapter.js";
 // The engine's structural `Logger` / `NULL_LOGGER` collide with workspace.core's own
 // (from `@statewalker/shared-logger`). Explicitly re-export the canonical ones so the
-// package root keeps a single, unambiguous `Logger` — the engine only needs a logger
-// injected, it never asks consumers to import its structural interface.
+// package root keeps a single, unambiguous `Logger`.
 export { type Logger, NULL_LOGGER } from "../types/logger.js";
 export * from "./nature.js";
 export * from "./project-builder.js";
 export * from "./project-watcher.js";
-// …then explicitly re-export the Project-bound builder-type aliases. Explicit named
-// exports shadow the star-exported generic names, so consumers keep their
-// unparameterized `RegisteredBuilder` / `BuilderProvider` / `BuilderHandler` usage
-// bound to `Project`.
-export type { BuilderHandler, BuilderProvider, RegisteredBuilder } from "./types.js";
+export type { BuilderProvider, RegisteredBuilder } from "./types.js";
