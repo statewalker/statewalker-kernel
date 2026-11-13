@@ -246,12 +246,7 @@ export class ProjectBuilder {
         if (!scan.more || run.pending || opts?.signal?.aborted) break;
         if (pass > Math.ceil(scan.seen / (this.scanBatch ?? 1))) break;
       }
-      await this.recordRun(
-        engine,
-        built,
-        record,
-        scanned.changed + scanned.removed + stats.executed > 0,
-      );
+      await this.recordRun(built, record, scanned.changed + scanned.removed + stats.executed > 0);
       const failed = (await engine.deadLetters()).filter((d) => ids.has(d.builder));
       if (failed.length > 0 && (opts?.failOnError ?? true)) {
         const [first] = failed;
@@ -264,6 +259,18 @@ export class ProjectBuilder {
     } finally {
       this.running = undefined;
     }
+  }
+
+  /**
+   * Drop the open store and engine, so the next access reads the store again — after another
+   * process (a browser tab, a CLI) wrote it: a `FilesKV` store keeps its rows in memory and
+   * allows one writer at a time, so a host that alternates writers (a lease) calls this when
+   * it takes the lease. Waits for the run in progress, if any.
+   */
+  async reopen(): Promise<void> {
+    await this.chain;
+    this.store = undefined;
+    this.built = undefined;
   }
 
   /**
@@ -391,22 +398,16 @@ export class ProjectBuilder {
   }
 
   /**
-   * After a run: the registered builders are up to date with the (possibly new) epoch —
-   * except those with tasks still queued (an interrupted run), which stay behind.
+   * After a run: the registered builders are up to date with the (possibly new) epoch. Tasks
+   * an interrupted run left queued stay in the store's queue: the next run with the builder
+   * picks them up, and a run without it marks it behind (`catchUp`).
    */
-  private async recordRun(
-    engine: BuildEngine,
-    built: Built,
-    record: BuildersRecord,
-    changed: boolean,
-  ): Promise<void> {
+  private async recordRun(built: Built, record: BuildersRecord, changed: boolean): Promise<void> {
     const store = await this.openStore();
     const epoch = changed ? record.epoch + 1 : record.epoch;
-    const { queued } = await engine.status();
     const builders = { ...record.builders };
     for (const id of built.ids) {
-      const behind = (queued[id] ?? 0) > 0;
-      builders[id] = { version: built.versions.get(id) ?? "", epoch: behind ? -1 : epoch };
+      builders[id] = { version: built.versions.get(id) ?? "", epoch };
     }
     await store.commit([{ key: BUILDERS_KEY, value: JSON.stringify({ epoch, builders }) }]);
   }
