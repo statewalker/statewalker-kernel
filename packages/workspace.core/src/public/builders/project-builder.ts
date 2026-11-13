@@ -1,6 +1,7 @@
 import {
   type BuildEngine,
   type BuilderDef,
+  type BuildEngineOptions,
   type BuildStatus,
   createBuildEngine,
   type DeadLetter,
@@ -17,6 +18,11 @@ import { joinPath } from "@statewalker/webrun-files";
 import { loggerOf } from "../types/logger.js";
 import { DEFAULT_SYSTEM_FOLDER, type Project } from "../types/project.js";
 import type { RegisteredBuilder } from "./types.js";
+
+/** Engine knobs a host may tune (see `ProjectBuilder.configureEngine`). */
+export type EngineTuning = Partial<
+  Pick<BuildEngineOptions, "concurrency" | "batchSize" | "maxAttempts">
+>;
 
 /** Result of one `ProjectBuilder.run()`: the source scan plus the engine run. */
 export interface ProjectBuildResult extends RunStats {
@@ -58,6 +64,7 @@ export class ProjectBuilder {
   private persistence?: PersistenceConfig;
   private sourceIgnore?: () => Promise<(uri: string) => boolean>;
   private scanBatch?: number;
+  private tuning: EngineTuning = {};
   private engine?: Promise<BuildEngine>;
   private chain: Promise<unknown> = Promise.resolve();
   private readonly log;
@@ -89,6 +96,17 @@ export class ProjectBuilder {
    */
   configureScanBatch(limit: number | undefined): this {
     this.scanBatch = limit;
+    return this;
+  }
+
+  /**
+   * Engine tuning: `concurrency` (tasks of one batch run in parallel — for builders that wait
+   * on I/O or an LLM), `batchSize` (tasks per commit) and `maxAttempts` (attempts before a
+   * failing task becomes a dead letter). Defaults are the engine's (1, 64, 3).
+   */
+  configureEngine(tuning: EngineTuning): this {
+    this.tuning = { ...this.tuning, ...tuning };
+    this.engine = undefined;
     return this;
   }
 
@@ -205,6 +223,7 @@ export class ProjectBuilder {
         path: joinPath(this.project.path, DEFAULT_SYSTEM_FOLDER, "state", "build"),
       },
       logger: this.log,
+      ...this.tuning,
     });
     return this.engine;
   }

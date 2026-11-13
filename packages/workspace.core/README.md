@@ -98,6 +98,7 @@ const { executed, scanned, failures } = await builder.run();
 // until their input changes, and report them in `failures` instead of rejecting.
 // builder.configureScanBatch(50): scan 50 changed files at a time, each batch run through the
 // whole pipeline before the next, so a large project shows partial results early.
+// builder.configureEngine({ concurrency: 8 }): run 8 tasks of a batch at once (LLM / I/O steps).
 await builder.list("word-counts"); // [{ key: "notes.md", value: 120 }, …]
 ```
 
@@ -177,7 +178,7 @@ The workspace caches resources (up to 1000) and projects (up to 256) in LRUs wit
 - Workspace adapters: `SystemFiles`, `Secrets`, `Settings`, `initWorkspace({ workspace, filesApi, systemDir?, label? })`.
 - Resource/project adapters: `ResourceAdapter`, `ContentReadAdapter`, `ContentWriteAdapter`, `TextAdapter`, `JsonAdapter`, `Json`, `ProjectAdapter`, `newReference`, `Reference`.
 - Logging: `LoggerAdapter`, `ConsoleLoggerAdapter`, `loggerOf`, `loggerMetaOf`, `NULL_LOGGER`, `Logger`, `LoggerLevel`.
-- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `registeredBuilders`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
+- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `configureEngine` (`EngineTuning`: concurrency, batch size, attempts), `registeredBuilders`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
 - Commands: `ChangeWorkspaceCommand` (`workspace:change`), `PickDirectoryCommand` (`platform:pick-directory`), `LoadDirectoryCommand`, `LoadFileCommand`, `WriteFileCommand`, `MoveFileCommand`, `DeleteFileCommand`, `MkdirCommand`, `RenameCommand` (`files:*`), their payload/result types, `DirectoryEntry`, `LoadedFile`, `CHANGE_WORKSPACE_COMMAND_KEY`, `PICK_DIRECTORY_COMMAND_KEY`.
 
 ### Dependencies

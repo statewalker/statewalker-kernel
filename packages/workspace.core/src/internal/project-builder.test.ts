@@ -213,6 +213,45 @@ describe("ProjectBuilder — progress and scan batches", () => {
   });
 });
 
+describe("ProjectBuilder — configureEngine", () => {
+  it("runs the tasks of a batch concurrently and honours maxAttempts", async () => {
+    const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
+    let inFlight = 0;
+    let peak = 0;
+    let attempts = 0;
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ concurrency: 3 });
+    builder.registerBuilder({
+      id: "Slow",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["out"],
+      async run(ctx) {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((r) => setTimeout(r, 10));
+        inFlight--;
+        ctx.emit("out", ctx.key, 1);
+      },
+    });
+    await builder.run();
+    expect(peak).toBe(3);
+
+    builder.configureEngine({ maxAttempts: 1 });
+    builder.registerBuilder({
+      id: "Slow",
+      inputs: [SOURCES_COLLECTION],
+      outputs: ["out"],
+      run() {
+        attempts++;
+        throw new Error("no");
+      },
+    });
+    await builder.restartFrom("Slow");
+    const result = await builder.run({ failOnError: false });
+    expect(attempts).toBe(3); // one attempt per task
+    expect(result.failures).toHaveLength(3);
+  });
+});
+
 describe("ProjectBuilder — nature (BuilderProvider)", () => {
   it("applyNature registers a provider's builders and they run", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b" });
