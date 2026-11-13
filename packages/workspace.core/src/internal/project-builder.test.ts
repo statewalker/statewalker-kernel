@@ -380,6 +380,89 @@ describe("ProjectBuilder — builders registered late, changes during a run", ()
     expect(v2.sort()).toEqual(["a.txt", "b.txt"]);
   });
 
+  it("an interrupted run's leftover tasks resume without redoing the finished ones", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 10; i++) files[`/proj/f${i}.txt`] = String(i);
+    const p = await project(files);
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder(processed));
+    await builder.run({ maxTasks: 4 });
+    expect(processed).toHaveLength(4);
+    await builder.run();
+    expect(processed).toHaveLength(10); // the 6 left, not all 10 again
+  });
+
+  it("reopen() reads what another writer committed to the store meanwhile", async () => {
+    const fs = new MemFilesApi();
+    const p1 = await project({ "/proj/a.txt": "a" }, fs);
+    const b1 = p1.requireAdapter(ProjectBuilder);
+    b1.registerBuilder(echoBuilder([]));
+    await b1.run();
+    expect(await b1.keys("content")).toEqual(["a.txt"]);
+
+    // Another writer (a second session) adds a file and builds.
+    await fs.write("/proj/b.txt", [enc.encode("b")]);
+    const p2 = await project({}, fs);
+    const b2 = p2.requireAdapter(ProjectBuilder);
+    b2.registerBuilder(echoBuilder([]));
+    await b2.run();
+
+    expect(await b1.keys("content")).toEqual(["a.txt"]); // stale in-memory copy
+    await b1.reopen();
+    expect(await b1.keys("content")).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it("reopen() waits for accessor calls in flight; an engine kept from before refuses writes", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 50; i++) files[`/proj/f${i}.txt`] = String(i);
+    const fs = new MemFilesApi();
+    const p = await project(files, fs);
+    const b = p.requireAdapter(ProjectBuilder);
+    b.registerBuilder(echoBuilder([], [], "A", "a"));
+    b.registerBuilder(echoBuilder([], [], "B", "b"));
+    await b.run();
+
+    const old = await b.getEngine();
+    const restartA = b.restartFrom("A"); // in flight on the old store
+    await b.reopen();
+    await b.restartFrom("B"); // on the reopened store
+    await restartA;
+    await expect(old.invalidate("A")).rejects.toThrow(/reopened/);
+
+    const again = await project({}, fs);
+    const b2 = again.requireAdapter(ProjectBuilder);
+    b2.registerBuilder(echoBuilder([], [], "A", "a"));
+    b2.registerBuilder(echoBuilder([], [], "B", "b"));
+    expect((await b2.status()).queued).toEqual({ A: 50, B: 50 });
+  });
+
+  it("a run or a read started while reopen() waits runs after it, on the reopened store", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) files[`/proj/f${i}.txt`] = String(i);
+    const fs = new MemFilesApi();
+    const p = await project(files, fs);
+    const b = p.requireAdapter(ProjectBuilder);
+    b.registerBuilder({
+      ...echoBuilder([]),
+      async run(ctx) {
+        await new Promise((r) => setTimeout(r, 1));
+        ctx.emit("content", ctx.key, true);
+      },
+    });
+    const status = b.status();
+    const reopened = b.reopen();
+    const run = b.run();
+    const keys = b.keys("content");
+    await Promise.all([status, reopened, run, keys]); // none fails on a closed store
+    expect(await b.keys("content")).toHaveLength(20);
+
+    const again = await project({}, fs);
+    const b2 = again.requireAdapter(ProjectBuilder);
+    b2.registerBuilder(echoBuilder([]));
+    expect(await b2.keys("content")).toHaveLength(20);
+  });
+
   it("status() counts only the dead letters of registered builders", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const builder = p.requireAdapter(ProjectBuilder);

@@ -96,6 +96,12 @@ export class ProjectBuilder {
   private scanBatch?: number;
   private tuning: EngineTuning = {};
   private store?: Promise<KV>;
+  /** Closes the open store's guard (see `reopen`). */
+  private closeStore?: () => void;
+  /** Accessor calls in flight (not serialised with runs); `reopen` waits for them. */
+  private readonly inflight = new Set<Promise<unknown>>();
+  /** A `reopen` in progress: runs queue behind it, accessor calls wait for it. */
+  private reopening?: Promise<void>;
   /** Bumped whenever the builder set or the tuning changes. */
   private generation = 0;
   private built?: Built;
@@ -246,12 +252,7 @@ export class ProjectBuilder {
         if (!scan.more || run.pending || opts?.signal?.aborted) break;
         if (pass > Math.ceil(scan.seen / (this.scanBatch ?? 1))) break;
       }
-      await this.recordRun(
-        engine,
-        built,
-        record,
-        scanned.changed + scanned.removed + stats.executed > 0,
-      );
+      await this.recordRun(built, record, scanned.changed + scanned.removed + stats.executed > 0);
       const failed = (await engine.deadLetters()).filter((d) => ids.has(d.builder));
       if (failed.length > 0 && (opts?.failOnError ?? true)) {
         const [first] = failed;
@@ -267,11 +268,50 @@ export class ProjectBuilder {
   }
 
   /**
+   * Drop the open store and engine, so the next access reads the store again — after another
+   * process (a browser tab, a CLI) wrote it: a `FilesKV` store keeps its rows in memory and
+   * allows one writer at a time, so a host that alternates writers (a lease) calls this when
+   * it takes the lease. Waits for the run in progress and the reads in flight; runs and reads
+   * started meanwhile wait for the reopen.
+   */
+  reopen(): Promise<void> {
+    const reopening = this.chain.then(async () => {
+      while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
+      this.closeStore?.();
+      this.closeStore = undefined;
+      this.store = undefined;
+      this.built = undefined;
+    });
+    this.reopening = reopening;
+    this.chain = reopening.catch(() => undefined);
+    const done = () => {
+      if (this.reopening === reopening) this.reopening = undefined;
+    };
+    reopening.then(done, done);
+    return reopening;
+  }
+
+  /** Track an accessor call, so `reopen` waits for it (or wait for a pending `reopen`). */
+  private track<T>(call: () => Promise<T>): Promise<T> {
+    const reopening = this.reopening;
+    if (reopening) return reopening.then(() => this.track(call));
+    const p = call();
+    this.inflight.add(p);
+    const done = () => this.inflight.delete(p);
+    p.then(done, done);
+    return p;
+  }
+
+  /**
    * Re-run every task of a builder (its code changed); downstream re-runs where outputs
    * change. For a builder registered after the current engine was made (during a run), it
    * applies when the next engine is made, before the next run.
    */
-  async restartFrom(builderId: string): Promise<void> {
+  restartFrom(builderId: string): Promise<void> {
+    return this.track(() => this.restart(builderId));
+  }
+
+  private async restart(builderId: string): Promise<void> {
     const built = this.running ?? this.current();
     const engine = await built.engine;
     if (built.ids.has(builderId)) await engine.invalidate(builderId);
@@ -280,35 +320,40 @@ export class ProjectBuilder {
   }
 
   /** Queued tasks per builder, and the dead letters of the registered builders. */
-  async status(): Promise<BuildStatus> {
-    const built = this.running ?? this.current();
-    const engine = await built.engine;
-    const status = await engine.status();
-    const deadLetters = (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
-    return { ...status, deadLetters: deadLetters.length };
+  status(): Promise<BuildStatus> {
+    return this.track(async () => {
+      const built = this.running ?? this.current();
+      const engine = await built.engine;
+      const status = await engine.status();
+      const deadLetters = (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+      return { ...status, deadLetters: deadLetters.length };
+    });
   }
 
   /** Dead letters of the registered builders. */
-  async deadLetters(): Promise<DeadLetter[]> {
-    const built = this.running ?? this.current();
-    const engine = await built.engine;
-    return (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+  deadLetters(): Promise<DeadLetter[]> {
+    return this.track(async () => {
+      const built = this.running ?? this.current();
+      const engine = await built.engine;
+      return (await engine.deadLetters()).filter((d) => built.ids.has(d.builder));
+    });
   }
 
-  async get(collection: string, key: string): Promise<Json | undefined> {
-    return (await this.getEngine()).get(collection, key);
+  get(collection: string, key: string): Promise<Json | undefined> {
+    return this.track(async () => (await this.getEngine()).get(collection, key));
   }
 
-  async list(collection: string): Promise<Row[]> {
-    return (await this.getEngine()).list(collection);
+  list(collection: string): Promise<Row[]> {
+    return this.track(async () => (await this.getEngine()).list(collection));
   }
 
-  async keys(collection: string): Promise<string[]> {
-    return (await this.getEngine()).keys(collection);
+  keys(collection: string): Promise<string[]> {
+    return this.track(async () => (await this.getEngine()).keys(collection));
   }
 
   /**
-   * The engine over the registered builders. While a run is in progress this is the run's
+   * The engine over the registered builders. Invalid after `reopen()`: a call through an
+   * engine obtained before it throws. While a run is in progress this is the run's
    * engine; otherwise it is remade (over the same store) when the builders changed.
    */
   getEngine(): Promise<BuildEngine> {
@@ -335,13 +380,17 @@ export class ProjectBuilder {
 
   private openStore(): Promise<KV> {
     if (!this.store) {
+      let open = true;
+      this.closeStore = () => {
+        open = false;
+      };
       const store = openStore(
         this.persistence ?? {
           kind: "files",
           files: this.project.workspace.files,
           path: joinPath(this.project.path, DEFAULT_SYSTEM_FOLDER, "state", "build"),
         },
-      );
+      ).then((kv) => guarded(kv, () => open));
       this.store = store;
       store.catch(() => {
         if (this.store === store) this.store = undefined;
@@ -391,22 +440,16 @@ export class ProjectBuilder {
   }
 
   /**
-   * After a run: the registered builders are up to date with the (possibly new) epoch —
-   * except those with tasks still queued (an interrupted run), which stay behind.
+   * After a run: the registered builders are up to date with the (possibly new) epoch. Tasks
+   * an interrupted run left queued stay in the store's queue: the next run with the builder
+   * picks them up, and a run without it marks it behind (`catchUp`).
    */
-  private async recordRun(
-    engine: BuildEngine,
-    built: Built,
-    record: BuildersRecord,
-    changed: boolean,
-  ): Promise<void> {
+  private async recordRun(built: Built, record: BuildersRecord, changed: boolean): Promise<void> {
     const store = await this.openStore();
     const epoch = changed ? record.epoch + 1 : record.epoch;
-    const { queued } = await engine.status();
     const builders = { ...record.builders };
     for (const id of built.ids) {
-      const behind = (queued[id] ?? 0) > 0;
-      builders[id] = { version: built.versions.get(id) ?? "", epoch: behind ? -1 : epoch };
+      builders[id] = { version: built.versions.get(id) ?? "", epoch };
     }
     await store.commit([{ key: BUILDERS_KEY, value: JSON.stringify({ epoch, builders }) }]);
   }
@@ -421,4 +464,28 @@ export class ProjectBuilder {
       dispose: b.dispose ? (key, outputs) => b.dispose?.(key, outputs, project) : undefined,
     };
   }
+}
+
+/**
+ * A store that refuses every call once closed: an engine kept from before `reopen()` must
+ * not write a store another instance now owns (a `FilesKV` allows one writer per folder).
+ */
+function guarded(kv: KV, isOpen: () => boolean): KV {
+  const check = () => {
+    if (!isOpen()) throw new Error("ProjectBuilder: the store was reopened; get a new engine");
+  };
+  return {
+    get: (key) => {
+      check();
+      return kv.get(key);
+    },
+    scan: (prefix, opts) => {
+      check();
+      return kv.scan(prefix, opts);
+    },
+    commit: (writes) => {
+      check();
+      return kv.commit(writes);
+    },
+  };
 }

@@ -110,6 +110,9 @@ tasks queued before the next run, so a nature applied after the
 project was built still covers every file. `restartFrom(id)` re-runs one builder's tasks;
 downstream builders re-run only where its outputs change (restart a downstream builder whose
 code changed by its own id). Dead letters of builders that are not registered are ignored.
+A `FilesKV` store (the default) keeps its rows in memory and allows one writer at a time: a host
+whose writers take turns on one project (tabs, a CLI) calls `await builder.reopen()` when it takes
+its turn, so the store is read again.
 
 ```ts
 await builder.list("word-counts"); // [{ key: "notes.md", value: 120 }, …]
@@ -191,7 +194,7 @@ The workspace caches resources (up to 1000) and projects (up to 256) in LRUs wit
 - Workspace adapters: `SystemFiles`, `Secrets`, `Settings`, `initWorkspace({ workspace, filesApi, systemDir?, label? })`.
 - Resource/project adapters: `ResourceAdapter`, `ContentReadAdapter`, `ContentWriteAdapter`, `TextAdapter`, `JsonAdapter`, `Json`, `ProjectAdapter`, `newReference`, `Reference`.
 - Logging: `LoggerAdapter`, `ConsoleLoggerAdapter`, `loggerOf`, `loggerMetaOf`, `NULL_LOGGER`, `Logger`, `LoggerLevel`.
-- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `configureEngine` (`EngineTuning`: concurrency, batch size, attempts), `registeredBuilders`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
+- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `configureEngine` (`EngineTuning`: concurrency, batch size, attempts), `registeredBuilders`, `reopen`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
 - Commands: `ChangeWorkspaceCommand` (`workspace:change`), `PickDirectoryCommand` (`platform:pick-directory`), `LoadDirectoryCommand`, `LoadFileCommand`, `WriteFileCommand`, `MoveFileCommand`, `DeleteFileCommand`, `MkdirCommand`, `RenameCommand` (`files:*`), their payload/result types, `DirectoryEntry`, `LoadedFile`, `CHANGE_WORKSPACE_COMMAND_KEY`, `PICK_DIRECTORY_COMMAND_KEY`.
 
 ### Dependencies
