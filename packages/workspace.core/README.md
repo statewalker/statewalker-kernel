@@ -118,6 +118,22 @@ its turn, so the store is read again.
 await builder.list("word-counts"); // [{ key: "notes.md", value: 120 }, …]
 ```
 
+`run()` has a step-by-step form: `steps()` is an async generator that yields each scan
+(`{ kind: "scan", changed, removed, … }`) and each committed engine batch
+(`{ kind: "batch", builder, tasks, executed, … }`), and returns the same result as `run()`. The
+build waits at every `yield`, so a host can pause between batches to keep a UI responsive, or stop
+with `break`. The next run continues from the queue.
+
+```ts
+for await (const step of builder.steps({ retryFailed: false, failOnError: false })) {
+  if (step.kind === "batch") showProgress(step.builder, step.executed);
+  await new Promise((r) => setTimeout(r, 0)); // yield to the UI
+}
+```
+
+A suspended generator holds the builder's turn: later `run()` calls and `reopen()` wait for it, so
+finish it or `break`; do not drop it half-way.
+
 Watching a project for changes:
 
 ```ts
@@ -194,7 +210,7 @@ The workspace caches resources (up to 1000) and projects (up to 256) in LRUs wit
 - Workspace adapters: `SystemFiles`, `Secrets`, `Settings`, `initWorkspace({ workspace, filesApi, systemDir?, label? })`.
 - Resource/project adapters: `ResourceAdapter`, `ContentReadAdapter`, `ContentWriteAdapter`, `TextAdapter`, `JsonAdapter`, `Json`, `ProjectAdapter`, `newReference`, `Reference`.
 - Logging: `LoggerAdapter`, `ConsoleLoggerAdapter`, `loggerOf`, `loggerMetaOf`, `NULL_LOGGER`, `Logger`, `LoggerLevel`.
-- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `configureEngine` (`EngineTuning`: concurrency, batch size, attempts), `registeredBuilders`, `reopen`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
+- Builds: everything from `@statewalker/webrun-builder` (`BuildEngine`, `BuilderDef`, `SOURCES_COLLECTION`, `scanSources`, stores, ...); `RegisteredBuilder` (a `BuilderDef` whose `run`/`dispose` receive the `Project`) and `BuilderProvider`; `ProjectBuilder` (`registerBuilder`, `run` with `ProjectBuildOptions`, `restartFrom`, `status`, `deadLetters`, `get`/`list`/`keys`, `configurePersistence`, `configureSourceIgnore`, `configureScanBatch`, `configureEngine` (`EngineTuning`: concurrency, batch size, attempts), `registeredBuilders`, `reopen`, `steps` with `ProjectBuildStep`); `ProjectWatcher`, `WatchEvent`, `WatchHandler`, `PollScheduler`, `DEFAULT_WATCH_INTERVAL_MS` (30 s); `applyNature(project, provider)`, `applyNature(workspace, nature)`, `NatureBuilders`, `Nature`, `NatureAdapter`.
 - Commands: `ChangeWorkspaceCommand` (`workspace:change`), `PickDirectoryCommand` (`platform:pick-directory`), `LoadDirectoryCommand`, `LoadFileCommand`, `WriteFileCommand`, `MoveFileCommand`, `DeleteFileCommand`, `MkdirCommand`, `RenameCommand` (`files:*`), their payload/result types, `DirectoryEntry`, `LoadedFile`, `CHANGE_WORKSPACE_COMMAND_KEY`, `PICK_DIRECTORY_COMMAND_KEY`.
 
 ### Dependencies

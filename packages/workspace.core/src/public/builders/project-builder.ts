@@ -10,6 +10,7 @@ import {
   type PersistenceConfig,
   type Row,
   type RunOptions,
+  type RunProgress,
   type RunStats,
   type ScanResult,
   SOURCES_COLLECTION,
@@ -31,6 +32,12 @@ export interface ProjectBuildResult extends RunStats {
   /** Tasks of the registered builders that keep failing (dead letters); their previous outputs are kept. */
   failures: DeadLetter[];
 }
+
+/**
+ * One step of `ProjectBuilder.steps()`: a scan of (a batch of) the project's files into
+ * `sources`, or one committed batch of the engine.
+ */
+export type ProjectBuildStep = ({ kind: "scan" } & ScanResult) | ({ kind: "batch" } & RunProgress);
 
 export interface ProjectBuildOptions extends RunOptions {
   /**
@@ -183,34 +190,59 @@ export class ProjectBuilder {
    * (`failOnError: false` resolves with them in `failures` instead). Dead letters of
    * builders that are not registered are ignored.
    */
-  run(opts?: ProjectBuildOptions): Promise<ProjectBuildResult> {
-    const result = this.chain.then(() => this.runOnce(opts));
-    this.chain = result.catch(() => undefined);
-    return result;
+  async run(opts?: ProjectBuildOptions): Promise<ProjectBuildResult> {
+    const steps = this.steps(opts);
+    for (;;) {
+      const next = await steps.next();
+      if (next.done) return next.value;
+    }
   }
 
-  private async runOnce(opts?: ProjectBuildOptions): Promise<ProjectBuildResult> {
+  /**
+   * `run()` one step at a time: an async generator that yields each scan and each committed
+   * engine batch, and returns the run's result (or throws as `run()` rejects). The build
+   * waits at every `yield` — nothing is in flight then — so the caller may pause between
+   * steps, or stop with `break` / `return()`: the next run continues from the queue. Runs are
+   * serialised: a suspended generator holds its turn (later `run()`s and `reopen()` wait), so
+   * finish or return it; do not drop it half-way.
+   */
+  async *steps(
+    opts?: ProjectBuildOptions,
+  ): AsyncGenerator<ProjectBuildStep, ProjectBuildResult, void> {
+    let release!: () => void;
+    const turn = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const previous = this.chain;
+    this.chain = previous.then(() => turn);
+    try {
+      await previous;
+      return yield* this.stepsOnce(opts);
+    } finally {
+      release();
+    }
+  }
+
+  private async *stepsOnce(
+    opts?: ProjectBuildOptions,
+  ): AsyncGenerator<ProjectBuildStep, ProjectBuildResult, void> {
     this.current(); // brings `this.built` up to date
     const built = this.built as Built;
     this.running = built;
+    let engine: BuildEngine | undefined;
+    let record: BuildersRecord | undefined;
+    const stats: RunStats = { executed: 0, skipped: 0, failed: 0, deadLettered: 0, pending: false };
+    const scanned: ScanResult = { seen: 0, changed: 0, removed: 0, more: false };
     try {
-      const engine = await built.engine;
+      engine = await built.engine;
       const ids = built.ids;
-      const record = await this.catchUp(engine, built);
+      record = await this.catchUp(engine, built);
       const ignore = this.sourceIgnore ? await this.sourceIgnore() : undefined;
       if (opts?.retryFailed ?? true) {
         for (const d of await engine.deadLetters()) {
           if (ids.has(d.builder)) await engine.requeue(d.builder, d.key);
         }
       }
-      const stats: RunStats = {
-        executed: 0,
-        skipped: 0,
-        failed: 0,
-        deadLettered: 0,
-        pending: false,
-      };
-      const scanned: ScanResult = { seen: 0, changed: 0, removed: 0, more: false };
       let cursor: string | undefined;
       // Without a batch size: one scan, one run. With one: scan a batch, run it through the
       // whole pipeline, repeat — so downstream results appear batch by batch. Files that keep
@@ -230,6 +262,7 @@ export class ProjectBuilder {
         scanned.removed += scan.removed;
         scanned.more = scan.more;
         cursor = scan.cursor ?? cursor;
+        yield { kind: "scan", ...scan };
         // `maxTasks` bounds the whole run, across passes.
         const maxTasks =
           opts?.maxTasks === undefined
@@ -239,20 +272,33 @@ export class ProjectBuilder {
           stats.pending = true;
           break;
         }
-        const run = await engine.run({
+        const batches = engine.steps({
           maxTasks,
           signal: opts?.signal,
           onProgress: opts?.onProgress,
         });
-        stats.executed += run.executed;
-        stats.skipped += run.skipped;
-        stats.failed += run.failed;
-        stats.deadLettered += run.deadLettered;
-        stats.pending = run.pending;
-        if (!scan.more || run.pending || opts?.signal?.aborted) break;
+        try {
+          for (;;) {
+            const next = await batches.next();
+            if (next.done) {
+              stats.pending = next.value.pending;
+              break;
+            }
+            const p = next.value;
+            stats.executed += p.executed;
+            stats.skipped += p.skipped;
+            stats.failed += p.failed;
+            stats.deadLettered += p.deadLettered;
+            yield { kind: "batch", ...p };
+          }
+        } finally {
+          // After `break` / `return()` / a throw at the yield: release the engine (a no-op
+          // when its generator already finished).
+          await batches.return(stats);
+        }
+        if (!scan.more || stats.pending || opts?.signal?.aborted) break;
         if (pass > Math.ceil(scan.seen / (this.scanBatch ?? 1))) break;
       }
-      await this.recordRun(built, record, scanned.changed + scanned.removed + stats.executed > 0);
       const failed = (await engine.deadLetters()).filter((d) => ids.has(d.builder));
       if (failed.length > 0 && (opts?.failOnError ?? true)) {
         const [first] = failed;
@@ -263,6 +309,16 @@ export class ProjectBuilder {
       }
       return { ...stats, scanned, failures: failed };
     } finally {
+      // Also after `break`, `return()` or a throw: what this run changed is recorded, so a
+      // builder absent from it catches up later.
+      if (engine && record) {
+        const changed = scanned.changed + scanned.removed + stats.executed > 0;
+        try {
+          await this.recordRun(built, record, changed);
+        } catch (error) {
+          this.log.error("could not record the run", { error: String(error) });
+        }
+      }
       this.running = undefined;
     }
   }

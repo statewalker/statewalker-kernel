@@ -589,6 +589,97 @@ describe("ProjectBuilder — builders registered late, changes during a run", ()
   });
 });
 
+describe("ProjectBuilder — steps()", () => {
+  function files(n: number): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (let i = 0; i < n; i++) out[`/proj/f${i}.txt`] = String(i);
+    return out;
+  }
+
+  it("yields the scan, then each committed batch, and returns the result", async () => {
+    const p = await project(files(5));
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder(processed));
+    const steps = builder.steps();
+    const kinds: string[] = [];
+    let next = await steps.next();
+    while (!next.done) {
+      kinds.push(
+        next.value.kind === "scan" ? `scan:${next.value.changed}` : `batch:${next.value.tasks}`,
+      );
+      next = await steps.next();
+    }
+    expect(kinds).toEqual(["scan:5", "batch:2", "batch:2", "batch:1"]);
+    expect(next.value).toMatchObject({ executed: 5, pending: false, scanned: { changed: 5 } });
+  });
+
+  it("waits at each yield, and break stops cleanly: the next run finishes the rest", async () => {
+    const p = await project(files(6));
+    const processed: string[] = [];
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder(processed));
+    let batches = 0;
+    for await (const step of builder.steps()) {
+      if (step.kind !== "batch") continue;
+      const before = processed.length;
+      await new Promise((r) => setTimeout(r, 5));
+      expect(processed.length).toBe(before);
+      if (++batches === 2) break;
+    }
+    expect(processed).toHaveLength(4);
+    const rest = await builder.run(); // the engine was released by break
+    expect(processed).toHaveLength(6);
+    expect(rest.executed).toBe(2);
+  });
+
+  it("a suspended generator holds the turn: run() and reopen() wait for it", async () => {
+    const p = await project(files(4));
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder([]));
+    const steps = builder.steps();
+    await steps.next(); // the scan
+    const order: string[] = [];
+    const run = builder.run().then(() => order.push("run"));
+    const reopen = builder.reopen().then(() => order.push("reopen"));
+    await new Promise((r) => setTimeout(r, 10));
+    expect(order).toEqual([]);
+    for (let n = await steps.next(); !n.done; n = await steps.next()) order.push("step");
+    await Promise.all([run, reopen]);
+    expect(order).toEqual(["step", "step", "run", "reopen"]);
+  });
+
+  it("an exception in the loop releases the turn and the engine", async () => {
+    const p = await project(files(4));
+    const builder = p.requireAdapter(ProjectBuilder).configureEngine({ batchSize: 2 });
+    builder.registerBuilder(echoBuilder([]));
+    await expect(
+      (async () => {
+        for await (const step of builder.steps()) {
+          if (step.kind === "batch") throw new Error("caller failed");
+        }
+      })(),
+    ).rejects.toThrow("caller failed");
+    expect((await builder.run()).executed).toBe(2);
+  });
+
+  it("a run stopped with break still records its changes: an absent builder catches up", async () => {
+    const fs = new MemFilesApi();
+    const p = await project({ "/proj/a.txt": "a" }, fs);
+    const builder = p.requireAdapter(ProjectBuilder);
+    const late: string[] = [];
+    builder.registerBuilder(echoBuilder([]));
+    const drop = builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    drop();
+    await fs.write("/proj/b.txt", [enc.encode("b")]);
+    for await (const step of builder.steps()) if (step.kind === "batch") break; // b.txt scanned
+    builder.registerBuilder(echoBuilder(late, [], "Late", "late"));
+    await builder.run();
+    expect(late.sort()).toEqual(["a.txt", "a.txt", "b.txt"]); // caught up
+  });
+});
+
 describe("ProjectBuilder — configureEngine", () => {
   it("runs the tasks of a batch concurrently and honours maxAttempts", async () => {
     const p = await project({ "/proj/a.txt": "a", "/proj/b.txt": "b", "/proj/c.txt": "c" });
