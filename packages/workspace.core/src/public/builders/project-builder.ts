@@ -100,6 +100,8 @@ export class ProjectBuilder {
   private closeStore?: () => void;
   /** Accessor calls in flight (not serialised with runs); `reopen` waits for them. */
   private readonly inflight = new Set<Promise<unknown>>();
+  /** A `reopen` in progress: runs queue behind it, accessor calls wait for it. */
+  private reopening?: Promise<void>;
   /** Bumped whenever the builder set or the tuning changes. */
   private generation = 0;
   private built?: Built;
@@ -269,19 +271,30 @@ export class ProjectBuilder {
    * Drop the open store and engine, so the next access reads the store again — after another
    * process (a browser tab, a CLI) wrote it: a `FilesKV` store keeps its rows in memory and
    * allows one writer at a time, so a host that alternates writers (a lease) calls this when
-   * it takes the lease. Waits for the run in progress, if any.
+   * it takes the lease. Waits for the run in progress and the reads in flight; runs and reads
+   * started meanwhile wait for the reopen.
    */
-  async reopen(): Promise<void> {
-    await this.chain;
-    while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
-    this.closeStore?.();
-    this.closeStore = undefined;
-    this.store = undefined;
-    this.built = undefined;
+  reopen(): Promise<void> {
+    const reopening = this.chain.then(async () => {
+      while (this.inflight.size > 0) await Promise.allSettled([...this.inflight]);
+      this.closeStore?.();
+      this.closeStore = undefined;
+      this.store = undefined;
+      this.built = undefined;
+    });
+    this.reopening = reopening;
+    this.chain = reopening.catch(() => undefined);
+    const done = () => {
+      if (this.reopening === reopening) this.reopening = undefined;
+    };
+    reopening.then(done, done);
+    return reopening;
   }
 
-  /** Track an accessor call, so `reopen` waits for it. */
+  /** Track an accessor call, so `reopen` waits for it (or wait for a pending `reopen`). */
   private track<T>(call: () => Promise<T>): Promise<T> {
+    const reopening = this.reopening;
+    if (reopening) return reopening.then(() => this.track(call));
     const p = call();
     this.inflight.add(p);
     const done = () => this.inflight.delete(p);

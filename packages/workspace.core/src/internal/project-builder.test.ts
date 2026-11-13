@@ -437,6 +437,32 @@ describe("ProjectBuilder — builders registered late, changes during a run", ()
     expect((await b2.status()).queued).toEqual({ A: 50, B: 50 });
   });
 
+  it("a run or a read started while reopen() waits runs after it, on the reopened store", async () => {
+    const files: Record<string, string> = {};
+    for (let i = 0; i < 20; i++) files[`/proj/f${i}.txt`] = String(i);
+    const fs = new MemFilesApi();
+    const p = await project(files, fs);
+    const b = p.requireAdapter(ProjectBuilder);
+    b.registerBuilder({
+      ...echoBuilder([]),
+      async run(ctx) {
+        await new Promise((r) => setTimeout(r, 1));
+        ctx.emit("content", ctx.key, true);
+      },
+    });
+    const status = b.status();
+    const reopened = b.reopen();
+    const run = b.run();
+    const keys = b.keys("content");
+    await Promise.all([status, reopened, run, keys]); // none fails on a closed store
+    expect(await b.keys("content")).toHaveLength(20);
+
+    const again = await project({}, fs);
+    const b2 = again.requireAdapter(ProjectBuilder);
+    b2.registerBuilder(echoBuilder([]));
+    expect(await b2.keys("content")).toHaveLength(20);
+  });
+
   it("status() counts only the dead letters of registered builders", async () => {
     const p = await project({ "/proj/a.txt": "a" });
     const builder = p.requireAdapter(ProjectBuilder);
