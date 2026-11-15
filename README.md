@@ -122,9 +122,9 @@ Most `.core` packages export a `./fragment` entry (an `init(ctx)` for the backbo
 
 ### Releases
 
-Every merge to `main` publishes (`.github/workflows/ci.yml`, jobs `release` and `publish`). After CI passes on `main`, the release job adds changesets for packages whose packed contents differ from npm's `latest`, applies all pending changesets (`changeset version`), commits "chore: version packages" to `main`, and packs what npm lacks; the publish job uploads it with npm trusted publishing and provenance and tags a GitHub release per package. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
+Merging the version pull request publishes (`.github/workflows/ci.yml`, jobs `version`, `pack` and `publish`). After CI passes on `main`, the `version` job adds changesets for packages whose packed contents differ from npm's `latest` and opens or updates a "chore: version packages" pull request that applies all pending changesets; merging it packs what npm lacks, and `publish` uploads it with npm trusted publishing and provenance and tags a GitHub release per package. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
 
-One-time set-up: npm's trusted publisher for each package names this repository, `ci.yml` and the `npm` environment; the workflow token may push to `main`. A package npm has never seen is skipped with a warning until its first version is published by hand.
+One-time set-up: npm's trusted publisher for each package names this repository, `ci.yml` and the `npm` environment (only `main`, no required reviewers); the `statewalker-release` GitHub App opens the version pull request, so its checks run. A package npm has never seen fails `publish` with a 404 until its first version is published by hand.
 
 ### License
 
