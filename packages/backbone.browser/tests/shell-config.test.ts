@@ -23,7 +23,7 @@ describe("loadShellConfig", () => {
     });
 
     expect(config.roots).toEqual(["@ext/sandbox"]);
-    expect(config.modules.react).toBe("https://esm.sh/react");
+    expect(config.modules?.react).toBe("https://esm.sh/react");
   });
 
   it("reads embedded config from script element", async () => {
@@ -36,7 +36,7 @@ describe("loadShellConfig", () => {
 
     const config = await loadShellConfig();
     expect(config.roots).toEqual(["@ext/explorer"]);
-    expect(config.modules["@repo/shared-adapters"]).toBe("/m/shared");
+    expect(config.modules?.["@repo/shared-adapters"]).toBe("/m/shared");
   });
 
   it("URL ?root= params override roots", async () => {
@@ -57,7 +57,7 @@ describe("loadShellConfig", () => {
     };
 
     const config = await loadShellConfig({ roots: [], modules: {} });
-    expect(config.modules["@ext/custom"]).toBe("https://cdn.example.com/custom");
+    expect(config.modules?.["@ext/custom"]).toBe("https://cdn.example.com/custom");
   });
 
   it("merges fetched config over defaults", async () => {
@@ -78,7 +78,7 @@ describe("loadShellConfig", () => {
     });
 
     expect(config.roots).toEqual(["@ext/fetched"]);
-    expect(config.modules["@repo/shared-adapters"]).toBe("/fetched/shared");
-    expect(config.modules.react).toBe("https://esm.sh/react");
+    expect(config.modules?.["@repo/shared-adapters"]).toBe("/fetched/shared");
+    expect(config.modules?.react).toBe("https://esm.sh/react");
   });
 });
