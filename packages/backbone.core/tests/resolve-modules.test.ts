@@ -70,10 +70,10 @@ describe("ModuleResolver", () => {
     });
     const result = await resolver.resolveModules("file:///app/", ["shared"]);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("shared");
-    expect(result[0].url).toBe("file:///packages/shared/src/index.ts");
-    expect(result[0].version).toBe("1.0.0");
-    expect(result[0].packageJsonUrl).toBe("file:///packages/shared/package.json");
+    expect(result[0]?.name).toBe("shared");
+    expect(result[0]?.url).toBe("file:///packages/shared/src/index.ts");
+    expect(result[0]?.version).toBe("1.0.0");
+    expect(result[0]?.packageJsonUrl).toBe("file:///packages/shared/package.json");
   });
 
   it("orders dependencies before dependents", async () => {
@@ -163,8 +163,8 @@ describe("ModuleResolver", () => {
 
     const result = await resolver.resolveModules("file:///app/", ["broken"]);
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe("broken");
-    expect(result[0].version).toBe("");
+    expect(result[0]?.name).toBe("broken");
+    expect(result[0]?.version).toBe("");
   });
 
   it("passes the parent package.json URL as baseUrl for transitive deps", async () => {
@@ -234,6 +234,6 @@ describe("ModuleResolver", () => {
       mylib: { entry: "dist/main.js" },
     });
     const result = await resolver.resolveModules("file:///app/", ["mylib"]);
-    expect(result[0].url).toBe("file:///packages/mylib/dist/main.js");
+    expect(result[0]?.url).toBe("file:///packages/mylib/dist/main.js");
   });
 });
