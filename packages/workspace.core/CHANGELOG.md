@@ -1,5 +1,17 @@
 # @statewalker/workspace.core
 
+## 0.7.0
+
+### Minor Changes
+
+- 843fc1b: `ProjectBuilder.steps(opts)`: `run()` as an async generator — yields each scan (`kind: "scan"`) and each committed engine batch (`kind: "batch"`), returns the run's result. The build waits at every `yield`, so a host can pause between batches or stop with `break`; the next run continues from the queue. A run stopped this way (or by a throw) still records what it changed, so builders absent from it catch up later. Needs `@statewalker/webrun-builder` ^0.4.0 (`BuildEngine.steps()`).
+
+## 0.6.1
+
+### Patch Changes
+
+- 0264776: `ProjectBuilder`: a run that was stopped (abort, `maxTasks`) no longer makes the next run redo every task of the builders that had work left: their queued tasks simply resume. New `reopen()` drops the open store and engine so the next access reloads the store — for hosts whose writers take turns on one project (tabs, a CLI) under a lease.
+
 ## 0.6.0
 
 ### Minor Changes

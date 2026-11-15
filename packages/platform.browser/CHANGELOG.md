@@ -1,5 +1,20 @@
 # @statewalker/platform.browser
 
+## 0.7.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies [843fc1b]
+  - @statewalker/platform.core@0.7.0
+  - @statewalker/workspace.core@0.7.0
+
 ## 0.6.0
 
 ### Minor Changes
