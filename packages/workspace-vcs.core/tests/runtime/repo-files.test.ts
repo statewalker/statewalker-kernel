@@ -85,9 +85,9 @@ describe("repoFilesOf", () => {
 
 describe("repoFilesOf — containment", () => {
   it("hides any path holding a `..` segment", async () => {
-    // `normalizePath` drops empty and `.` segments and passes `..` through
-    // verbatim, and the node backend's `resolvePath` is pure concatenation — so
-    // containment is a claim this view has to make true itself.
+    // `normalizePath` resolves `..` and throws when it climbs above the root, so
+    // left to it `exists("../x")` would throw rather than answer `false`, and
+    // `nested/../x` would resolve. Hiding any `..` path is this view's own claim.
     const files = new MemFilesApi({
       initialFiles: { "a/README.md": "inside", "secret.txt": "outside the project" },
     });

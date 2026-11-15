@@ -9,6 +9,7 @@ export {
   httpPushOutcome,
   httpRefspecOf,
   type PushTarget,
+  pushRefspecOf,
   pushTargetsOf,
   RemotePushError,
 } from "./git-remote.js";

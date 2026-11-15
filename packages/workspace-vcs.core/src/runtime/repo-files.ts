@@ -1,9 +1,5 @@
 import type { FilesApi } from "@statewalker/webrun-files";
-import {
-  CompositeFilesApi,
-  FilteredFilesApi,
-  newRegexpPathFilter,
-} from "@statewalker/webrun-files-composite";
+import { CompositeFilesApi, FilteredFilesApi } from "@statewalker/webrun-files-composite";
 import type { Project } from "@statewalker/workspace.core";
 
 /**
@@ -16,15 +12,31 @@ const rooted = new WeakMap<Project, FilesApi>();
 /**
  * A path holding a `..` segment.
  *
- * Containment is otherwise delegated to `CompositeFilesApi.resolve` →
- * `normalizePath`, which drops empty and `.` segments and passes `..` through
- * **verbatim**, and `NodeFilesApi.resolvePath` is pure concatenation. On the
- * in-memory backend that is harmless (`..` becomes a literal segment name), and
- * the nature's own paths are constants, so nothing here reaches it today — but the
- * docstring below claims containment, and a claim a backend does not enforce is
- * worth making true rather than worth trusting.
+ * `normalizePath` (webrun-files) resolves `..` against the segment before it and
+ * **throws** when one would climb above the root, so a filter given the normalised
+ * path never sees a `..` at all: `../secret.txt` would make `exists` throw rather
+ * than answer `false`, and `nested/../x` would quietly resolve to `x`. Hiding is
+ * therefore decided on the **raw** path, before normalisation — see
+ * {@link EscapeHidingFilesApi}. The nature's own paths are constants, so nothing
+ * here reaches it today — but the docstring below promises that such a path is
+ * hidden, not resolved, and that is worth making true rather than worth trusting.
  */
 const ESCAPING_SEGMENT = /(^|\/)\.\.(\/|$)/;
+
+/**
+ * A `FilteredFilesApi` that hides any path holding a `..` segment as given, before
+ * the base class normalises it. Every operation (`list` entries included) goes
+ * through `isHidden`, so this one override covers them all.
+ */
+class EscapeHidingFilesApi extends FilteredFilesApi {
+  constructor(source: FilesApi) {
+    super(source, () => true);
+  }
+
+  protected override async isHidden(path: string): Promise<boolean> {
+    return ESCAPING_SEGMENT.test(path) || (await super.isHidden(path));
+  }
+}
 
 /**
  * The `FilesApi` a project's repository lives on: the workspace filesystem
@@ -39,10 +51,7 @@ const ESCAPING_SEGMENT = /(^|\/)\.\.(\/|$)/;
 export function repoFilesOf(project: Project): FilesApi {
   let files = rooted.get(project);
   if (!files) {
-    files = new FilteredFilesApi(
-      new CompositeFilesApi(project.workspace.files, project.path),
-      newRegexpPathFilter(ESCAPING_SEGMENT),
-    );
+    files = new EscapeHidingFilesApi(new CompositeFilesApi(project.workspace.files, project.path));
     rooted.set(project, files);
   }
   return files;
