@@ -1,19 +1,21 @@
 import type { Git } from "@statewalker/vcs-commands";
 import { GitWorkingCopyConfig } from "@statewalker/vcs-store-files";
-import type { Credentials } from "@statewalker/vcs-transport";
-import { fetch as transportFetch, push as transportPush } from "@statewalker/vcs-transport";
+import type { Credentials, PushRefUpdate } from "@statewalker/vcs-transport";
+import {
+  createTransportRefStore,
+  isPushSuccess,
+  fetch as transportFetch,
+  push as transportPush,
+} from "@statewalker/vcs-transport";
 import type { FilesApi } from "@statewalker/webrun-files";
 import { configFilesOf } from "../adapters/config-files.js";
-import { historyOf, serializationOf } from "../adapters/repository-facade.js";
+import { historyOf, repositoryFacadeOf } from "../adapters/repository-facade.js";
 
 /** Where a repository keeps its remotes — the same file native git reads. */
 export const CONFIG_PATH = ".git/config";
 
 /** The remote a bare `push()` / `fetch()` targets. */
 export const DEFAULT_REMOTE = "origin";
-
-/** The ref namespace a branch lives in. */
-const HEADS_PREFIX = "refs/heads/";
 
 /** A remote as this nature stores it: a name and an absolute HTTP(S) URL. */
 export interface HttpRemote {
@@ -41,10 +43,10 @@ export interface RefPushOutcome {
 /**
  * What a push reports.
  *
- * Deliberately carries **no pushed object id**. The transport reports every
- * `RemoteRefUpdate.newObjectId` as `""` (`push-command.ts:326-336` has the literal
- * and the comment "Would need to track this"), so any `id` here would be a
- * fabrication. The only sound witness of what landed is the server's own ref store.
+ * Deliberately carries **no pushed object id**. The transport's `PushRefUpdate.newOid`
+ * is the value the client *read and sent*, not a confirmation of what the server
+ * stored, and the local ref can move while the push is in flight. The only sound
+ * witness of what landed is the server's own ref store.
  */
 export interface PushOutcome {
   /** The absolute URL actually pushed to. */
@@ -374,21 +376,19 @@ export interface PushToHttpRemoteOptions {
 /**
  * Push one ref over smart HTTP, straight through `@statewalker/vcs-transport`.
  *
- * `PushCommand` is bypassed for two reasons, both structural rather than stylistic:
+ * `PushCommand` is bypassed because **it cannot be handed a `fetch`**: `fetchImpl`
+ * exists only on `BaseHttpOptions`, `PushCommand.call()` never forwards one, and
+ * `TransportCommand` exposes no transport injection, so the porcelain is hard-wired to
+ * `globalThis.fetch`. Reaching it means stubbing a global — which this nature refuses
+ * to do, since its whole dependency story is `registerVcs(workspace, deps)`.
  *
- * - **It cannot be handed a `fetch`.** `fetchImpl` exists only on `BaseHttpOptions`;
- *   `PushCommand.call()` never forwards one and `TransportCommand` exposes no transport
- *   injection, so the porcelain is hard-wired to `globalThis.fetch`. Reaching it means
- *   stubbing a global — which this nature refuses to do, since its whole dependency
- *   story is `registerVcs(workspace, deps)`.
- * - **Its `exportPack` comes back `undefined` here.** It reads `serialization` off the
- *   history, and a file-backed `History` has no such member — so the push would fall
- *   back to the hand-rolled object walker rather than a real pack.
+ * The transport's push client decides each ref as `git push` does: a refused ref
+ * (`rejected-*` before the wire, `remote-rejected` by the receiver) is reported in
+ * {@link PushOutcome.updates} with its reason rather than thrown. Transport failures
+ * (an HTTP error, a 401) throw.
  */
 export async function pushToHttpRemote(options: PushToHttpRemoteOptions): Promise<PushOutcome> {
   const { git, url, fetchImpl, ref, auth, force = false } = options;
-  const history = historyOf(git);
-  const serialization = serializationOf(git);
 
   const result = await transportPush({
     url,
@@ -396,20 +396,22 @@ export async function pushToHttpRemote(options: PushToHttpRemoteOptions): Promis
     auth,
     force,
     refspecs: [`${force ? "+" : ""}${ref}:${ref}`],
-    getLocalRef: async (name: string) => (await history.refs.resolve(name))?.objectId,
-    exportPack: (wants: Set<string>, exclude: Set<string>) =>
-      serialization.createPack(history.collectReachableObjects(wants, exclude)),
+    repository: repositoryFacadeOf(git),
+    refStore: createTransportRefStore(historyOf(git).refs),
   });
 
-  return {
-    url,
-    ok: result.ok,
-    updates: [...result.updates].map(([name, update]) => ({
-      ref: name,
-      ok: update.ok,
-      message: update.message,
-    })),
-  };
+  return { url, ok: result.ok, updates: result.updates.map(refPushOutcomeOf) };
+}
+
+/** One transport ref update → this package's `{ref, ok, message}`. */
+function refPushOutcomeOf(update: PushRefUpdate): RefPushOutcome {
+  const ok = isPushSuccess(update.status);
+  // `message` is the receiver's reason (`remote-rejected`); a refusal decided before
+  // the wire has none, and git's status column (`[rejected] (fetch first)`) says why.
+  const message = update.message ?? (ok ? undefined : update.summary);
+  return message === undefined
+    ? { ref: update.remoteRef, ok }
+    : { ref: update.remoteRef, ok, message };
 }
 
 export interface FetchFromHttpRemoteOptions {
@@ -424,50 +426,46 @@ export interface FetchFromHttpRemoteOptions {
 /**
  * Fetch a remote's branches into remote-tracking refs, importing the pack.
  *
- * The import is the part `FetchCommand` does **not** do: its `storePack()` is an
- * empty method body (`fetch-command.ts:588-591`, comment "Pack data is stored
- * individually by the transport layer"), so the porcelain writes the tracking refs
- * and drops every object they point at. `transportFetch` likewise only *returns*
- * `packData`. Importing it here is what makes the fetched commit readable.
+ * The transport's fetch client does the whole job: it imports the pack through the
+ * repository facade's `importPack` and writes the tracking refs the refspec maps,
+ * each with its old value checked. `FetchCommand` is bypassed for the same reason
+ * as `PushCommand` in {@link pushToHttpRemote}: it cannot be handed a `fetch`.
  *
- * Only `refs/heads/*` is mapped. Tags and other namespaces are advertised but left
- * alone — this nature has no tag surface, and inventing a mapping for refs it cannot
- * show would be state nobody asked for.
+ * Only `refs/heads/*` is mapped (`+refs/heads/*:refs/remotes/<remote>/*`), and tag
+ * auto-follow is off. Tags and other namespaces are advertised but left alone — this
+ * nature has no tag surface, and inventing a mapping for refs it cannot show would be
+ * state nobody asked for.
+ *
+ * Throws when the ref store refused a tracking ref (it changed while the fetch ran):
+ * the objects are in, but {@link FetchOutcome.updated} would otherwise name a ref
+ * that was not written.
  */
 export async function fetchFromHttpRemote(
   options: FetchFromHttpRemoteOptions,
 ): Promise<FetchOutcome> {
   const { git, url, fetchImpl, remote, auth } = options;
-  const history = historyOf(git);
 
-  const raw = await transportFetch({ url, fetchImpl, auth });
+  const result = await transportFetch({
+    url,
+    fetchImpl,
+    auth,
+    repository: repositoryFacadeOf(git),
+    refStore: createTransportRefStore(historyOf(git).refs),
+    refspecs: [`+refs/heads/*:refs/remotes/${remote}/*`],
+    tags: "none",
+  });
 
-  let objectsImported = 0;
-  if (raw.packData.length > 0) {
-    const pack = raw.packData;
-    const imported = await serializationOf(git).importPack(
-      (async function* () {
-        yield pack;
-      })(),
-    );
-    objectsImported = imported.objectsImported;
+  const rejected = result.refUpdates.filter((u) => u.status === "rejected");
+  if (rejected.length > 0) {
+    const detail = rejected
+      .map((u) => `${u.localRef}: ${u.reason ?? "no reason reported"}`)
+      .join("; ");
+    throw new Error(`fetch from ${url} could not write its tracking refs: ${detail}`);
   }
 
   const updated = new Map<string, string>();
-  for (const [refName, objectId] of raw.refs) {
-    if (!refName.startsWith(HEADS_PREFIX)) continue;
-    const tracking = `refs/remotes/${remote}/${refName.slice(HEADS_PREFIX.length)}`;
-    const oid = bytesToHex(objectId);
-    await history.refs.set(tracking, oid);
-    updated.set(tracking, oid);
-  }
+  for (const update of result.refUpdates) updated.set(update.localRef, update.newOid);
 
+  const objectsImported = result.imports.reduce((sum, i) => sum + i.objectsImported, 0);
   return { url, updated, objectsImported };
-}
-
-/** The transport reports ref ids as raw 20-byte SHA-1s; refs are stored as hex. */
-function bytesToHex(bytes: Uint8Array): string {
-  let hex = "";
-  for (const byte of bytes) hex += byte.toString(16).padStart(2, "0");
-  return hex;
 }

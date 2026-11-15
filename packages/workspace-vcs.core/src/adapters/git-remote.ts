@@ -1,9 +1,20 @@
 import type { Git } from "@statewalker/vcs-commands";
-import type { Duplex, PushResult, RefStore } from "@statewalker/vcs-transport";
-import { httpPush, parseRefSpec, pushOverDuplex } from "@statewalker/vcs-transport";
+import type {
+  Duplex,
+  PushClientResult,
+  PushRefUpdate,
+  PushResult,
+  RefStore,
+} from "@statewalker/vcs-transport";
+import {
+  createTransportRefStore,
+  isPushSuccess,
+  parseRefSpec,
+  pushOverDuplex,
+  push as transportPush,
+} from "@statewalker/vcs-transport";
 import type { GitRemote } from "@statewalker/vcs-workspace";
-import type { RemoteCredentials } from "../remotes/http-remote.js";
-import { refStoreOf } from "./ref-store.js";
+import { fetchImplOf, type RemoteCredentials } from "../remotes/http-remote.js";
 import { historyOf, repositoryFacadeOf } from "./repository-facade.js";
 
 /**
@@ -11,17 +22,13 @@ import { historyOf, repositoryFacadeOf } from "./repository-facade.js";
  * **locally, before the push**.
  *
  * The local resolution is the whole design. `GitRemote.push` owes its caller a
- * commit id, and neither transport ever reports one on success:
- *
- * - `httpPush` builds every success entry as the bare literal `{success: true}`
- *   (`transport/src/adapters/http/http-client.ts:521-538`) — `RefPushStatus.newOid`
- *   is populated on no path at all, and only *declared* for failures.
- * - `pushOverDuplex` returns the bare literal `{success: true}` and constructs
- *   **no `refStatus` whatsoever** (`transport/src/operations/push-over-duplex.ts:98-100`).
- *
- * So a rule of the form "succeeded but no `newOid` ⇒ something is wrong" would
- * throw on **every** successful push on **both** transports. The push result is
- * consulted for exactly one thing: did it succeed.
+ * commit id, and the transport's per-ref `newOid` is not one it can vouch for: it is
+ * the value the push client read from the local ref when it built the update — a
+ * read that happens *after* this one, across at least one network round trip — not
+ * a confirmation of what the server stored. Reporting the id resolved here, and
+ * checking afterwards that the ref did not move ({@link assertNoRefDrift}), is what
+ * makes the reported id the pushed one. The push result is consulted for whether
+ * each requested ref succeeded, and why not.
  */
 export interface PushTarget {
   /** Local ref, e.g. `refs/heads/main`. */
@@ -35,34 +42,30 @@ export interface PushTarget {
 }
 
 /**
- * The refspec for the **duplex** transport: `[+]<source>:<destination>`.
+ * The refspec handed to the transport: `[+]<source>:<destination>`.
  *
- * The `+` is kept because `pushOverDuplex`'s FSM reads it for its local
- * non-fast-forward check (`fsm/push/client-push-fsm.ts`).
+ * Both transports run the same push client, which decides each ref as `git push`
+ * does before anything is sent: an update that is not a fast-forward — or whose
+ * remote value is not even present locally — is refused there (`rejected-*`) unless
+ * the refspec carries a `+`. So the `+` is the per-ref force signal and must be kept:
+ * with it the update is sent, and whether a non-fast-forward lands is then the
+ * **receiver's** call, reported with the receiver's reason.
  */
-export function duplexRefspecOf(target: PushTarget): string {
+export function pushRefspecOf(target: PushTarget): string {
   return `${target.force ? "+" : ""}${target.source}:${target.destination}`;
 }
 
+/** The refspec for the duplex transport — {@link pushRefspecOf}. */
+export const duplexRefspecOf: (target: PushTarget) => string = pushRefspecOf;
+
 /**
- * The refspec for the **HTTP** transport: `<source>:<destination>`, never a `+`.
+ * The refspec for the HTTP transport — {@link pushRefspecOf}, `+` included.
  *
- * The prefix is stripped, and that is a fix rather than a simplification.
- * `httpPush`'s `resolveRefspecs` (`http-client.ts:572-608`) does **not** strip it
- * before looking the source ref up, so a `+`-prefixed refspec made it look for a
- * local ref literally named `+refs/heads/main`, find nothing, and **silently skip
- * the refspec** — while still answering `{success: true}` with an empty
- * `refStatus`. Every force-push therefore threw ({@link httpPushOutcome} case 3)
- * and none ever landed.
- *
- * Nothing is lost by dropping it: on the smart-HTTP wire the force decision is
- * carried by the update command itself, not by the refspec text, so `+` is inert
- * there. Whether the server accepts a non-fast-forward update is the server's
- * call either way.
+ * It used to drop the `+`: the old HTTP client looked a `+`-prefixed source up as a
+ * ref literally named `+refs/heads/main` and skipped it. The current client parses
+ * the prefix, and needs it to send a forced update at all.
  */
-export function httpRefspecOf(target: PushTarget): string {
-  return `${target.source}:${target.destination}`;
-}
+export const httpRefspecOf: (target: PushTarget) => string = pushRefspecOf;
 
 /** Raised when a push did not put the requested refspecs on the remote. */
 export class RemotePushError extends Error {
@@ -76,12 +79,10 @@ export class RemotePushError extends Error {
  * Canonicalise the refspecs and resolve each source ref locally — or throw.
  *
  * Canonicalisation splits `[+]<source>[:<destination>]` into its parts, with the
- * destination defaulted to the source. It is not cosmetic: `pushOverDuplex`'s FSM
- * uses `destination ?? ""` (`fsm/push/client-push-fsm.ts:123-160`), so a bare
- * `refs/heads/main` would be pushed to the ref named `""`. The `+` is carried as
- * a **flag** rather than as text, because the two transports want different
- * spellings of it — {@link duplexRefspecOf} keeps it, {@link httpRefspecOf} drops
- * it, and each says why.
+ * destination defaulted to the source, so the transport always receives an
+ * explicit `source:destination` and {@link assertNoRefDrift} and the outcome
+ * mapping know which remote ref to look for. The `+` is carried as
+ * a **flag** rather than as text and spelled back by {@link pushRefspecOf}.
  *
  * Two shapes are refused outright:
  *
@@ -122,8 +123,8 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
     if (!commit) {
       throw new RemotePushError(
         `refspec '${spec}' does not resolve: no local ref '${source}'. ` +
-          "Both transports skip a refspec they cannot resolve and still report success, " +
-          "so this is checked before the push rather than after it.",
+          "It is checked here, before any connection is opened, because the commit " +
+          "this remote reports is the one resolved now.",
       );
     }
 
@@ -137,7 +138,8 @@ export async function pushTargetsOf(refspecs: string[], refs: RefStore): Promise
  * transport returns, before reporting a commit.
  *
  * {@link pushTargetsOf} resolves the source ref **before** the transport runs and
- * the transport **re-reads** it when it builds the update, so a single `await` in
+ * the push client **re-reads** it (after the remote's advertisement) when it builds
+ * the update, so a single `await` in
  * that window is enough for the reported id and the pushed id to differ. Any real
  * network opens that window on every push, and `publish` writes whatever is reported
  * into `historyRemotes` — so a stale id becomes a checkpoint claiming a commit the
@@ -164,63 +166,70 @@ export async function assertNoRefDrift(targets: PushTarget[], refs: RefStore): P
   }
 }
 
+/** One remote ref's verdict, in the form both transports' results can be read into. */
+interface RefVerdict {
+  success: boolean;
+  /** Why it failed: the receiver's reason, or git's status column for a local refusal. */
+  reason?: string;
+}
+
+/** A push-client ref update → its verdict. */
+function verdictOf(update: PushRefUpdate): RefVerdict {
+  const success = isPushSuccess(update.status);
+  // `message` is the receiver's reason (`remote-rejected`); a refusal decided before
+  // the wire has none, and the summary (`[rejected] (fetch first)`) names it.
+  return success ? { success } : { success, reason: update.message ?? update.summary };
+}
+
 /**
- * `httpPush`'s status-shaped result → the exception-shaped `GitRemote` contract.
+ * The shared failure table. Verdicts are keyed by the **destination** (remote) ref.
  *
- * `httpPush` returns `PushResult {success, error?, refStatus?}`, and `refStatus`
- * is keyed by the refspec **destination** — `resolveRefspecs` emits
- * `{refName: remoteRef}` (`http-client.ts:572-608`). The three failure cases:
- *
- * 1. **`success === false`** — throw, carrying `error`.
- * 2. **A destination's entry reports failure under an overall success** — throw.
- *    Not reachable through today's `httpPush` (`parseReportStatusLines` clears
- *    `ok` whenever any ref fails, and `httpPush` returns `success: ok`), but a
- *    partial failure reading as success is precisely what `publish` would
+ * 1. **The push failed overall** — throw, carrying every refused ref's reason (the
+ *    part the caller can act on, `non-fast-forward` say), else `fallback`.
+ * 2. **A destination's verdict is a failure under an overall success** — throw. The
+ *    transport clears `ok` whenever a ref fails, so this is not reachable today, but
+ *    a partial failure reading as success is precisely what `publish` would
  *    checkpoint as a completed push, so the guard stays.
- * 3. **A requested destination is absent from `refStatus`** — throw.
- *    `resolveRefspecs` **silently skips** any refspec whose local ref does not
- *    resolve and `httpPush` still answers `{success: true}` with an empty
- *    `refStatus`. No caller input reaches this today — {@link pushTargetsOf}
- *    resolves every source ref before the wire, and {@link httpRefspecOf} strips
- *    the `+` that used to trigger it on every force-push — so, like case 2, it is
- *    a guard against a partial failure that reads as success, which is precisely
- *    what `publish` would checkpoint as a completed push.
+ * 3. **A requested destination has no verdict** — throw. The push client maps every
+ *    refspec or throws, and {@link pushTargetsOf} resolves every source first, so no
+ *    caller input reaches this today either; like case 2 it guards against a push
+ *    that did nothing and reads as success.
  *
- * On success the commit returned is the **first refspec's** — the locally
- * resolved id of its source ref. For a multi-refspec push the other refspecs
- * still land; only one commit id fits `GitRemote.push`'s return type, and the
- * first is the one the caller named first.
+ * Without `verdicts` (a result that carries none) only case 1 applies.
  */
-export function httpPushOutcome(result: PushResult, targets: PushTarget[]): { commit: string } {
+function pushOutcomeOf(
+  ok: boolean,
+  verdicts: ReadonlyMap<string, RefVerdict> | undefined,
+  fallback: string | undefined,
+  targets: PushTarget[],
+): { commit: string } {
   const [first] = targets;
   if (!first) {
     throw new RemotePushError("push requires at least one refspec; none were given");
   }
 
-  const refStatus = result.refStatus ?? new Map();
-
-  if (!result.success) {
-    // `result.error` is the generic "Some refs failed to update"; the reason the
-    // caller can act on — `non-fast-forward`, say — is only in `refStatus`. A
-    // rejected force-push is exactly this case, so surfacing it is not cosmetic.
-    const rejected = [...refStatus]
-      .filter(([, status]) => !status.success)
-      .map(([name, status]) => `${name}: ${status.error ?? "no reason reported"}`);
-    const detail = rejected.length ? rejected.join("; ") : (result.error ?? "no reason reported");
+  if (!ok) {
+    const rejected = [...(verdicts ?? [])]
+      .filter(([, verdict]) => !verdict.success)
+      .map(([name, verdict]) => `${name}: ${verdict.reason ?? "no reason reported"}`);
+    if (fallback) rejected.push(fallback);
+    const detail = rejected.length ? rejected.join("; ") : "no reason reported";
     throw new RemotePushError(`push failed: ${detail}`);
   }
-  for (const t of targets) {
-    const status = refStatus.get(t.destination);
-    if (!status) {
-      throw new RemotePushError(
-        `push reported success but said nothing about '${t.destination}' ` +
-          `(refspec '${httpRefspecOf(t)}'): the transport skipped it and nothing was written.`,
-      );
-    }
-    if (!status.success) {
-      throw new RemotePushError(
-        `push rejected '${t.destination}' (refspec '${httpRefspecOf(t)}'): ${status.error ?? "no reason reported"}`,
-      );
+  if (verdicts) {
+    for (const t of targets) {
+      const verdict = verdicts.get(t.destination);
+      if (!verdict) {
+        throw new RemotePushError(
+          `push reported success but said nothing about '${t.destination}' ` +
+            `(refspec '${pushRefspecOf(t)}'): the transport skipped it and nothing was written.`,
+        );
+      }
+      if (!verdict.success) {
+        throw new RemotePushError(
+          `push rejected '${t.destination}' (refspec '${pushRefspecOf(t)}'): ${verdict.reason ?? "no reason reported"}`,
+        );
+      }
     }
   }
 
@@ -228,27 +237,54 @@ export function httpPushOutcome(result: PushResult, targets: PushTarget[]): { co
 }
 
 /**
+ * The HTTP `push()` result → the exception-shaped `GitRemote` contract.
+ *
+ * `push()` throws on transport failures (an HTTP error, a 401) and reports refused
+ * refs in `updates`, one per remote ref with git's status. The failure table is
+ * {@link pushOutcomeOf}'s, with a rejected `unpack` (the server could not store the
+ * pack) as the overall reason when no ref names one.
+ *
+ * On success the commit returned is the **first refspec's** — the locally
+ * resolved id of its source ref. For a multi-refspec push the other refspecs
+ * still land; only one commit id fits `GitRemote.push`'s return type, and the
+ * first is the one the caller named first.
+ */
+export function httpPushOutcome(
+  result: PushClientResult,
+  targets: PushTarget[],
+): { commit: string } {
+  const verdicts = new Map(result.updates.map((u) => [u.remoteRef, verdictOf(u)] as const));
+  const unpack =
+    result.unpack && !result.unpack.ok
+      ? `unpack failed: ${result.unpack.message ?? "no reason reported"}`
+      : undefined;
+  return pushOutcomeOf(result.ok, verdicts, unpack, targets);
+}
+
+/**
  * `pushOverDuplex`'s result → the `GitRemote` contract.
  *
- * A different shape from HTTP's, which is why the tables are split: this one
- * carries `{success, error?}` and **never** a `refStatus`, so there is nothing
- * to check per ref. Only two cases exist —
- *
- * 1. **`success === false`** — throw, carrying `error`.
- * 2. success — return the first target's locally resolved commit.
- *
- * The per-ref guard HTTP gets from case 3 has no counterpart here; its whole job
- * is done up front by {@link pushTargetsOf}, before the transport is contacted.
+ * `pushOverDuplex` never throws: a transport failure comes back as
+ * `success: false` with `error`, and `refStatus` holds each matched remote ref's
+ * verdict (keyed by remote ref) once the push reached the server. The failure table
+ * is {@link pushOutcomeOf}'s; a result without `refStatus` is judged on `success`
+ * alone. Same first-refspec rule as {@link httpPushOutcome}.
  */
 export function duplexPushOutcome(result: PushResult, targets: PushTarget[]): { commit: string } {
-  const [first] = targets;
-  if (!first) {
-    throw new RemotePushError("push requires at least one refspec; none were given");
-  }
-  if (!result.success) {
-    throw new RemotePushError(`push failed: ${result.error ?? "no reason reported"}`);
-  }
-  return { commit: first.commit };
+  const verdicts =
+    result.refStatus &&
+    new Map(
+      [...result.refStatus].map(
+        ([name, status]) =>
+          [
+            name,
+            status.success
+              ? { success: true }
+              : { success: false, reason: status.error ?? status.status },
+          ] as const,
+      ),
+    );
+  return pushOutcomeOf(result.success, verdicts, result.error, targets);
 }
 
 /** Everything {@link createHttpGitRemote} needs to reach one HTTP(S) repository. */
@@ -292,21 +328,27 @@ export interface DuplexGitRemoteOptions {
  * refspecs and returns one commit id; every refspec is pushed and verified, and
  * the id reported is the first one's.
  *
- * Built on `httpPush` rather than on this package's own `pushToHttpRemote`
- * (`src/remotes/http-remote.ts`): that one wraps the transport's `push()`
- * operation, which pushes a single same-named ref and returns a different result
- * shape (`{ok, updates}`), while `GitRemote.push` takes arbitrary refspecs.
+ * Built on the transport's `push()` directly rather than on this package's own
+ * `pushToHttpRemote` (`src/remotes/http-remote.ts`): that one pushes a single
+ * same-named ref and reports `{ok, updates}`, while `GitRemote.push` takes arbitrary
+ * refspecs and answers with a commit or throws.
  */
 export function createHttpGitRemote(git: Git, options: HttpGitRemoteOptions): GitRemote {
-  const refs = refStoreOf(historyOf(git));
+  const refs = createTransportRefStore(historyOf(git).refs);
+  const fetchImpl = options.fetchFn && fetchImplOf(options.fetchFn);
   return {
     async push(refspecs: string[]): Promise<{ commit: string }> {
       const targets = await pushTargetsOf(refspecs, refs);
-      const result = await httpPush(options.url, repositoryFacadeOf(git), refs, {
+      // Transport failures (an HTTP error, a 401) throw from here; refused refs come
+      // back in the result.
+      const result = await transportPush({
+        url: options.url,
+        repository: repositoryFacadeOf(git),
+        refStore: refs,
         refspecs: targets.map(httpRefspecOf),
-        credentials: options.credentials,
+        auth: options.credentials,
         headers: options.headers,
-        fetchFn: options.fetchFn,
+        fetchImpl,
       });
       await assertNoRefDrift(targets, refs);
       return httpPushOutcome(result, targets);
@@ -319,15 +361,14 @@ export function createHttpGitRemote(git: Git, options: HttpGitRemoteOptions): Gi
  * MessagePort, WebSocket, WebRTC, a webrun channel.
  *
  * Same first-refspec rule as {@link createHttpGitRemote}, and the same local
- * commit resolution; what differs is the failure table, because this transport
- * reports no per-ref status at all.
+ * commit resolution; what differs is the result shape — `pushOverDuplex` reports
+ * failures instead of throwing them — see {@link duplexPushOutcome}.
  */
 export function createDuplexGitRemote(git: Git, options: DuplexGitRemoteOptions): GitRemote {
-  const refs = refStoreOf(historyOf(git));
+  const refs = createTransportRefStore(historyOf(git).refs);
   return {
     async push(refspecs: string[]): Promise<{ commit: string }> {
-      // Before `connect()`: an unresolvable refspec must not open a session, and
-      // it is the only failure this transport can be asked about in advance.
+      // Before `connect()`: an unresolvable refspec must not open a session.
       const targets = await pushTargetsOf(refspecs, refs);
       const result = await pushOverDuplex({
         duplex: await options.connect(),

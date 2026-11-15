@@ -26,10 +26,8 @@ export function historyOf(git: Git): History {
  * Built here rather than read off the history because **plain `History` has no
  * `serialization` member**; only `HistoryWithOperations` does, and
  * `createGitFilesBackend` returns the plain one. Everything that moves objects
- * across the wire needs this: `exportPack` on push, `importPack` on fetch — and
- * `PushCommand`'s own `(history as any).serialization` lookup therefore comes back
- * `undefined` on a file-backed repository, which is one more reason the nature
- * drives the transport itself.
+ * across the wire needs this, through {@link repositoryFacadeOf}: `exportPack` on
+ * push, `importPack` on fetch.
  */
 export function serializationOf(git: Git): SerializationApi {
   // Narrowed once, at construction — not re-narrowed per call.

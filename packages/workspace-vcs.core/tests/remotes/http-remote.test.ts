@@ -317,8 +317,8 @@ describe("HTTP remotes", () => {
       // The tracking ref is on disk where native git expects it …
       expect((await readText(files, "/b/.git/refs/remotes/origin/main")).trim()).toBe(id);
       // … and the objects really were imported, not just the ref written.
-      // (`FetchCommand.storePack()` is an empty method body — the porcelain writes
-      // the ref and drops the pack, so the nature imports it itself.)
+      // (The transport's fetch client imports the pack through the repository
+      // facade; this pins that the nature hands it one that really stores objects.)
       const bHistory = await historyOfNature(b);
       const commit = await bHistory.commits.load(id);
       expect(commit?.message).toBe("first");
