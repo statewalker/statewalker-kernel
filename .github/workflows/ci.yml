@@ -27,6 +27,11 @@ jobs:
     uses: statewalker/statewalker-ci/.github/workflows/merge-lockfile.yml@main
     secrets: inherit
 
+  # PUBLISHING IS OFF for now (statewalker/statewalker-root#66): `version` below never runs, so
+  # no version pull request opens and `pack`, `publish` and `notify`, which follow it, are
+  # skipped. Changes and changesets accumulate on main unpublished. To publish again, remove
+  # `false && ` from `version`'s `if:` (and say so in statewalker-root docs/process/README.md §4).
+  #
   # Releases to npm in three jobs: `version` opens the version pull request, `pack` packs what
   # npm lacks once it is merged, `publish` uploads the tarballs. Nobody approves the upload:
   # merging the version pull request is the release decision.
@@ -49,7 +54,7 @@ jobs:
   # publishes.
   version:
     needs: ci
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: false && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     concurrency:
       group: release-${{ github.repository }}
