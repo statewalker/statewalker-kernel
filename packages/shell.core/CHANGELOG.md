@@ -1,5 +1,20 @@
 # @statewalker/shell.core
 
+## 0.8.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/render.core crosses a breaking line
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies [29f68ab]
+  - @statewalker/render.core@0.8.0
+  - @statewalker/workspace.core@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes

@@ -1,5 +1,18 @@
 # @statewalker/settings.core
 
+## 0.8.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies [29f68ab]
+  - @statewalker/workspace.core@0.8.0
+
 ## 0.7.0
 
 ### Minor Changes
