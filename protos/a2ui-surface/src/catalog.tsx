@@ -2,6 +2,8 @@ import type { Catalog, ComponentApi } from "@a2ui/web_core";
 import { Command, passthrough } from "@statewalker/shared-commands";
 import { z } from "zod";
 import { basicRenderers } from "./basic-renderers.js";
+import { CodeEditor } from "./components/code-editor.js";
+import { MapView } from "./components/map-view.js";
 import { buildCatalog, defineComponent } from "./define-component.js";
 import type { Registry } from "./renderer.js";
 
@@ -31,7 +33,11 @@ export const ConfirmCard = defineComponent({
   ),
 });
 
-export const protoComponents = [ConfirmCard];
+export { SaveDocumentCommand } from "./components/code-editor.js";
+export { SelectPlaceCommand } from "./components/map-view.js";
+export { CodeEditor, MapView };
+
+export const protoComponents = [ConfirmCard, CodeEditor, MapView];
 
 // Annotation needed: web_core's public types leak zod 3 (TS2883 without it).
 export const protoCatalog: Catalog<ComponentApi> = buildCatalog({
@@ -43,4 +49,6 @@ export const protoCatalog: Catalog<ComponentApi> = buildCatalog({
 export const protoRegistry: Registry = {
   ...basicRenderers,
   ConfirmCard: ConfirmCard.render,
+  CodeEditor: CodeEditor.render,
+  MapView: MapView.render,
 };

@@ -3,6 +3,7 @@ import {
   effect,
   getValue,
   isComponentNode,
+  isWritable,
   NodeResolver,
   peekValue,
   ResolvedBinding,
@@ -12,6 +13,7 @@ import {
 import {
   type ComponentType,
   createContext,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -51,10 +53,17 @@ function useSignal<T>(s: Signal<T>): T {
   return useSyncExternalStore(subscribe, get, get);
 }
 
-/** ResolvedBinding → plain value; child nodes, arrays and bound actions pass through. */
+/**
+ * ResolvedBinding → plain value; child nodes, arrays and bound actions pass through.
+ * Arrays keep their identity when nothing in them is unwrapped, so a component can use
+ * a list prop (e.g. map markers) as an effect dependency.
+ */
 function unwrap(v: unknown): unknown {
   if (v instanceof ResolvedBinding) return v.value;
-  if (Array.isArray(v)) return v.map(unwrap);
+  if (Array.isArray(v)) {
+    const out = v.map(unwrap);
+    return out.every((x, i) => x === v[i]) ? v : out;
+  }
   return v;
 }
 
@@ -81,9 +90,18 @@ function ResolvedNode({ node }: { node: ComponentNode }) {
   const props = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, unwrap(v)]));
   const emit = (name: string, payload: unknown) =>
     void emitComponentEvent(ctx.surface, node.componentId, name, payload);
+  const write = (prop: string, value: unknown) => {
+    const b = raw[prop];
+    if (!(b instanceof ResolvedBinding) || !isWritable(b)) return false;
+    b.set(value);
+    return true;
+  };
   return (
     <div data-a2ui={node.type} style={{ display: "contents" }}>
-      <Impl props={props} emit={emit} />
+      {/* Catalog components may be lazy (heavy editors, maps): load on first placement. */}
+      <Suspense fallback={<span data-a2ui-loading={node.type} />}>
+        <Impl props={props} emit={emit} write={write} />
+      </Suspense>
     </div>
   );
 }

@@ -10,9 +10,10 @@ describe("defineComponent", () => {
       type: "object",
       properties: {
         component: { const: "ConfirmCard" },
-        title: { type: "string" },
-        body: { type: "string" },
-        confirmLabel: { type: "string" },
+        // Bindable (statewalker-root#153): literal | {"@path"} | {"@call"}.
+        title: { $ref: "common_types.json#/$defs/DynamicString" },
+        body: { $ref: "common_types.json#/$defs/DynamicString" },
+        confirmLabel: { $ref: "common_types.json#/$defs/DynamicString" },
       },
       required: expect.arrayContaining(["component", "title", "body", "confirmLabel"]),
     });

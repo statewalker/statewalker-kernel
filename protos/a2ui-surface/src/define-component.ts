@@ -1,7 +1,7 @@
 import { Catalog, type ComponentApi } from "@a2ui/web_core";
 import { basicCatalog } from "@a2ui/web_core/catalogs/basic/v1";
 import type { CommandDeclaration } from "@statewalker/shared-commands";
-import type { ComponentType } from "react";
+import { type ComponentType, createElement } from "react";
 import { z } from "zod";
 
 export type JsonSchema = Record<string, unknown>;
@@ -10,6 +10,11 @@ type EventsSchema = z.ZodObject<Record<string, z.ZodType>>;
 export interface RenderProps<P, E extends EventsSchema> {
   props: P;
   emit: <K extends keyof z.infer<E> & string>(name: K, payload: z.infer<E>[K]) => void;
+  /**
+   * Two-way binding: write a value back to the data-model path the agent bound `prop` to.
+   * Returns false when the prop is a literal (nothing to write to).
+   */
+  write?: <K extends keyof P & string>(prop: K, value: P[K]) => boolean;
 }
 
 /** Anything the catalog builder and router can consume: defined here or imported. */
@@ -50,14 +55,77 @@ function normalizeNullable(prop: unknown): unknown {
   };
 }
 
+const isNullablePair = (alts: unknown[]) =>
+  alts.length === 2 && alts.some((a) => (a as JsonSchema)?.type === "null");
+
+/**
+ * Decision (statewalker-root#153): no unions in props, except `.nullable()`. web_core's
+ * runtime only knows unions of a literal and a binding; agents get them wrong otherwise.
+ */
+export function assertNoUnions(schema: unknown, path = "props"): void {
+  if (!schema || typeof schema !== "object") return;
+  if (Array.isArray(schema)) {
+    schema.forEach((s, i) => {
+      assertNoUnions(s, `${path}[${i}]`);
+    });
+    return;
+  }
+  const s = schema as JsonSchema;
+  // zod 4 writes a union of scalars as a type array.
+  if (Array.isArray(s.type) && s.type.filter((t) => t !== "null").length > 1) {
+    throw new Error(`defineComponent: union at ${path} is not allowed in catalog props`);
+  }
+  for (const key of ["anyOf", "oneOf"] as const) {
+    const alts = s[key];
+    if (Array.isArray(alts) && !(key === "anyOf" && isNullablePair(alts))) {
+      throw new Error(`defineComponent: union at ${path} is not allowed in catalog props`);
+    }
+  }
+  for (const [k, v] of Object.entries(s)) {
+    if (v && typeof v === "object") assertNoUnions(v, k === "properties" ? path : `${path}.${k}`);
+  }
+}
+
+const DYNAMIC_REF: Record<string, string> = {
+  string: "DynamicString",
+  number: "DynamicNumber",
+  integer: "DynamicNumber",
+  boolean: "DynamicBoolean",
+};
+const COMMON = "common_types.json#/$defs/";
+
+/**
+ * Decision (statewalker-root#153): every prop is data-bindable. An unconstrained scalar
+ * becomes the standard A2UI dynamic type (literal | {"@path"} | {"@call"}); anything else
+ * becomes `anyOf: [<literal schema>, DataBinding]`, which web_core treats as DYNAMIC and
+ * still validates the literal branch. Bound values are untyped: the renderer re-checks them.
+ */
+export function toBindable(prop: JsonSchema): JsonSchema {
+  const { type, description, ...rest } = prop;
+  const ref = typeof type === "string" ? DYNAMIC_REF[type] : undefined;
+  if (ref && Object.keys(rest).length === 0) {
+    return { $ref: `${COMMON}${ref}`, ...(description ? { description } : {}) };
+  }
+  return {
+    anyOf: [prop, { $ref: `${COMMON}DataBinding` }],
+    ...(description ? { description } : {}),
+  };
+}
+
 /** Zod 4 props → A2UI 1.0 component definition (JSON Schema, `component` discriminator). */
-export function toCatalogEntry(name: string, props: JsonSchema, description?: string): JsonSchema {
+export function toCatalogEntry(
+  name: string,
+  props: JsonSchema,
+  description?: string,
+  opts: { literalOnly?: string[]; bindable?: boolean } = {},
+): JsonSchema {
   const { $schema: _drop, ...schema } = props as JsonSchema & { $schema?: string };
   const properties = Object.fromEntries(
-    Object.entries((schema.properties ?? {}) as Record<string, unknown>).map(([k, v]) => [
-      k,
-      normalizeNullable(v),
-    ]),
+    Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>).map(([k, v]) => {
+      const p = normalizeNullable(v) as JsonSchema;
+      const literal = opts.bindable === false || opts.literalOnly?.includes(k);
+      return [k, literal ? p : toBindable(p)];
+    }),
   );
   return {
     ...schema,
@@ -83,6 +151,30 @@ export function toComponentApi(name: string, catalogEntry: JsonSchema): Componen
   return api;
 }
 
+/**
+ * Bound props come from the untyped data model, so the resolved props are parsed with the
+ * component's own Zod schema before render; a mismatch renders a placeholder.
+ */
+function guardProps<P extends z.ZodObject, E extends EventsSchema>(
+  name: string,
+  schema: P,
+  Render: ComponentType<RenderProps<z.infer<P>, E>>,
+): ComponentType<RenderProps<z.infer<P>, E>> {
+  const Guarded = ({ props, emit, write }: RenderProps<z.infer<P>, E>) => {
+    const parsed = schema.safeParse(props);
+    if (!parsed.success) {
+      return createElement(
+        "span",
+        { "data-a2ui-invalid": name, className: "a2ui-refused" },
+        `[invalid props: ${name}]`,
+      );
+    }
+    return createElement(Render, { props: parsed.data, emit, write });
+  };
+  Guarded.displayName = `Guarded(${name})`;
+  return Guarded;
+}
+
 export function defineComponent<P extends z.ZodObject, E extends EventsSchema>(def: {
   name: string;
   description?: string;
@@ -90,14 +182,21 @@ export function defineComponent<P extends z.ZodObject, E extends EventsSchema>(d
   events: E;
   commands?: { [K in keyof z.infer<E>]?: CommandDeclaration<z.infer<E>[K], any> };
   render: ComponentType<RenderProps<z.infer<P>, E>>;
+  /** Props an agent may only set as literals (e.g. ones that force a remount). */
+  literalOnly?: (keyof z.infer<P> & string)[];
 }): ComponentDef<P, E> {
   const eventNames = Object.keys(def.events.shape);
   const description = [def.description, eventNames.length ? `Emits: ${eventNames.join(", ")}.` : ""]
     .filter(Boolean)
     .join(" ");
-  const catalogEntry = toCatalogEntry(def.name, z.toJSONSchema(def.props.strict()), description);
+  const jsonProps = z.toJSONSchema(def.props.strict()) as JsonSchema;
+  assertNoUnions(jsonProps.properties);
+  const catalogEntry = toCatalogEntry(def.name, jsonProps, description, {
+    literalOnly: def.literalOnly,
+  });
   return {
     ...def,
+    render: guardProps(def.name, def.props, def.render),
     commands: def.commands as Record<string, CommandDeclaration<any, any>>,
     catalogEntry,
     api: toComponentApi(def.name, catalogEntry),

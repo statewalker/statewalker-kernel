@@ -17,6 +17,8 @@ export function importJsonRenderCatalog(catalog: JsonRenderCatalogLike): Catalog
       name,
       z.toJSONSchema(def.props) as JsonSchema,
       def.description,
+      // Migrated components stay literal-only, as they were under json-render.
+      { bindable: false },
     );
     return { name, catalogEntry, api: toComponentApi(name, catalogEntry) };
   });

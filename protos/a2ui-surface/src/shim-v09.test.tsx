@@ -1,8 +1,9 @@
-import { MessageProcessor } from "@a2ui/web_core";
+import type { MessageProcessor } from "@a2ui/web_core";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { fakeModel, runAgentTurn } from "./agent.js";
 import { PROTO_CATALOG_ID, protoCatalog, protoRegistry } from "./catalog.js";
+import { createProcessor } from "./processor.js";
 import { A2uiSurface } from "./renderer.js";
 import { upgradeV09Message } from "./shim-v09.js";
 
@@ -36,7 +37,7 @@ const render = (p: MessageProcessor) => {
 
 describe("v0.9.1 → 1.0 upgrade shim", () => {
   it("web_core alone refuses v0.9.1 messages against a 1.0 catalog", () => {
-    const p = new MessageProcessor([protoCatalog]);
+    const p = createProcessor([protoCatalog]);
     const errors = p.processMessagesWithErrors(
       v091Turn.map((m) => ({
         ...m,
@@ -61,10 +62,10 @@ describe("v0.9.1 → 1.0 upgrade shim", () => {
   });
 
   it("a v0.9.1 turn renders the same as the 1.0 turn", async () => {
-    const p10 = new MessageProcessor([protoCatalog]);
+    const p10 = createProcessor([protoCatalog]);
     await runAgentTurn(p10, fakeModel);
 
-    const p09 = new MessageProcessor([protoCatalog]);
+    const p09 = createProcessor([protoCatalog]);
     const errors = p09.processMessagesWithErrors(
       v091Turn.map((m) => upgradeV09Message(m, { catalogIds: { "proto-0.9": PROTO_CATALOG_ID } })),
     );

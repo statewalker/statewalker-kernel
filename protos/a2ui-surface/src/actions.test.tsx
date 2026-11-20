@@ -1,5 +1,4 @@
 // @vitest-environment jsdom
-import { MessageProcessor } from "@a2ui/web_core";
 import { Commands } from "@statewalker/shared-commands";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -7,6 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createActionRouter, type PolicyDecision } from "./actions.js";
 import { fakeModel, runAgentTurn } from "./agent.js";
 import { ConfirmCommand, protoCatalog, protoComponents, protoRegistry } from "./catalog.js";
+import { createProcessor } from "./processor.js";
 import { A2uiSurface, emitComponentEvent } from "./renderer.js";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -27,7 +27,7 @@ async function setup(opts: {
     policy,
     approve: opts.approve ?? (async () => false),
   });
-  const processor = new MessageProcessor([protoCatalog], router.handle);
+  const processor = createProcessor([protoCatalog], router.handle);
   router.attach(processor);
   await runAgentTurn(processor, fakeModel);
   const surface = processor.getSurface("confirm-delete");

@@ -1,4 +1,4 @@
-import { MessageProcessor, type SurfaceModel } from "@a2ui/web_core";
+import type { SurfaceModel } from "@a2ui/web_core";
 import { Commands } from "@statewalker/shared-commands";
 import { useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -8,8 +8,16 @@ import {
   type LogEntry,
   type PolicyDecision,
 } from "./actions.js";
-import { fakeModel, runAgentTurn } from "./agent.js";
-import { ConfirmCommand, protoCatalog, protoComponents, protoRegistry } from "./catalog.js";
+import { agentDataUpdate, complexModel, fakeModel, runAgentTurn } from "./agent.js";
+import {
+  ConfirmCommand,
+  protoCatalog,
+  protoComponents,
+  protoRegistry,
+  SaveDocumentCommand,
+  SelectPlaceCommand,
+} from "./catalog.js";
+import { createProcessor } from "./processor.js";
 import { A2uiSurface } from "./renderer.js";
 
 function App() {
@@ -18,6 +26,9 @@ function App() {
   const [asking, setAsking] = useState<{ req: ActionRequest; answer: (ok: boolean) => void }>();
   const [deleted, setDeleted] = useState<string[]>([]);
   const [surface, setSurface] = useState<SurfaceModel>();
+  const [workbench, setWorkbench] = useState<SurfaceModel>();
+  const [saved, setSaved] = useState<string>();
+  const [selected, setSelected] = useState<string>();
   const policyRef = useMemo(() => ({ current: policy }), []);
   policyRef.current = policy;
 
@@ -25,6 +36,14 @@ function App() {
     const commands = Commands.create();
     commands.listen(ConfirmCommand, async (cmd) => {
       setDeleted((d) => [...d, cmd.payload.title]);
+      return { ok: true };
+    });
+    commands.listen(SaveDocumentCommand, async (cmd) => {
+      setSaved(cmd.payload.value);
+      return { ok: true };
+    });
+    commands.listen(SelectPlaceCommand, async (cmd) => {
+      setSelected(cmd.payload.id);
       return { ok: true };
     });
     const router = createActionRouter({
@@ -38,7 +57,7 @@ function App() {
         ),
       onLog: (e) => setLog((l) => [...l, e]),
     });
-    const p = new MessageProcessor([protoCatalog], router.handle);
+    const p = createProcessor([protoCatalog], router.handle);
     router.attach(p);
     return p;
   }, [policyRef]);
@@ -48,8 +67,32 @@ function App() {
     setSurface(processor.getSurface("confirm-delete"));
   };
 
+  const runComplex = async () => {
+    await runAgentTurn(processor, complexModel);
+    setWorkbench(processor.getSurface("workbench"));
+  };
+  const pushUpdate = () => {
+    const text = workbench?.dataModel.get("/doc/text") as string | undefined;
+    processor.processMessages(agentDataUpdate(text) as any);
+  };
+
   return (
     <main>
+      <section className="panel wide">
+        <h2>Agent surface: complex components (CodeEditor, MapView)</h2>
+        {workbench ? (
+          <>
+            <A2uiSurface surface={workbench} registry={protoRegistry} />
+            <button type="button" data-push onClick={pushUpdate} style={{ marginTop: 8 }}>
+              Simulate agent data-model update
+            </button>
+          </>
+        ) : (
+          <button type="button" data-run-complex onClick={runComplex}>
+            Run complex agent turn
+          </button>
+        )}
+      </section>
       <section className="panel">
         <h2>Agent surface</h2>
         {surface ? (
@@ -93,7 +136,13 @@ function App() {
         <h2 style={{ marginTop: 12 }}>Platform state</h2>
         <pre>
           {JSON.stringify(
-            { policy, pendingApproval: asking?.req.commandKey ?? null, confirmed: deleted },
+            {
+              policy,
+              pendingApproval: asking?.req.commandKey ?? null,
+              confirmed: deleted,
+              savedDocument: saved ?? null,
+              selectedPlace: selected ?? null,
+            },
             null,
             2,
           )}
