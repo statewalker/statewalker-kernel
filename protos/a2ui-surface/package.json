@@ -1,0 +1,30 @@
+{
+  "name": "@statewalker/proto-a2ui-surface",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PROTOTYPE (statewalker-root#153): A2UI 1.0 surface + defineComponent + thin React renderer. Throwaway; never published.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@a2ui/web_core": "0.15.0",
+    "@json-render/core": "catalog:",
+    "@statewalker/shared-commands": "catalog:",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "jsdom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "^7.0.0",
+    "vitest": "catalog:"
+  }
+}
