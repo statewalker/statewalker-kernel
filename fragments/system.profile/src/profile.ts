@@ -1,4 +1,10 @@
 import type { ActivationContext, KernelProfile } from "@statewalker/kernel.core";
+import { createMemoryKeyStore, type VaultKeyStore } from "./key-store.js";
+import type { PasskeyAuthenticator } from "./passkeys.js";
+import { createVault, type Vault } from "./vault.js";
+
+/** The profile key the vault's record is kept under (its text, as `createVault` writes it). */
+export const VAULT_RECORD_KEY = "vault";
 
 /** The part of Web Storage (`localStorage`) the profile uses. */
 export interface StorageLike {
@@ -81,16 +87,44 @@ export interface SystemProfileOptions {
   readonly storage?: StorageLike;
   /** The prefix of the profile's keys in `storage` (an application's id and `:`). */
   readonly prefix?: string;
+  /** The vault's device parts: where a remembered key is kept, the browser's passkeys. */
+  readonly vault?: {
+    /** IndexedDB in a browser (`createIndexedDbKeyStore`); memory by default. */
+    readonly keys?: VaultKeyStore;
+    readonly authenticator?: PasskeyAuthenticator;
+    /** PBKDF2 iterations of a new password wrap (600 000 by default; lower only in tests). */
+    readonly iterations?: number;
+    /** The name passkeys are registered under (the application's name). */
+    readonly passkeyName?: string;
+  };
 }
 
-/** The system.profile fragment's code: its store, and its client activator body. */
+/** The system.profile fragment's code: its store, its vault, and its client activator body. */
 export interface SystemProfile {
   readonly store: ProfileStore;
+  /** The secrets vault, its record under `vault` in the same storage. Call `load()` first. */
+  readonly vault: Vault;
   /** Activate the client aspect (no points yet). Returns the cleanup. */
   activate(context: ActivationContext): () => void;
 }
 
 export function createSystemProfile(options: SystemProfileOptions = {}): SystemProfile {
-  const store = createStorageProfile(options.storage ?? createMemoryStorage(), options.prefix);
-  return { store, activate: () => () => undefined };
+  const storage = options.storage ?? createMemoryStorage();
+  const prefix = options.prefix ?? "";
+  const store = createStorageProfile(storage, prefix);
+  const recordKey = prefix + VAULT_RECORD_KEY;
+  const vault = createVault({
+    // The record's text as stored, not through the store: an unreadable record must read as
+    // unreadable (the store reads it as absent), and is never written over.
+    records: {
+      read: () => storage.getItem(recordKey),
+      write: (text) => storage.setItem(recordKey, text),
+    },
+    keys: options.vault?.keys ?? createMemoryKeyStore(),
+    lockName: `statewalker.vault:${prefix}`,
+    ...(options.vault?.authenticator ? { authenticator: options.vault.authenticator } : {}),
+    ...(options.vault?.iterations ? { iterations: options.vault.iterations } : {}),
+    ...(options.vault?.passkeyName ? { passkeyName: options.vault.passkeyName } : {}),
+  });
+  return { store, vault, activate: () => () => undefined };
 }

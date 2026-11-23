@@ -19,9 +19,26 @@ export const fragmentManifest = {
   aspects: { client: {} },
 };
 
-/** No points yet: `secrets` and the vault come with statewalker-root#264 and #265. */
+/** The vault view's identity on system.workbench's `views` point. */
+export const VAULT_VIEW = `${SYSTEM_PROFILE_ID}/vault`;
+
+/**
+ * The vault view, with its activity bar entry, on system.workbench's points. The `secrets` point
+ * (each fragment's declared secrets) comes with statewalker-root#265.
+ */
 export const clientAspect = {
   $schema: `${KERNEL_SCHEMAS}/fragment-aspect.v1.schema.json`,
+  extensions: [
+    {
+      point: "views",
+      data: { id: "vault", title: "Vault" },
+      reference: { module: "./index.js", export: "VaultView" },
+    },
+    {
+      point: "activitybar",
+      data: { id: "vault", title: "Vault", order: 990, view: VAULT_VIEW },
+    },
+  ],
 };
 
 /** The fragment's archive, as the kernel takes it (`createKernel({ core: [...] })`). */
