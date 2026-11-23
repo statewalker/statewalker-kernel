@@ -26,6 +26,30 @@ export function activeFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<Instal
   return decl;
 }
 
+/** An aspect of a resolved fragment whose activator threw: the aspect stays inactive. */
+export interface FragmentFailure {
+  readonly fragment: InstalledFragment;
+  readonly aspect: Aspect;
+  /** What the activator threw. */
+  readonly error: unknown;
+}
+
+const failedSlots = new Map<Aspect, KeyedSlotDeclaration<FragmentFailure>>();
+
+/**
+ * Resolved fragments whose `aspect` failed to activate, with the error, by id
+ * (`system:fragments:failed:<aspect>`). The fragments requiring one are not activated in
+ * that aspect until `retry` activates it.
+ */
+export function failedFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<FragmentFailure> {
+  let decl = failedSlots.get(aspect);
+  if (!decl) {
+    decl = defineKeyedSlot<FragmentFailure>(`system:fragments:failed:${aspect}`);
+    failedSlots.set(aspect, decl);
+  }
+  return decl;
+}
+
 /** An extension contributed at runtime, by code, through `extensionContributionsSlot`. */
 export interface ExtensionContribution {
   /** The contributing fragment's id; the slot key must start with `<contributor>/`. */

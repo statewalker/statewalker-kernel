@@ -287,6 +287,15 @@ export function createExtensionRegistry(
         const problem = contributionProblem(id, c);
         if (problem) {
           const contributor = typeof c?.contributor === "string" ? c.contributor : "";
+          // Kept only while the fragment it names, or whose key it has, is resolved: a
+          // removed or disabled fragment leaves no refusal behind.
+          const keyOwner = id.includes("/") ? id.slice(0, id.indexOf("/")) : "";
+          if (
+            !slots.get(resolvedFragmentsSlot, contributor) &&
+            !slots.get(resolvedFragmentsSlot, keyOwner)
+          ) {
+            continue;
+          }
           const point = typeof c?.point === "string" ? c.point : "";
           refused.set(`${aspect}\u0000${id}`, {
             id,
