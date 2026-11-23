@@ -12,6 +12,16 @@ export const VIEWS_POINT = "views";
 /** A view id: lowercase letters and digits, inner hyphens, at most 64 characters. */
 export const VIEW_ID_PATTERN = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$";
 
+/** The short id of the point default layouts are contributed on. */
+export const LAYOUTS_POINT = "layouts";
+
+/** The workbench's zones and device modes, as the points' schemas name them. */
+const ZONE_NAMES = ["center", "left", "right", "bottom"] as const;
+const MODE_NAMES = ["phone", "tablet", "desktop"] as const;
+
+/** A view's identity, `<fragment-id>/<view-id>`. */
+export const VIEW_IDENTITY_PATTERN = "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$";
+
 /** The short id of the point menu entries are contributed on. */
 export const MENUS_POINT = "menus";
 
@@ -51,6 +61,47 @@ export const viewSchema = {
       maxLength: 64,
     },
     title: { description: "The title its tab shows.", type: "string", minLength: 1 },
+    zone: {
+      description: "The zone it opens in unless asked otherwise; the centre by default.",
+      enum: ZONE_NAMES,
+    },
+  },
+} as const;
+
+/**
+ * The data of an extension to `layouts`: a default layout, the views each zone opens with, for
+ * one device mode or (without `mode`) for every mode. A mode's default layout is every
+ * contribution for it, in order; it applies until the user changes that mode's layout.
+ */
+export const layoutSchema = {
+  type: "object",
+  required: ["zones"],
+  additionalProperties: false,
+  properties: {
+    mode: {
+      description: "The device mode it is for; every mode when absent.",
+      enum: MODE_NAMES,
+    },
+    zones: {
+      description: "The views (`<fragment-id>/<view-id>`) each zone opens with, in tab order.",
+      type: "object",
+      additionalProperties: false,
+      properties: Object.fromEntries(
+        ZONE_NAMES.map((zone) => [
+          zone,
+          {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string", pattern: VIEW_IDENTITY_PATTERN },
+          },
+        ]),
+      ),
+    },
+    active: {
+      description: "The view in front (on a phone, the one shown).",
+      type: "string",
+      pattern: VIEW_IDENTITY_PATTERN,
+    },
   },
 } as const;
 
@@ -278,6 +329,10 @@ export const clientAspect = {
       description: "Views the workbench shows, each a React component (the lazy reference).",
       schema: viewSchema,
     },
+    [LAYOUTS_POINT]: {
+      description: "Default layouts: the views each zone opens with, per device mode.",
+      schema: layoutSchema,
+    },
     [MENUS_POINT]: {
       description:
         "Entries of the menu bar, context menus and submenus, each a command or a submenu.",
@@ -330,6 +385,21 @@ export const clientAspect = {
           "view.actions": "Actions de la vue",
           "view.loading": "Chargement…",
           "view.failed": "La vue {view} a échoué : {error}",
+          "view.close": "Fermer {title}",
+          "zones.center": "Zone centrale",
+          "zones.left": "Zone gauche",
+          "zones.right": "Zone droite",
+          "zones.bottom": "Zone du bas",
+          "zones.left.short": "Gauche",
+          "zones.right.short": "Droite",
+          "zones.bottom.short": "Bas",
+          "zones.close": "Fermer le tiroir",
+          "zones.empty": "Aucune vue ici.",
+          "phone.tabbar": "Barre d'onglets",
+          "phone.views": "Vues",
+          "phone.more": "Plus",
+          "phone.open": "Ouvrir",
+          "phone.empty": "Ouvrir une vue depuis Plus.",
         },
       },
     },

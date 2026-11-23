@@ -1,5 +1,10 @@
 // The open views, kept in the URL state through system.host's `urlState` service: a reload, or a
 // link carrying `#?views=<id>,<id>`, opens the views it names. React-free.
+//
+// Precedence: the views the URL names win, opened and closed in the current device mode's layout
+// (so saved there, as any change the user makes); a URL naming none leaves the workbench as it
+// is, showing the mode's saved layout, else its default layout (the `layouts` point and the
+// application's). The URL then mirrors the current mode's open views.
 import type { UrlState, UrlStateService } from "@statewalker/client.core";
 import type { Workbench } from "@statewalker/system.workbench";
 
@@ -12,7 +17,7 @@ function viewsOf(state: UrlState): string[] | undefined {
 }
 
 /**
- * Open the views the URL state names (`defaults` when it names none), then keep the two in step:
+ * Open the views the URL state names (when it names any), then keep the two in step:
  * opening or closing a view rewrites the URL state (replacing the history entry), and a
  * navigation to another URL state opens and closes views to match. A named view nobody
  * contributes is skipped. Returns the disposer.
@@ -20,7 +25,6 @@ function viewsOf(state: UrlState): string[] | undefined {
 export async function bindLayoutToUrl(
   workbench: Workbench,
   urlState: UrlStateService,
-  defaults: readonly string[],
 ): Promise<() => void> {
   function show(ids: readonly string[]) {
     for (const id of workbench.opened()) if (!ids.includes(id)) workbench.close(id);
@@ -28,7 +32,8 @@ export async function bindLayoutToUrl(
   }
 
   let current = await urlState.read();
-  show(viewsOf(current) ?? defaults);
+  const named = viewsOf(current);
+  if (named) show(named);
   const stopUrl = urlState.observe((state) => {
     current = state;
     const ids = viewsOf(state);

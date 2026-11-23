@@ -28,8 +28,11 @@ afterAll(async () => {
 });
 
 /** Open the app in a fresh English context; `body` runs, then no page error may be left. */
-async function withPage(body: (page: Page) => Promise<void>) {
-  const context = await browser.newContext({ locale: "en-US" });
+async function withPage(
+  body: (page: Page) => Promise<void>,
+  viewport: { width: number; height: number } = { width: 1280, height: 800 },
+) {
+  const context = await browser.newContext({ locale: "en-US", viewport });
   const page = await context.newPage();
   page.setDefaultTimeout(10_000);
   const errors: string[] = [];
@@ -179,5 +182,43 @@ describe("the interface language", () => {
       await menubar(page).getByRole("menuitem", { name: "Notes" }).waitFor();
       await expect(shown(page)).resolves.toEqual({ ...ENGLISH, picker: "Language", lang: "de" });
     });
+  });
+
+  it("reaches a phone's tab bar and More menu", async () => {
+    await withPage(
+      async (page) => {
+        const tabBar = page.getByRole("navigation", { name: "Tab bar" });
+        await expect(tabBar.getByRole("tab").allInnerTexts()).resolves.toEqual(["Notes"]);
+        await picker(page).selectOption("fr");
+        const barre = page.getByRole("navigation", { name: "Barre d'onglets" });
+        await barre.waitFor();
+        await expect(barre.getByRole("tab").allInnerTexts()).resolves.toEqual(["Bloc-notes"]);
+        await page.getByRole("button", { name: "Plus" }).click();
+        const more = page.getByRole("menu");
+        // The menu bar's Notes menu, by its French title; the surfaces view, which has no
+        // French text, by its inline title.
+        await more.getByRole("menuitem", { name: "Bloc-notes" }).waitFor();
+        await more.getByRole("menuitem", { name: "Surfaces" }).waitFor();
+        await expect(more.getByText("Ouvrir", { exact: true }).count()).resolves.toBe(1);
+      },
+      { width: 390, height: 844 },
+    );
+  });
+
+  it("reaches a tablet's zone drawers", async () => {
+    await withPage(
+      async (page) => {
+        await page.getByRole("button", { name: "Right zone" }).waitFor();
+        await picker(page).selectOption("fr");
+        const right = page.getByRole("button", { name: "Zone droite" });
+        await expect(right.innerText()).resolves.toBe("Droite (0)");
+        await right.click();
+        const drawer = page.getByRole("region", { name: "Zone droite" });
+        await drawer.getByText("Aucune vue ici.").waitFor();
+        await drawer.getByRole("button", { name: "Fermer le tiroir" }).click();
+        await drawer.waitFor({ state: "detached" });
+      },
+      { width: 820, height: 1180 },
+    );
   });
 });

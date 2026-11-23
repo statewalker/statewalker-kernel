@@ -1,40 +1,13 @@
-import {
-  Button,
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuTrigger,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-  Toaster,
-} from "@statewalker/ui.view.shadcn";
-import {
-  type DockviewApi,
-  DockviewReact,
-  type DockviewReadyEvent,
-  type DockviewTheme,
-  type IDockviewHeaderActionsProps,
-  type IDockviewPanelProps,
-  themeLight,
-} from "dockview-react";
-import {
-  Component,
-  type ComponentType,
-  createContext,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { Toaster } from "@statewalker/ui.view.shadcn";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   chordOf,
-  fillText,
+  deviceModeOf,
   PALETTE_CHORDS,
-  SURFACE_PANEL_PREFIX,
   type Workbench,
   type WorkbenchState,
+  ZONES,
+  type Zone,
 } from "../src/index.js";
 import {
   ActivityBar,
@@ -44,13 +17,12 @@ import {
   Palette,
   StatusBar,
 } from "./chrome.js";
-import { contextMenuFamily, dropdownMenuFamily, MenuEntries } from "./menus.js";
+import { WorkbenchContext, ZoneDock } from "./dock.js";
+import { PhoneShell, ZoneDrawers } from "./zones.js";
 
-const WorkbenchContext = createContext<Workbench | undefined>(undefined);
-
-interface ViewParams {
-  readonly view: string;
-}
+/** The zones each dock holds: every zone on a desktop, the centre on a tablet. */
+const DESKTOP_ZONES: readonly Zone[] = ZONES;
+const TABLET_ZONES: readonly Zone[] = ["center"];
 
 /** The workbench's state, re-read after every change to the model. */
 function useWorkbenchState(workbench: Workbench): WorkbenchState {
@@ -60,55 +32,13 @@ function useWorkbenchState(workbench: Workbench): WorkbenchState {
     state ?? {
       views: workbench.views(),
       opened: workbench.opened(),
+      mode: workbench.mode(),
+      layout: workbench.layout(),
       dialogs: workbench.dialogs.pending(),
       notifications: workbench.notifications.pending(),
       docked: workbench.docked(),
     }
   );
-}
-
-/** Re-render after every change to the model (for parts rendered outside WorkbenchView's tree). */
-function useRevision(workbench: Workbench | undefined): void {
-  const [, setRevision] = useState(0);
-  useEffect(() => workbench?.observe(() => setRevision((r) => r + 1)), [workbench]);
-}
-
-interface SurfaceParams {
-  readonly surface: string;
-}
-
-/**
- * Make the dockview's panels the open views and the docked surfaces: add the new ones, close the
- * gone. Docked surfaces share one group on the right, the dock zone.
- */
-function syncPanels(api: DockviewApi, { views, opened, docked }: WorkbenchState) {
-  for (const panel of [...api.panels]) {
-    if (!opened.includes(panel.id) && !docked.some((d) => d.id === panel.id)) panel.api.close();
-  }
-  for (const id of opened) {
-    const existing = api.getPanel(id);
-    const view = views.find((v) => v.id === id);
-    if (existing) {
-      // A view's title follows the interface language.
-      if (view && existing.title !== view.title) existing.api.setTitle(view.title);
-      continue;
-    }
-    if (!view) continue;
-    api.addPanel<ViewParams>({ id, component: "view", title: view.title, params: { view: id } });
-  }
-  for (const surface of docked) {
-    if (api.getPanel(surface.id)) continue;
-    const zone = api.panels.find((p) => p.id.startsWith(SURFACE_PANEL_PREFIX));
-    api.addPanel<SurfaceParams>({
-      id: surface.id,
-      component: "surface",
-      title: surface.title,
-      params: { surface: surface.surfaceId },
-      position: zone
-        ? { referencePanel: zone.id, direction: "within" }
-        : { direction: api.panels.length > 0 ? "right" : "within" },
-    });
-  }
 }
 
 function isTextInput(target: EventTarget | null): boolean {
@@ -122,23 +52,47 @@ function isTextInput(target: EventTarget | null): boolean {
 }
 
 /**
- * The workbench: the menu bar, the activity bar, one dockview whose panels are the open views,
- * the status bar, the command palette (Ctrl/Cmd+Shift+P, F1), keyboard shortcuts, and the
- * dialogs and notifications fragments raise. A panel the user closes closes its view; a view
- * that leaves (its fragment disabled or removed) closes its panel.
+ * The workbench in the device mode its window's width gives (`deviceModeOf`; `followWidth`
+ * false leaves the mode to the host):
+ *
+ * - desktop: the menu bar, the activity bar, one dockview whose groups are the left, right,
+ *   bottom and centre zones, and the status bar;
+ * - tablet: the same, with the centre in the dockview (panels dragged by touch) and the other
+ *   zones as drawers;
+ * - phone: one panel, a bottom tab bar, and a "More" menu with the rest and the menu bar's menus.
+ *
+ * Around them: the command palette (Ctrl/Cmd+Shift+P, F1), keyboard shortcuts, and the dialogs
+ * and notifications fragments raise. A panel the user closes closes its view; a view that leaves
+ * (its fragment disabled or removed) closes its panel.
  */
-export function WorkbenchView({ workbench }: { workbench: Workbench }) {
+export function WorkbenchView({
+  workbench,
+  followWidth = true,
+}: {
+  workbench: Workbench;
+  followWidth?: boolean;
+}) {
   const state = useWorkbenchState(workbench);
-  const [api, setApi] = useState<DockviewApi>();
   const [palette, setPalette] = useState(false);
   // The chrome's context: menus' and bars' `when` read it, so changes re-render them.
-  const [activeView, setActiveView] = useState<string>();
+  const [dockActive, setDockActive] = useState<string>();
   const [inputFocus, setInputFocus] = useState(false);
+  const activeView = state.mode === "phone" ? (state.layout.active ?? state.opened[0]) : dockActive;
   const context = useMemo(() => ({ activeView, inputFocus }), [activeView, inputFocus]);
   const activeViewRef = useRef<string | undefined>(undefined);
   activeViewRef.current = activeView;
   const paletteOpen = useRef(false);
   paletteOpen.current = palette;
+  const onDockActive = useCallback((panel: string | undefined) => setDockActive(panel), []);
+
+  // The device mode follows the window's width, set before the first paint.
+  useLayoutEffect(() => {
+    if (!followWidth) return;
+    const apply = () => workbench.setMode(deviceModeOf(window.innerWidth));
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [workbench, followWidth]);
 
   useEffect(() => {
     const focusIn = (event: FocusEvent) => setInputFocus(isTextInput(event.target));
@@ -150,23 +104,6 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
       document.removeEventListener("focusout", focusOut);
     };
   }, []);
-
-  useEffect(() => {
-    if (!api) return;
-    const closed = api.onDidRemovePanel((panel) =>
-      panel.id.startsWith(SURFACE_PANEL_PREFIX)
-        ? workbench.closeSurface(panel.id.slice(SURFACE_PANEL_PREFIX.length))
-        : workbench.close(panel.id),
-    );
-    setActiveView(api.activePanel?.id);
-    const active = api.onDidActivePanelChange(({ panel }) => setActiveView(panel?.id));
-    const stop = workbench.observe((state) => syncPanels(api, state));
-    return () => {
-      stop();
-      closed.dispose();
-      active.dispose();
-    };
-  }, [api, workbench]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -191,199 +128,40 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [workbench]);
 
+  const { mode } = state;
   return (
     <WorkbenchContext.Provider value={workbench}>
-      <div className="flex h-full w-full flex-col bg-background text-foreground">
-        <MenuBar workbench={workbench} context={context} />
-        <div className="flex min-h-0 flex-1">
-          <ActivityBar workbench={workbench} />
-          <div data-testid="workbench" className="h-full min-w-0 flex-1">
-            <DockviewReact
-              components={components}
-              rightHeaderActionsComponent={ViewActions}
-              onReady={(event: DockviewReadyEvent) => setApi(event.api)}
-              theme={theme}
-              className="h-full w-full"
-            />
-          </div>
-        </div>
-        <StatusBar workbench={workbench} context={context} />
+      <div
+        data-testid="workbench"
+        data-mode={mode}
+        className="flex h-full w-full flex-col bg-background text-foreground"
+      >
+        {mode === "phone" ? (
+          <PhoneShell workbench={workbench} state={state} context={context} />
+        ) : (
+          <>
+            <MenuBar workbench={workbench} context={context} />
+            <div className="flex min-h-0 flex-1">
+              <ActivityBar workbench={workbench} />
+              <div className="flex h-full min-w-0 flex-1 flex-col">
+                {mode === "tablet" && <ZoneDrawers workbench={workbench} state={state} />}
+                <ZoneDock
+                  key={mode}
+                  workbench={workbench}
+                  zones={mode === "desktop" ? DESKTOP_ZONES : TABLET_ZONES}
+                  dnd={mode === "desktop" ? "auto" : "pointer"}
+                  onActive={onDockActive}
+                />
+              </div>
+            </div>
+            <StatusBar workbench={workbench} context={context} />
+          </>
+        )}
       </div>
       <Palette workbench={workbench} open={palette} onOpenChange={setPalette} />
       <DialogHost workbench={workbench} dialogs={state.dialogs} />
       <NotificationHost workbench={workbench} notifications={state.notifications} />
-      <Toaster position="bottom-right" offset={36} />
+      <Toaster position="bottom-right" offset={mode === "phone" ? 56 : 36} />
     </WorkbenchContext.Provider>
   );
-}
-
-const components = { view: ViewPanel, surface: SurfacePanel };
-
-/** dockview's light theme with its colours taken from the shadcn tokens (client/styles.css). */
-const theme: DockviewTheme = {
-  ...themeLight,
-  name: "workbench",
-  className: `${themeLight.className} dockview-theme-workbench`,
-};
-
-/** The group's tab-bar menu: the `view/title` entries for its active view. */
-function ViewActions({ activePanel }: IDockviewHeaderActionsProps) {
-  const workbench = useContext(WorkbenchContext);
-  useRevision(workbench);
-  const view = activePanel?.id;
-  const nodes = workbench && view ? workbench.menu("view/title", { view, activeView: view }) : [];
-  if (!workbench || nodes.length === 0) return null;
-  return (
-    <div className="flex h-full items-center px-1">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label={workbench.text("view.actions", "View actions")}
-          >
-            <span aria-hidden="true">⋯</span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <MenuEntries
-            nodes={nodes}
-            family={dropdownMenuFamily}
-            run={(command) => void workbench.execute(command)}
-          />
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
-}
-
-/** One open view: its component, resolved through the view's lazy reference. */
-function ViewPanel({ params }: IDockviewPanelProps<ViewParams>) {
-  const workbench = useContext(WorkbenchContext);
-  const [loaded, setLoaded] = useState<{ View?: ComponentType; error?: unknown }>({});
-  useEffect(() => {
-    const view = workbench?.view(params.view);
-    if (!view) return;
-    let live = true;
-    view.component<ComponentType>().then(
-      (View) => live && setLoaded({ View }),
-      (error: unknown) => live && setLoaded({ error }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [workbench, params.view]);
-
-  let content: ReactNode;
-  if (loaded.error !== undefined) content = <ViewFailure view={params.view} error={loaded.error} />;
-  else if (!loaded.View)
-    content = (
-      <div className="p-4 text-sm text-muted-foreground">
-        {workbench?.text("view.loading", "Loading…") ?? "Loading…"}
-      </div>
-    );
-  else
-    content = (
-      <ViewBoundary view={params.view}>
-        <loaded.View />
-      </ViewBoundary>
-    );
-  return workbench ? (
-    <ViewContextMenu workbench={workbench} view={params.view}>
-      {content}
-    </ViewContextMenu>
-  ) : (
-    content
-  );
-}
-
-/** The `view/context` entries for this view, on right click; none: the browser's own menu. */
-function ViewContextMenu({
-  workbench,
-  view,
-  children,
-}: {
-  workbench: Workbench;
-  view: string;
-  children: ReactNode;
-}) {
-  useRevision(workbench);
-  const nodes = workbench.menu("view/context", { view, activeView: view });
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild disabled={nodes.length === 0}>
-        <div className="h-full w-full overflow-auto">{children}</div>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <MenuEntries
-          nodes={nodes}
-          family={contextMenuFamily}
-          run={(command) => void workbench.execute(command)}
-        />
-      </ContextMenuContent>
-    </ContextMenu>
-  );
-}
-
-/** One docked surface: its component, from the workbench's surface source. */
-function SurfacePanel({ params }: IDockviewPanelProps<SurfaceParams>) {
-  const workbench = useContext(WorkbenchContext);
-  const [loaded, setLoaded] = useState<{ Surface?: ComponentType; error?: unknown }>({});
-  useEffect(() => {
-    const surface = workbench?.docked().find((d) => d.surfaceId === params.surface);
-    if (!surface) return;
-    let live = true;
-    surface.component<ComponentType>().then(
-      (Surface) => live && setLoaded({ Surface }),
-      (error: unknown) => live && setLoaded({ error }),
-    );
-    return () => {
-      live = false;
-    };
-  }, [workbench, params.surface]);
-
-  const name = `surface ${params.surface}`;
-  if (loaded.error !== undefined) return <ViewFailure view={name} error={loaded.error} />;
-  if (!loaded.Surface) {
-    return (
-      <div className="p-4 text-sm text-muted-foreground">
-        {workbench?.text("view.loading", "Loading…") ?? "Loading…"}
-      </div>
-    );
-  }
-  return (
-    <ViewBoundary view={name}>
-      <div
-        data-testid="docked-surface"
-        data-surface={params.surface}
-        className="h-full overflow-auto"
-      >
-        <loaded.Surface />
-      </div>
-    </ViewBoundary>
-  );
-}
-
-function ViewFailure({ view, error }: { view: string; error: unknown }) {
-  const workbench = useContext(WorkbenchContext);
-  const params = { view, error: error instanceof Error ? error.message : String(error) };
-  const fallback = "The view {view} failed: {error}";
-  return (
-    <div role="alert" className="p-4 text-sm text-destructive">
-      {workbench ? workbench.text("view.failed", fallback, params) : fillText(fallback, params)}
-    </div>
-  );
-}
-
-/** A view that throws while rendering shows its error in its panel; the rest goes on. */
-class ViewBoundary extends Component<{ view: string; children: ReactNode }, { error?: unknown }> {
-  override state: { error?: unknown } = {};
-  static getDerivedStateFromError(error: unknown) {
-    return { error };
-  }
-  override render() {
-    if (this.state.error !== undefined)
-      return <ViewFailure view={this.props.view} error={this.state.error} />;
-    return this.props.children;
-  }
 }
