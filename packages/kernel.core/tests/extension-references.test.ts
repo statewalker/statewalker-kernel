@@ -153,3 +153,42 @@ describe("lazy references", () => {
     expect((extension as Extension).reference).toBeUndefined();
   });
 });
+
+describe("only the point's owner", () => {
+  /** A core fragment opening no point, activated beside the owner and the contributor. */
+  async function withCoreNonOwner() {
+    const contexts = new Map<string, ActivationContext>();
+    const command = vi.fn(() => () => "contributed");
+    const { kernel } = newKernel({
+      core: [archive(fragment("system.workbench", { aspects: { client: {} } }))],
+      resolvers: { command },
+      activators: { client: (f, c) => void contexts.set(f.id, c) },
+    });
+    await kernel.start();
+    await kernel.install([owner, contributor({ command: "c" })]);
+    await kernel.enable("org.example.owner");
+    await kernel.enable("org.example.a");
+    await kernel.activate("client");
+    const core = contexts.get("system.workbench");
+    if (!core) throw new Error("system.workbench not activated");
+    return { core, command };
+  }
+
+  it("reads extensions: a core fragment cannot read another owner's point by its full id", async () => {
+    const { core, command } = await withCoreNonOwner();
+    expect(core.extensions.names).toEqual([]);
+    expect(core.extensions.read("org.example.owner/actions")).toEqual([]);
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it("observes extensions: a core fragment observing another owner's point hears nothing", async () => {
+    const { core } = await withCoreNonOwner();
+    const listener = vi.fn();
+    core.extensions.observe("org.example.owner/actions", listener);
+    expect(listener).not.toHaveBeenCalledWith(
+      expect.arrayContaining([expect.anything()]),
+      expect.anything(),
+    );
+    expect(core.extensions.read("org.example.owner/actions")).toEqual([]);
+  });
+});

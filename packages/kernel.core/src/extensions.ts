@@ -442,7 +442,8 @@ export function createExtensionRegistry(
     };
 
     const read = (name: string): readonly Extension[] => {
-      if (closed.fired) return [];
+      // Only the owner's own points: a core owner's short ids would otherwise reach any point.
+      if (closed.fired || !names.includes(name)) return [];
       const id = extensionPointId(owner.id, name);
       const result: Extension[] = [];
       for (const entry of live.values()) {
