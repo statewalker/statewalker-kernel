@@ -135,13 +135,24 @@ export function toolNames(commands: readonly CommandEntry[]): ReadonlyMap<string
   return names;
 }
 
-/** The exposed command a tool name stands for: the reverse of `toolNames`. */
+/** The projections a tool name can come from. */
+export type ToolExposure = "agent" | "mcp";
+
+/**
+ * The command a tool name of the `exposure` projection stands for (the reverse of `toolNames`):
+ * only a command with that exposure, so an MCP call never reaches an agent-only command, nor a
+ * harness call an MCP-only one.
+ */
 export function toolByName(
   commands: readonly CommandEntry[],
   name: string,
+  exposure: ToolExposure,
 ): CommandEntry | undefined {
-  for (const [id, n] of toolNames(commands))
-    if (n === name) return commands.find((c) => c.id === id);
+  for (const [id, n] of toolNames(commands)) {
+    if (n !== name) continue;
+    const entry = commands.find((c) => c.id === id);
+    return entry?.exposures[exposure] !== undefined ? entry : undefined;
+  }
   return undefined;
 }
 

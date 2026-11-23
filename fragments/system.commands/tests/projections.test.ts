@@ -126,8 +126,24 @@ describe("the MCP projection", () => {
 describe("tool names", () => {
   it("map back to the command they name", async () => {
     const { bus } = await catalogue();
-    expect(toolByName(bus.list(), "org_example_notes__publish")?.id).toBe(`${NOTES}/publish`);
-    expect(toolByName(bus.list(), "org_example_notes__reindex")).toBeUndefined(); // internal
+    expect(toolByName(bus.list(), "org_example_notes__publish", "agent")?.id).toBe(
+      `${NOTES}/publish`,
+    );
+    expect(toolByName(bus.list(), "org_example_notes__publish", "mcp")?.id).toBe(
+      `${NOTES}/publish`,
+    );
+    expect(toolByName(bus.list(), "org_example_notes__reindex", "agent")).toBeUndefined(); // internal
+  });
+
+  it("map back only within the projection they were looked up for", async () => {
+    const { bus } = await catalogue();
+    // `find` is agent-only, `export-all` mcp-only.
+    expect(toolByName(bus.list(), "org_example_notes__find", "agent")?.id).toBe(`${NOTES}/find`);
+    expect(toolByName(bus.list(), "org_example_notes__find", "mcp")).toBeUndefined();
+    expect(toolByName(bus.list(), "org_example_notes__export-all", "mcp")?.id).toBe(
+      `${NOTES}/export-all`,
+    );
+    expect(toolByName(bus.list(), "org_example_notes__export-all", "agent")).toBeUndefined();
   });
 
   /** Three agent-exposed `go` commands of fragments whose ids differ only past 64 characters. */
@@ -148,7 +164,7 @@ describe("tool names", () => {
     expect(names).toContain("org_example_a-b__go");
     for (const tool of tools) {
       const x = tool["x-dev.cellb.harness"];
-      expect(toolByName(bus.list(), x.name)?.id).toBe(x.id);
+      expect(toolByName(bus.list(), x.name, "agent")?.id).toBe(x.id);
       expect(Object.values(tool.paths)[0]?.post.operationId).toBe(x.name);
     }
   });

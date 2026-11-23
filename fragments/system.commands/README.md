@@ -30,10 +30,10 @@ import {
 | `CommandBus` | `call(id, input)`, `list()`, `get(id)`, `keybindings()`, `observe(listener)`. |
 | `CommandCallError`, `CommandCallErrorKind`, `CommandFailure` | The one error a call rejects with, and what a handler throws for a declared error. |
 | `harnessTools(commands, { locale })`, `mcpTools(commands, { locale, fragment })` | The projections, recomputed from `bus.list()`. |
-| `toolNames(commands)`, `toolByName(commands, name)`, `toolPermission(id)`, `defaultHttpPath(command)` | Provider-safe names, their reverse map, `tools.use:<id>`, the HTTP path `mcp` implies. |
+| `toolNames(commands)`, `toolByName(commands, name, exposure)`, `toolPermission(id)`, `defaultHttpPath(command)` | Provider-safe names, their reverse map, `tools.use:<id>`, the HTTP path `mcp` implies. |
 | `labelsOf(entry, locale)`, `closedSchema(schema)` | A command's localized title and description; the profile's closed input schema. |
 | `commandSchema`, `keybindingSchema` | The two points' schemas (JSON Schema 2020-12). |
-| `CommandEntry`, `CommandData`, `CommandOperation`, `Exposures`, `Label`, `Keybinding`, `HarnessToolDocument`, `McpTool` | The types. |
+| `CommandEntry`, `CommandData`, `CommandOperation`, `Exposures`, `Label`, `Keybinding`, `HarnessToolDocument`, `McpTool`, `ToolExposure` | The types. |
 
 ## Examples
 
@@ -123,7 +123,7 @@ An extension's data is `{ operation, exposures?, labels? }`, checked by the kern
 - **`labels`** map a locale (`fr`, `fr-CA`) to `{ title?, description? }`.
 - **The handler** is the extension's lazy reference (a module export, or a server entrypoint method reached over RPC), resolved by the host's resolver on the first call. A command without one is listed but fails `no-handler`.
 
-A command's identity is `<fragment-id>/<command-id>`. When one fragment declares the same command id twice, the first extension read wins.
+A command's identity is `<fragment-id>/<command-id>`. When live extensions of one fragment declare the same command id, the first extension read wins, and the next takes over when it leaves: the bus rebuilds its commands from the point's whole extension list on every change.
 
 ### The bus
 
@@ -147,7 +147,7 @@ A handler is called as `handler(input, { command })`. The context object is wher
 
 `mcpTools` gives MCP `tools/list` entries (`name`, `title`, `description`, `inputSchema`, `outputSchema` when declared, and the harness's annotations when the command also has an agent action), for every fragment or for one (`/fragments/{id}/.well-known/mcp`).
 
-Names follow the harness's rule: `<fragment-id>__<command-id>` with every character outside `[A-Za-z0-9_-]` turned into `_`, cut to 55 characters plus `_` and an FNV-1a hash when over 64. Exposed commands whose names coincide all take the hashed form, so no name depends on the order commands arrived in; `toolByName` maps a name back. Titles and descriptions come from the label of the locale asked for, then of its language, then from the operation's `summary` and `description`.
+Names follow the harness's rule: `<fragment-id>__<command-id>` with every character outside `[A-Za-z0-9_-]` turned into `_`, cut to 55 characters plus `_` and an FNV-1a hash when over 64. Exposed commands whose names coincide all take the hashed form, so no name depends on the order commands arrived in; `toolByName(commands, name, "agent" | "mcp")` maps a name back, only to a command with that exposure, so a call through one projection never reaches a command exposed only to the other. Titles and descriptions come from the label of the locale asked for, then of its language, then from the operation's `summary` and `description`.
 
 ### The `keybindings` point
 
