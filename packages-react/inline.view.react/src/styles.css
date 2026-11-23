@@ -1,0 +1,9 @@
+/*
+ * Tailwind v4 content discovery for this package.
+ *
+ * The host app's `main.tsx` imports `<package>/styles` once at boot. Tailwind
+ * v4 then walks the `@source` glob and picks up class usage inside this
+ * package's source so utility classes are emitted into the host's CSS bundle.
+ */
+@source "./**/*.tsx";
+@source "./**/*.ts";

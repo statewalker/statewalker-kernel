@@ -2,7 +2,7 @@
 
 ## What it is
 
-The headless kernel of a StateWalker application: the packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects. Nothing here renders UI or depends on React; renderers live in separate `*.view.react` packages that read this state. All packages are published to npm under `@statewalker/*`.
+The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. All packages are published to npm under `@statewalker/*`.
 
 ## The shape
 
@@ -15,11 +15,14 @@ packages/
   render.core  shell.core  mime.core  explorer.core          panel specs, dock, file viewers, explorer
   inline.core  settings.core                                 inline content, settings
   webapp.core        webapp.browser                          web-app projects served from a ServiceWorker
-packages-react/                                              React packages (the shell, views), empty so far
+packages-react/
+  ui.view.react      ui.view.shadcn                          React substrate (mount, hooks), shadcn primitives
+  shell.view.react   render.view.react                       the dock shell (dockview-react), json-render boundary
+  settings.view.react  inline.view.react                     settings dialog, inline content
 fragments/                                                   the platform's core fragments, empty so far
 apps/                                                        the demo applications (private), empty so far
 scripts/                                                     maintenance scripts (see Reference)
-tests/                                                       repository-level tests (the no-React rule)
+tests/                                                       repository-level tests (no-React rule, release coverage)
 ```
 
 The suffix says where a package runs: `.core` runs anywhere (no DOM, no Node built-ins), `.browser` needs a browser, `.node` needs Node.
@@ -38,6 +41,17 @@ settings.core ──────────────────────
 explorer.core ─> mime.core ─> shell.core ─> render.core ─> workspace.core
 webapp.browser ─> webapp.core ───────────────────┘
 inline.core                                              (shared-* only)
+```
+
+The React packages, on top of those:
+
+```
+shell.view.react ──┬─> render.view.react                (@json-render/react)
+                   ├─> render.core, shell.core
+settings.view.react┼─> settings.core, shell.core
+inline.view.react ─┼─> inline.core, mime.core
+                   └─> ui.view.react ─> ui.view.shadcn  (Radix, Tailwind v4 classes)
+                            └─> workspace.core, workspace.browser
 ```
 
 | Package | What it does | npm |
@@ -59,10 +73,16 @@ inline.core                                              (shared-* only)
 | [settings.core](packages/settings.core) | Settings sections and their state. | [@statewalker/settings.core](https://www.npmjs.com/package/@statewalker/settings.core) |
 | [webapp.core](packages/webapp.core) | Web-app projects: convention detection, config, module-server cache. | [@statewalker/webapp.core](https://www.npmjs.com/package/@statewalker/webapp.core) |
 | [webapp.browser](packages/webapp.browser) | Serves a web-app project from a ServiceWorker with cross-origin isolation headers. | [@statewalker/webapp.browser](https://www.npmjs.com/package/@statewalker/webapp.browser) |
+| [ui.view.react](packages-react/ui.view.react) | React substrate: `mount`, `AppRoot`, the `core:views` slot, slot and adapter hooks, theme binding. | [@statewalker/ui.view.react](https://www.npmjs.com/package/@statewalker/ui.view.react) |
+| [ui.view.shadcn](packages-react/ui.view.shadcn) | shadcn primitives (Radix) and the `cn()` helper. | [@statewalker/ui.view.shadcn](https://www.npmjs.com/package/@statewalker/ui.view.shadcn) |
+| [shell.view.react](packages-react/shell.view.react) | The dock: dockview-react host, `MainShell`, `ShellHeader`, `JsonPanel`. | [@statewalker/shell.view.react](https://www.npmjs.com/package/@statewalker/shell.view.react) |
+| [render.view.react](packages-react/render.view.react) | The only `@json-render/react` boundary: `<SpecRenderer spec registry>`. | [@statewalker/render.view.react](https://www.npmjs.com/package/@statewalker/render.view.react) |
+| [settings.view.react](packages-react/settings.view.react) | Settings dialog and header button. | [@statewalker/settings.view.react](https://www.npmjs.com/package/@statewalker/settings.view.react) |
+| [inline.view.react](packages-react/inline.view.react) | Renders components embedded in content. | [@statewalker/inline.view.react](https://www.npmjs.com/package/@statewalker/inline.view.react) |
 
 Every package is public; there are no private packages or apps in this repository yet.
 
-This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`.
+This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`. The six React packages came from statewalker-shell-react (statewalker/statewalker-root#245) with their names and versions; the views of integration fragments (explorer, MIME viewers, workspace, web app, AI configuration) stay there for now.
 
 Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
 
@@ -83,7 +103,7 @@ To work on one package: `pnpm --filter @statewalker/platform.browser test` (or `
 
 ### No UI code in the kernel
 
-State and behaviour live here; React views live in `*.view.react` packages that depend on these packages. Because of that split, every package here is tested with vitest in Node or jsdom, without a browser.
+State and behaviour live in `packages/`; React views live in the `*.view.react` packages of `packages-react/`, which depend on them. Because of that split, every package is tested with vitest in Node (`packages/`) or jsdom (`packages-react/`), without a browser.
 
 ### Packages publish built code and their sources
 
@@ -103,6 +123,7 @@ Most `.core` packages export a `./fragment` entry (an `init(ctx)` for the backbo
 - **A command that never returns.** Every command declared here uses the `silent` dispatch policy: if no fragment handles the command when it is called, the promise never settles and nothing is logged. Check that the fragment that handles it is in the manifest and starts first.
 - **Fragments missing at runtime after installing from npm.** The backbone follows only `workspace:` dependencies to find fragments. In an installed (non-workspace) project, list every fragment in the manifest's `roots`.
 - **`pnpm run lint:check` prints warnings.** Accessibility rules are set to `warn` in `biome.json`; warnings do not fail the check.
+- **The `./styles` entries of the React packages are CSS only.** They have no types by design; `.attw.json` tells attw (CI's `package-checks`) to skip them. Tailwind v4 in the consuming app picks up the classes through each `styles.css`'s `@source` globs.
 - `turbo.json` exists, but the root scripts use `pnpm -r`, which already runs packages in dependency order.
 
 ## Reference
@@ -128,7 +149,7 @@ Most `.core` packages export a `./fragment` entry (an `init(ctx)` for the backbo
 
 ### Releases
 
-Merging the version pull request publishes (`.github/workflows/ci.yml`, jobs `version`, `pack` and `publish`). After CI passes on `main`, the `version` job adds changesets for packages whose packed contents differ from npm's `latest` and opens or updates a "chore: version packages" pull request that applies all pending changesets; merging it packs what npm lacks, and `publish` uploads it with npm trusted publishing and provenance and tags a GitHub release per package. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
+Merging the version pull request publishes (`.github/workflows/ci.yml`, jobs `version`, `pack` and `publish`). `pack` walks `packages/`, `packages-react/` and `fragments/`; `tests/release-coverage.test.ts` fails when a public package sits where neither the workspace globs nor that loop reach. After CI passes on `main`, the `version` job adds changesets for packages whose packed contents differ from npm's `latest` and opens or updates a "chore: version packages" pull request that applies all pending changesets; merging it packs what npm lacks, and `publish` uploads it with npm trusted publishing and provenance and tags a GitHub release per package. To choose the bump or the changelog text yourself, add a changeset with `pnpm changeset` in your pull request.
 
 One-time set-up: npm's trusted publisher for each package names this repository, `ci.yml` and the `npm` environment (only `main`, no required reviewers); the `statewalker-release` GitHub App opens the version pull request, so its checks run. A package npm has never seen fails `publish` with a 404 until its first version is published by hand.
 
