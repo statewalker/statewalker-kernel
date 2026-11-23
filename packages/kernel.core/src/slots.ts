@@ -26,6 +26,60 @@ export function activeFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<Instal
   return decl;
 }
 
+/** An aspect of a resolved fragment whose activator threw: the aspect stays inactive. */
+export interface FragmentFailure {
+  readonly fragment: InstalledFragment;
+  readonly aspect: Aspect;
+  /** What the activator threw. */
+  readonly error: unknown;
+}
+
+const failedSlots = new Map<Aspect, KeyedSlotDeclaration<FragmentFailure>>();
+
+/**
+ * Resolved fragments whose `aspect` failed to activate, with the error, by id
+ * (`system:fragments:failed:<aspect>`). The fragments requiring one are not activated in
+ * that aspect until `retry` activates it.
+ */
+export function failedFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<FragmentFailure> {
+  let decl = failedSlots.get(aspect);
+  if (!decl) {
+    decl = defineKeyedSlot<FragmentFailure>(`system:fragments:failed:${aspect}`);
+    failedSlots.set(aspect, decl);
+  }
+  return decl;
+}
+
+/**
+ * A resolved fragment an activation of `aspect` was asked for but skipped, because
+ * requirements with the aspect are not active (failed, or waiting themselves).
+ */
+export interface FragmentWaiting {
+  readonly fragment: InstalledFragment;
+  readonly aspect: Aspect;
+  /**
+   * The requirements with the aspect that are not active, direct or reached through
+   * fragments lacking the aspect, in dependency order.
+   */
+  readonly blockers: readonly string[];
+}
+
+const waitingSlots = new Map<Aspect, KeyedSlotDeclaration<FragmentWaiting>>();
+
+/**
+ * Resolved fragments waiting, in `aspect`, for requirements that are not active, with
+ * them, by id (`system:fragments:waiting:<aspect>`). `retry` activates them once their
+ * requirements are; deactivating, disabling, removing and `stop` drop them.
+ */
+export function waitingFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<FragmentWaiting> {
+  let decl = waitingSlots.get(aspect);
+  if (!decl) {
+    decl = defineKeyedSlot<FragmentWaiting>(`system:fragments:waiting:${aspect}`);
+    waitingSlots.set(aspect, decl);
+  }
+  return decl;
+}
+
 /** An extension contributed at runtime, by code, through `extensionContributionsSlot`. */
 export interface ExtensionContribution {
   /** The contributing fragment's id; the slot key must start with `<contributor>/`. */

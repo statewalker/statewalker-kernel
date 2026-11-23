@@ -45,6 +45,23 @@ export class FragmentLifecycleError extends Error {
 }
 
 /**
+ * A disable or a removal refused because resolved fragments require the fragment: nothing
+ * changed. `dependents` lists them, requirements first; confirm the cascade to go on.
+ */
+export class FragmentCascadeError extends FragmentLifecycleError {
+  readonly id: string;
+  readonly dependents: readonly string[];
+  constructor(id: string, dependents: readonly string[], action = "disable") {
+    super(
+      `"${id}" is required by ${dependents.map((d) => `"${d}"`).join(", ")}; confirm the cascade to ${action} it`,
+    );
+    this.name = "FragmentCascadeError";
+    this.id = id;
+    this.dependents = dependents;
+  }
+}
+
+/**
  * An extension's reference cannot be used: its contributor is no longer resolved, the
  * extension was withdrawn or refused, the owner's aspect was deactivated, or the host has
  * no resolver for the reference's kind. Raised instead of waiting, also for a resolution or
