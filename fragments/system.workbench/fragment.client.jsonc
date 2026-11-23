@@ -1,0 +1,28 @@
+// The client aspect of system.workbench: the `views` extension point.
+// Kept equal to src/archive.ts by tests/views.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "views": {
+      "description": "Views the workbench shows, each a React component (the lazy reference).",
+      "schema": {
+        "type": "object",
+        "required": ["id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The view's id within its fragment; its identity is `<fragment-id>/<id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "title": {
+            "description": "The title its tab shows.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

@@ -136,3 +136,55 @@ describe("check-no-react on packages/", () => {
     expect(checkNoReact()).toMatchObject({ status: 0 });
   });
 });
+
+// A fragment's `src/` is its React-free half (the model, tested in Node); React belongs in its
+// `client/` folder, the client aspect's default folder. Its package.json and tsconfig may name
+// React for the client half, so only imports and JSX files under `src/` are refused.
+describe("the no-React rule on fragments/*/src/", () => {
+  it("fails lint for a React import in a fragment's src/", () => {
+    const result = lint(
+      "fragments/__no-react-probe__/src/probe.ts",
+      'import { useState } from "react";\nexport const s = useState;\n',
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain("noRestrictedImports");
+  });
+
+  it("fails lint for a react-dom import in a fragment's src/", () => {
+    const result = lint(
+      "fragments/__no-react-probe__/src/probe.ts",
+      'import { createRoot } from "react-dom/client";\nexport const r = createRoot;\n',
+    );
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain("noRestrictedImports");
+  });
+
+  it("lets a fragment's client/ import React", () => {
+    const result = lint(
+      "fragments/__no-react-probe__/client/probe.ts",
+      'import { useState } from "react";\nexport const s = useState;\n',
+    );
+    expect(result.output).not.toContain("noRestrictedImports");
+    expect(result.status).toBe(0);
+  });
+
+  it("check-no-react fails for a .tsx file in a fragment's src/", () => {
+    probe("fragments/__no-react-probe__/src/view.tsx", "export const C = () => <div />;\n");
+    const result = checkNoReact();
+    expect(result.status).toBe(1);
+    expect(result.output).toContain("fragments/__no-react-probe__/src/view.tsx");
+  });
+
+  it("check-no-react lets a fragment's client/ hold .tsx files and React dependencies", () => {
+    probe("fragments/__no-react-probe__/client/view.tsx", "export const C = () => <div />;\n");
+    probe(
+      "fragments/__no-react-probe__/package.json",
+      '{ "name": "probe", "peerDependencies": { "react": "^19.0.0" } }\n',
+    );
+    probe(
+      "fragments/__no-react-probe__/tsconfig.json",
+      '{ "compilerOptions": { "jsx": "react-jsx" } }\n',
+    );
+    expect(checkNoReact()).toMatchObject({ status: 0 });
+  });
+});

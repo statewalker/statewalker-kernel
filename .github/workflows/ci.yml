@@ -22,6 +22,9 @@ jobs:
       # (a minor on 0.x). statewalker-kernel is layer L4; the check reads only this project's own packages,
       # so it does not wait for the layers below (statewalker/statewalker-root#69).
       api-diff: true
+      # apps/notes' seam-2 tests drive Chromium through playwright (pinned in the catalog, which
+      # fixes the browser revision); the runner has no browsers, so install that one first.
+      setup: pnpm --filter @statewalker/notes.app exec playwright install --with-deps chromium
 
   # The lockfile-only pull request that .github/workflows/statewalker-update.yml opens: merged
   # once every other check on it passes, after checking it changes pnpm-lock.yaml alone

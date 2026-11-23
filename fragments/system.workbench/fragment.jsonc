@@ -1,0 +1,15 @@
+// The system.workbench core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/views.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.workbench",
+  "version": "0.1.0",
+  "name": "Workbench",
+  "description": "The workbench: views contributed by fragments, shown in one dockview.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}
