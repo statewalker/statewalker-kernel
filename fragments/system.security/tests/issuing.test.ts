@@ -1,6 +1,6 @@
+import { extensionContributionsSlot } from "@statewalker/kernel.core";
 import { Biscuit, generateKeypair } from "@statewalker/webrun-biscuit";
 import { describe, expect, it } from "vitest";
-import { extensionContributionsSlot } from "@statewalker/kernel.core";
 import { capabilityRefusalsSlot } from "../src/index.js";
 import { command, fragment, platform } from "./helpers.js";
 

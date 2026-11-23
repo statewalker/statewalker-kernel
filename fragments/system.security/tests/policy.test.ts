@@ -160,3 +160,42 @@ describe("an approved call", () => {
     await expect(call).rejects.toMatchObject({ kind: "forbidden" });
   });
 });
+
+describe("an approval request's input", () => {
+  it("cannot change what runs: what the user was shown is what the handler gets", async () => {
+    const seen: unknown[] = [];
+    const { bus, security, slots } = await platform(
+      [notes()],
+      {
+        [NOTES]: {
+          "delete-note": (input: unknown) => {
+            seen.push(input);
+            return { deleted: true };
+          },
+        },
+      },
+      { attended: true },
+    );
+    const capability = security.issue(agent, { permissions: both });
+    const call = bus.call(
+      `${NOTES}/delete-note`,
+      { path: "a.txt", tags: ["x"] },
+      { caller: { capability } },
+    );
+    await pending(call);
+    const [id] = slots.getSnapshot(approvalsSlot).keys();
+    const published = slots.get(approvalsSlot, id as string) as {
+      input: { path: string; tags: string[] };
+    };
+    try {
+      published.input.path = "/everything";
+    } catch {}
+    try {
+      published.input.tags.push("y");
+    } catch {}
+    expect(published.input).toEqual({ path: "a.txt", tags: ["x"] });
+    security.answer(id as string, "allow");
+    await call;
+    expect(seen).toEqual([{ path: "a.txt", tags: ["x"] }]);
+  });
+});

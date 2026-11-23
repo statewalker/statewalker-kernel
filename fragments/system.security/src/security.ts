@@ -73,6 +73,18 @@ export class SecurityRefusal extends Error {
   }
 }
 
+/** A deep copy of plain data, frozen throughout. */
+function frozenCopy<T>(value: T): T {
+  const copy = structuredClone(value);
+  const freeze = (v: unknown) => {
+    if (typeof v !== "object" || v === null || Object.isFrozen(v)) return;
+    Object.freeze(v);
+    for (const key of Reflect.ownKeys(v)) freeze((v as Record<PropertyKey, unknown>)[key]);
+  };
+  freeze(copy);
+  return copy;
+}
+
 /** Whether `id` is a static extension's id, `<contributor>#<n>` (runtime ones are `<contributor>/<name>`). */
 function isStaticId(id: string, contributor: string): boolean {
   if (!id.startsWith(`${contributor}#`)) return false;
@@ -211,7 +223,9 @@ export function createSystemSecurity(options: SystemSecurityOptions = {}): Syste
         command: command.id,
         action,
         permission,
-        input,
+        // A copy of its own, frozen: the run's input stays private to the bus, so nothing that
+        // reads the published request can change what runs after the user saw it.
+        input: frozenCopy(input),
         reason: `${decision.reason} asks`,
       },
       verified.claims.revocationIds,

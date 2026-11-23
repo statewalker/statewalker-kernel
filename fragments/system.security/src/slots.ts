@@ -31,7 +31,10 @@ export interface ApprovalRequest {
   readonly action: ActionKind;
   /** The permission the call uses, `tools.use:<command>`. */
   readonly permission: string;
-  /** The call's input, as given (not yet checked against the command's schema). */
+  /**
+   * A frozen copy of the call's input (not yet checked against the command's schema); the input
+   * that runs is the bus's own copy, which nothing published reaches.
+   */
   readonly input: unknown;
   /** Why the policy asks. */
   readonly reason: string;
