@@ -1,0 +1,15 @@
+// The system.appearance core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/appearance.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.appearance",
+  "version": "0.1.0",
+  "name": "Appearance",
+  "description": "Branding and themes: the shadcn tokens of the active brand, light and dark.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}
