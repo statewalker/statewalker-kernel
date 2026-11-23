@@ -85,6 +85,12 @@ export interface KernelOptions extends ExtensionRegistryOptions {
    * enabled by `start`. Only these may use the reserved `system.` prefix.
    */
   readonly core?: readonly FragmentFiles[];
+  /**
+   * The application's baseline fragments, by id: the host installs them on first run, and
+   * they can be disabled but not removed (`remove` refuses them, as it refuses a core
+   * fragment). Upgrades and every other operation are unaffected.
+   */
+  readonly baseline?: readonly string[];
   /** The host's activator per aspect; an aspect without one only changes state. */
   readonly activators?: Partial<Record<Aspect, AspectActivator>>;
   /**
@@ -162,7 +168,7 @@ export interface Kernel {
   /**
    * Remove an installed fragment: deactivate it (its dependents first, with `cascade`),
    * disable it and uninstall it. Its data is kept unless `withData` confirms deleting it.
-   * Refused, with nothing changed, for a core fragment, for one resolved fragments
+   * Refused, with nothing changed, for a core or baseline fragment, for one resolved fragments
    * require without `cascade` (a `FragmentCascadeError`), and for `withData` on a host
    * without `removeData`.
    */
@@ -837,6 +843,11 @@ export function createKernel(options: KernelOptions): Kernel {
         if (!fragment) throw new FragmentLifecycleError(`"${id}" is not installed`);
         if (fragment.core) {
           throw new FragmentLifecycleError(`"${id}" ships with the platform and cannot be removed`);
+        }
+        if (options.baseline?.includes(id)) {
+          throw new FragmentLifecycleError(
+            `"${id}" is a baseline fragment of the application: it can be disabled, not removed`,
+          );
         }
         if (withData && !options.removeData) {
           throw new FragmentLifecycleError(

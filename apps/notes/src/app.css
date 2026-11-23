@@ -1,4 +1,15 @@
-/* The page: the workbench fills the window. */
+/* The page: the brand's bar on top, the workbench filling the rest of the window. */
 #app {
   height: 100%;
+}
+
+.app-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-workbench {
+  flex: 1;
+  min-height: 0;
 }

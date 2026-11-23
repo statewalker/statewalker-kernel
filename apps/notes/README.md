@@ -2,7 +2,7 @@
 
 ## What it is
 
-The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. It started as the shell tracer (statewalker/statewalker-root#252) and now shows the workbench chrome (statewalker/statewalker-root#254) and A2UI surfaces (statewalker/statewalker-root#267). In the browser, the kernel loads the core fragments `system.commands`, `system.workbench` and `system.a2ui`, then fetches, installs, enables and activates the app's client-only fragments:
+The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. It started as the shell tracer (statewalker/statewalker-root#252) and now shows the workbench chrome (statewalker/statewalker-root#254) A2UI surfaces (statewalker/statewalker-root#267), and its application definition (statewalker/statewalker-root#257): a brand in light and dark, baseline fragments and a default layout, in `application.json`. In the browser, the kernel loads the core fragments `system.commands`, `system.workbench`, `system.a2ui` and `system.appearance`, then fetches, installs, enables and activates the app's client-only fragments (its baseline, on a fresh profile):
 
 - `notes` contributes a view to the `views` point, two commands (`add-note`, `new-note`) to the `commands` point, and, all statically, a menu bar menu, a context menu and a tab menu entry for its view, a keybinding (`Ctrl+Alt+N`), two status bar items (one shown while its view is active), an activity bar entry, a dialog and a notification. `new-note` asks for the note's text in that dialog, adds it, and reports it in that notification, whose Undo takes it back.
 - `surfaces` contributes a catalog component, `NoteEditor` (CodeMirror), to the `catalog` point and a view placing an A2UI surface with it.
@@ -48,6 +48,17 @@ From the repository root, after `pnpm install`:
 | With the notes bundle held back, the Notes menu (with Ctrl+Alt+N), the status bar item, the activity bar entry and the keybinding are there while the view still loads; Ctrl+Alt+N then opens the dialog once the bundle arrives | Static contributions come from the registry, before the contributor's code loads |
 | After `kernel.disable("org.statewalker.notes")`, no Notes menu, status bar item, activity bar entry, keybinding or palette entry is left, and Ctrl+Alt+N does nothing | Contributions leave with their fragment |
 
+`tests/application.e2e.test.ts` (seam 2) checks the application definition, each test in a new browser context, so from a fresh profile:
+
+| Test step | Feature |
+| --- | --- |
+| With the system in light, the bar above the workbench shows the logo and "Notes", the title is "Notes", the root has no `.dark`, `--primary` and `--background` are the brand's light values, and the notes view's "Add note" button and the page's background are those colours | The application's brand (`application.json`) set by system.appearance as the shadcn tokens, the single theme source the fragments' prebuilt CSS reads |
+| With the system in dark (`colorScheme: "dark"`), the root has `.dark` and `--primary`, `--background` and `--card` are the brand's dark values; the notes card is the dark card colour | Branding in dark, following `prefers-color-scheme` |
+| `appearance.setMode("dark")` in a light system shows the dark tokens; `setMode("system")` goes back to light | The user's choice over the system's |
+| A fresh profile: `firstRun` is true, both baseline fragments are enabled, the notes view is open in a tab titled "Notes"; after a reload, `firstRun` is false and the notes view is back | Baseline fragments installed on first run; the default layout; the profile restoring what it recorded |
+| A profile recording `org.example.gone`, which the app does not serve: the reload boots, with the baseline installed, and the record is gone | A recorded fragment no longer served is forgotten, not fatal |
+| `kernel.remove("org.statewalker.notes")` is refused (a baseline fragment) and the view stays; `kernel.disable` closes it; after a reload notes is installed but not enabled (surfaces still enabled) and no notes view opens; enabling it brings the view back | Baseline fragments can be disabled, not removed (`KernelOptions.baseline`); the enabled state is kept in the profile |
+
 `tests/surfaces.e2e.test.ts` (seam 2) opens the surfaces demo's view in Chromium:
 
 | Test step | Feature |
@@ -66,7 +77,9 @@ From the repository root, after `pnpm install`:
 
 ```
 platform.json          the platform version and the shared modules' ranges
+application.json       the application definition: brand, baseline fragments, default layout
 src/boot.ts            the shell: kernel, core fragments, client API, app fragments (React-free)
+src/profile.ts         the user's profile in localStorage (until system.profile)
 src/main.tsx           renders the workbench, docks surfaces through system.a2ui, opens the default layout
 fragments/notes/       the notes fragment: fragment.jsonc, fragment.client.jsonc, client/
 fragments/surfaces/    the surfaces demo: the NoteEditor catalog component and a view with a surface
@@ -88,7 +101,9 @@ Every bundle (the shell, the shared modules, the fragments) leaves the shared mo
 
 ### The shell
 
-`boot()` creates the kernel with `platform.json`'s version and the three core fragments (the workbench wired to the command bus and the browser's locale), installs the client API's bindings (the bus, the workbench's dialogs and notifications) and the A2UI model (`installA2ui`; agents' surface events are denied until system.security supplies a policy), fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect. A core fragment's module reference resolves to its in-process module (system.workbench's commands); an app fragment's resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
+`boot()` creates the kernel with `platform.json`'s version and the four core fragments (the workbench wired to the command bus and the browser's locale), installs the client API's bindings (the bus, the workbench's dialogs and notifications) and the A2UI model (`installA2ui`; agents' surface events are denied until system.security supplies a policy), fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect.
+
+Which app fragments: the kernel's records live in the user's profile, kept in localStorage under `org.statewalker.apps.notes:` (`src/profile.ts`, until system.profile). A fresh profile, one without the application's record (`applications/org.statewalker.apps.notes`), installs and enables `application.json`'s `baseline`, then writes that record; `window.platform.firstRun` says which run this is. A later run installs again the fragments the profile records (`fragments/<id>`, core fragments aside), enabling those recorded enabled, plus any baseline fragment the profile lacks. A recorded fragment the app no longer serves is skipped with a warning and its record dropped, so it cannot stop later boots; a baseline fragment that cannot be fetched stops the boot. The kernel gets the baseline as `KernelOptions.baseline`, so removing a baseline fragment is refused while disabling it works, and stays disabled on the next run. system.appearance gets `application.json`'s `brand` as the application's brand; `main.tsx` applies it to the page (`applyAppearance`: tokens, `.dark` following `prefers-color-scheme` unless `appearance.setMode` overrides it, title, icon), renders its `BrandMark` above the workbench, and opens `layout.open`, the default layout (no layout is saved yet, so every run opens it). A core fragment's module reference resolves to its in-process module (system.workbench's commands); an app fragment's resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
 
 ## License
 

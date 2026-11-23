@@ -1,0 +1,35 @@
+{
+  "$comment": "The application definition of apps/notes (spec statewalker/statewalker-root#215, user story 59): its brand (name, logo, the shadcn tokens in light and dark, as system.appearance's branding point takes them), its baseline fragments (installed on first run; they can be disabled, not removed) and its default layout (the views a fresh profile opens).",
+  "id": "org.statewalker.apps.notes",
+  "brand": {
+    "id": "notes",
+    "name": "Notes",
+    "logo": "data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Crect%20x='3'%20y='2'%20width='18'%20height='20'%20rx='3'%20fill='%23c2560c'/%3E%3Cpath%20d='M7%208h10M7%2012h10M7%2016h6'%20stroke='%23fff7ed'%20stroke-width='2'%20stroke-linecap='round'/%3E%3C/svg%3E",
+    "tokens": {
+      "light": {
+        "background": "oklch(0.99 0.008 85)",
+        "foreground": "oklch(0.21 0.03 50)",
+        "primary": "oklch(0.553 0.195 38.402)",
+        "primary-foreground": "oklch(0.98 0.016 73.684)",
+        "accent": "oklch(0.954 0.038 75.164)",
+        "accent-foreground": "oklch(0.408 0.123 38.172)",
+        "ring": "oklch(0.705 0.187 47.604)"
+      },
+      "dark": {
+        "background": "oklch(0.2 0.015 50)",
+        "foreground": "oklch(0.96 0.01 80)",
+        "card": "oklch(0.24 0.018 50)",
+        "card-foreground": "oklch(0.96 0.01 80)",
+        "primary": "oklch(0.75 0.183 55.934)",
+        "primary-foreground": "oklch(0.266 0.079 36.259)",
+        "accent": "oklch(0.3 0.05 45)",
+        "accent-foreground": "oklch(0.96 0.01 80)",
+        "ring": "oklch(0.646 0.222 41.116)"
+      }
+    }
+  },
+  "baseline": ["org.statewalker.notes", "org.statewalker.surfaces"],
+  "layout": {
+    "open": ["org.statewalker.notes/notes"]
+  }
+}
