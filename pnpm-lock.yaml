@@ -293,12 +293,18 @@ importers:
       '@statewalker/kernel.core':
         specifier: workspace:^
         version: link:../../packages/kernel.core
+      '@statewalker/platform.browser':
+        specifier: workspace:^
+        version: link:../../packages/platform.browser
       '@statewalker/system.a2ui':
         specifier: workspace:^
         version: link:../../fragments/system.a2ui
       '@statewalker/system.commands':
         specifier: workspace:^
         version: link:../../fragments/system.commands
+      '@statewalker/system.host':
+        specifier: workspace:^
+        version: link:../../fragments/system.host
       '@statewalker/system.workbench':
         specifier: workspace:^
         version: link:../../fragments/system.workbench
@@ -539,9 +545,6 @@ importers:
       '@statewalker/shared-slots':
         specifier: 'catalog:'
         version: 0.2.6
-      '@statewalker/system.commands':
-        specifier: workspace:^
-        version: link:../system.commands
       '@tailwindcss/cli':
         specifier: 'catalog:'
         version: 4.3.5

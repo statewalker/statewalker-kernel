@@ -64,9 +64,7 @@ describe("host services in apps/notes", () => {
       await view.getByRole("button", { name: "Add note" }).click();
       const note = view.getByRole("listitem").filter({ hasText: "Buy milk" });
       await note.getByRole("button", { name: "Copy" }).click();
-      await page.waitForFunction(
-        async () => (await navigator.clipboard.readText()) === "Buy milk",
-      );
+      await page.waitForFunction(async () => (await navigator.clipboard.readText()) === "Buy milk");
       // No fragment contributes a clipboard: the shell's own (the browser's) answered.
       await expect(page.evaluate(() => window.platform.host.provider("clipboard"))).resolves.toBe(
         undefined,
@@ -90,8 +88,9 @@ describe("host services in apps/notes", () => {
 
       await page.reload();
       await page.getByTestId("surfaces-view").waitFor();
-      await page.getByTestId("notes-view").waitFor();
+      // Both views are open again, in their order (the notes tab behind the surfaces one).
       await expect(opened(page)).resolves.toEqual([NOTES_VIEW, SURFACES_VIEW]);
+      await expect(page.locator(".dv-tab", { hasText: "Notes" }).count()).resolves.toBe(1);
       expect(errors).toEqual([]);
     } finally {
       await context.close();
@@ -107,12 +106,9 @@ describe("host services in apps/notes", () => {
       await expect(page.getByTestId("notes-view").count()).resolves.toBe(0);
 
       // Navigating to another URL state opens and closes views to match.
-      await page.evaluate(
-        (views) => {
-          location.hash = `#?${new URLSearchParams({ views })}`;
-        },
-        NOTES_VIEW,
-      );
+      await page.evaluate((views) => {
+        location.hash = `#?${new URLSearchParams({ views })}`;
+      }, NOTES_VIEW);
       await page.getByTestId("notes-view").waitFor();
       await page.getByTestId("surfaces-view").waitFor({ state: "detached" });
       expect(errors).toEqual([]);

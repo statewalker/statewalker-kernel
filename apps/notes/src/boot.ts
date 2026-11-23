@@ -1,6 +1,7 @@
 // The shell's boot: the kernel with its core fragments (system.commands, system.workbench, its
-// chrome running commands on system.commands' bus, system.a2ui), the client API (commands,
-// dialogs, notifications) and the A2UI model installed, and the app's fragments fetched,
+// chrome running commands on system.commands' bus, system.a2ui, system.host with the browser's
+// host services as defaults), the client API (commands, dialogs, notifications, host services)
+// and the A2UI model installed, and the app's fragments fetched,
 // installed, enabled and activated. React-free; main.tsx renders the result.
 import { installClient } from "@statewalker/client.core";
 import {
@@ -11,6 +12,7 @@ import {
   parseJsonc,
   resolvedFragmentsSlot,
 } from "@statewalker/kernel.core";
+import { createBrowserHostServices } from "@statewalker/platform.browser";
 import {
   type A2ui,
   createSystemA2ui,
@@ -25,6 +27,12 @@ import {
   systemCommandsArchive,
 } from "@statewalker/system.commands";
 import {
+  createSystemHost,
+  SYSTEM_HOST_ID,
+  type SystemHost,
+  systemHostArchive,
+} from "@statewalker/system.host";
+import {
   createSystemWorkbench,
   SYSTEM_WORKBENCH_ID,
   systemWorkbenchArchive,
@@ -38,6 +46,8 @@ export interface Platform {
   readonly commands: CommandBus;
   readonly workbench: Workbench;
   readonly a2ui: A2ui;
+  /** system.host: the host services in effect (`services`), and who provides each. */
+  readonly host: Pick<SystemHost, "services" | "provider">;
 }
 
 declare global {
@@ -127,13 +137,15 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
   // is approved (fail-closed).
   const a2ui = createSystemA2ui({ commands: commands.bus });
+  // The browser's clipboard, file picker and URL hash, until a fragment contributes its own.
+  const host = createSystemHost({ defaults: createBrowserHostServices() });
   /** Core fragments' client modules: what their own references (`./index.js`) resolve to. */
   const coreModules: Record<string, Record<string, unknown>> = {
     [SYSTEM_WORKBENCH_ID]: workbench.module,
   };
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
-    core: [systemCommandsArchive, systemWorkbenchArchive, systemA2uiArchive],
+    core: [systemCommandsArchive, systemWorkbenchArchive, systemA2uiArchive, systemHostArchive],
     onError: (id, aspect, error) => console.error(`[kernel] ${id} (${aspect}):`, error),
     resolvers: {
       // A client module export, from the fragment's client folder.
@@ -151,6 +163,7 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
         if (fragment.id === SYSTEM_COMMANDS_ID) return commands.activate(context);
         if (fragment.id === SYSTEM_WORKBENCH_ID) return workbench.activate(context);
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
+        if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -159,6 +172,7 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
     commands: commands.bus,
     dialogs: workbench.workbench.dialogs,
     notifications: workbench.workbench.notifications,
+    host: host.services,
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -170,5 +184,11 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
   for (const fragment of await kernel.install(archives)) await kernel.enable(fragment.id);
   await kernel.activate("client");
   activateWhenResolved(kernel);
-  return { kernel, commands: commands.bus, workbench: workbench.workbench, a2ui: a2ui.a2ui };
+  return {
+    kernel,
+    commands: commands.bus,
+    workbench: workbench.workbench,
+    a2ui: a2ui.a2ui,
+    host: { services: host.services, provider: host.provider },
+  };
 }

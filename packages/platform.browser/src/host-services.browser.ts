@@ -1,8 +1,8 @@
 import {
   CopyToClipboardCommand,
+  PickFileCommand,
   type PickFilePayload,
   type PickFileResult,
-  PickFileCommand,
   type UrlState,
 } from "@statewalker/platform.core";
 import { Commands } from "@statewalker/shared-commands";

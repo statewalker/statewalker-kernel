@@ -67,6 +67,19 @@ parseHash("#/docs?file=a.md"); // { path: "/docs", query: { file: "a.md" } }
 buildHash({ path: "/docs", query: { file: "a.md" } }); // "#/docs?file=a.md"
 ```
 
+The browser's host services, the defaults of system.host's `host-services` point (statewalker/statewalker-root#258):
+
+```ts
+import { createBrowserHostServices } from "@statewalker/platform.browser";
+import { createSystemHost } from "@statewalker/system.host";
+
+const services = createBrowserHostServices();
+const host = createSystemHost({ defaults: services });
+await services.clipboard.writeText("Buy milk");
+await services.urlState.write({ path: "", query: { views: "notes" } }, { replace: true });
+services.close(); // unregisters the handlers, stops following the URL
+```
+
 Logger only:
 
 ```ts
@@ -101,6 +114,10 @@ Each `register*Browser(commands)` returns an unregister function.
 ### URL binding
 
 `bindUrlState(view)` writes `buildHash(view.buildState())` to `location.hash` whenever the view notifies, feeds `hashchange` events to `view.applyUrl(parseHash(location.hash))`, and applies the current hash once on bind. Hash format: `#<path>?<key>=<value>&...`.
+
+### Host services
+
+`createBrowserHostServices()` registers `registerCopyToClipboardBrowser` and `registerPickFileBrowser` on a `Commands` bus of its own and calls them: `clipboard.writeText` runs `platform:copy-to-clipboard`, `files.pickFile` runs `platform:pick-file`; `clipboard.readText` is `navigator.clipboard.readText`. `urlState` is the hash in the same format as `bindUrlState`: `read` parses it, `write` pushes a history entry (or replaces it with `{ replace: true }`, and does nothing when the hash already says so), and `observe` hears each change, written here or navigated to (`hashchange`, `popstate`). The clipboard and the picker need what the handlers need (above); browsers ask for a user gesture too. It has no directory picker: system.host's client API does not offer one yet.
 
 ### Logging
 
