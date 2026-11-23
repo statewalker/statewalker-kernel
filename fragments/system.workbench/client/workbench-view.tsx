@@ -30,6 +30,7 @@ import {
 } from "react";
 import {
   chordOf,
+  fillText,
   PALETTE_CHORDS,
   SURFACE_PANEL_PREFIX,
   type Workbench,
@@ -86,8 +87,12 @@ function syncPanels(api: DockviewApi, { views, opened, docked }: WorkbenchState)
   }
   for (const id of opened) {
     const existing = api.getPanel(id);
-    if (existing) continue;
     const view = views.find((v) => v.id === id);
+    if (existing) {
+      // A view's title follows the interface language.
+      if (view && existing.title !== view.title) existing.api.setTitle(view.title);
+      continue;
+    }
     if (!view) continue;
     api.addPanel<ViewParams>({ id, component: "view", title: view.title, params: { view: id } });
   }
@@ -232,7 +237,11 @@ function ViewActions({ activePanel }: IDockviewHeaderActionsProps) {
     <div className="flex h-full items-center px-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-xs" aria-label="View actions">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={workbench.text("view.actions", "View actions")}
+          >
             <span aria-hidden="true">⋯</span>
           </Button>
         </DropdownMenuTrigger>
@@ -268,7 +277,11 @@ function ViewPanel({ params }: IDockviewPanelProps<ViewParams>) {
   let content: ReactNode;
   if (loaded.error !== undefined) content = <ViewFailure view={params.view} error={loaded.error} />;
   else if (!loaded.View)
-    content = <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+    content = (
+      <div className="p-4 text-sm text-muted-foreground">
+        {workbench?.text("view.loading", "Loading…") ?? "Loading…"}
+      </div>
+    );
   else
     content = (
       <ViewBoundary view={params.view}>
@@ -331,7 +344,13 @@ function SurfacePanel({ params }: IDockviewPanelProps<SurfaceParams>) {
 
   const name = `surface ${params.surface}`;
   if (loaded.error !== undefined) return <ViewFailure view={name} error={loaded.error} />;
-  if (!loaded.Surface) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!loaded.Surface) {
+    return (
+      <div className="p-4 text-sm text-muted-foreground">
+        {workbench?.text("view.loading", "Loading…") ?? "Loading…"}
+      </div>
+    );
+  }
   return (
     <ViewBoundary view={name}>
       <div
@@ -346,9 +365,12 @@ function SurfacePanel({ params }: IDockviewPanelProps<SurfaceParams>) {
 }
 
 function ViewFailure({ view, error }: { view: string; error: unknown }) {
+  const workbench = useContext(WorkbenchContext);
+  const params = { view, error: error instanceof Error ? error.message : String(error) };
+  const fallback = "The view {view} failed: {error}";
   return (
     <div role="alert" className="p-4 text-sm text-destructive">
-      The view {view} failed: {error instanceof Error ? error.message : String(error)}
+      {workbench ? workbench.text("view.failed", fallback, params) : fillText(fallback, params)}
     </div>
   );
 }

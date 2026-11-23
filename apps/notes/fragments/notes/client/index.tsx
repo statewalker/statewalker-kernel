@@ -1,7 +1,7 @@
 // The client half of the notes fragment: the notes view and the handlers of its commands (add-note,
 // new-note). React, the shadcn primitives and the client API come from the shell's import map,
 // never bundled here.
-import { commands, dialogs, host, notifications } from "@statewalker/client.core";
+import { commands, dialogs, host, l10n, notifications, translator } from "@statewalker/client.core";
 import {
   Button,
   Card,
@@ -10,13 +10,22 @@ import {
   CardTitle,
   Input,
 } from "@statewalker/ui.view.shadcn";
-import { type FormEvent, useState, useSyncExternalStore } from "react";
+import { type FormEvent, useEffect, useState, useSyncExternalStore } from "react";
 
 const NOTES = "org.statewalker.notes";
 const ADD_NOTE = `${NOTES}/add-note`;
 /** Declared in fragment.client.jsonc, on system.workbench's `dialogs` and `notifications` points. */
 const NEW_NOTE_DIALOG = `${NOTES}/new-note`;
 const NOTE_ADDED = `${NOTES}/note-added`;
+/** This fragment's texts in the interface language (its bundles in fragment.client.jsonc). */
+const t = translator(NOTES);
+
+/** Re-render when the interface language (or a bundle) changes. */
+function useLanguage(): string {
+  const [locale, setLocale] = useState(() => l10n.locale());
+  useEffect(() => l10n.observe((state) => setLocale(state.locale)), []);
+  return locale;
+}
 
 // The notes, in memory while the page lives (storage comes with system.profile).
 let notes: readonly string[] = [];
@@ -62,6 +71,7 @@ export async function newNote(): Promise<{ added: boolean }> {
 /** The notes view: the notes, and a field whose button runs `add-note` on the command bus. */
 export function NotesView() {
   const all = useSyncExternalStore(subscribe, () => notes);
+  const locale = useLanguage();
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
 
@@ -87,25 +97,28 @@ export function NotesView() {
   }
 
   return (
-    <Card data-testid="notes-view" className="m-4">
+    <Card data-testid="notes-view" className="m-4" lang={locale}>
       <CardHeader>
-        <CardTitle>Notes</CardTitle>
+        <CardTitle data-testid="notes-title">{t("view.title", {}, "Notes")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <form onSubmit={submit} className="flex gap-2">
           <Input
-            aria-label="Note"
-            placeholder="Write a note"
+            aria-label={t("view.field", {}, "Note")}
+            placeholder={t("view.placeholder", {}, "Write a note")}
             value={text}
             onChange={(event) => setText(event.target.value)}
           />
-          <Button type="submit">Add note</Button>
+          <Button type="submit">{t("view.add", {}, "Add note")}</Button>
         </form>
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
+        <p data-testid="notes-count" className="m-0 text-xs text-muted-foreground">
+          {t("view.count", { count: all.length }, "{count} notes")}
+        </p>
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
           {all.map((note, index) => (
             // Notes have no ids yet; their position is stable while they cannot be removed.
@@ -115,7 +128,7 @@ export function NotesView() {
             >
               <span>{note}</span>
               <Button type="button" variant="outline" size="sm" onClick={() => copy(note)}>
-                Copy
+                {t("view.copy", {}, "Copy")}
               </Button>
             </li>
           ))}

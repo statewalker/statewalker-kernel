@@ -4,9 +4,11 @@ import "@statewalker/system.workbench/theme.css";
 import "@statewalker/system.workbench/client.css";
 import "@statewalker/system.a2ui/client.css";
 import "@statewalker/system.appearance/client.css";
+import "@statewalker/system.l10n/client.css";
 import "./app.css";
 import { createSurfaceDock } from "@statewalker/system.a2ui/client";
 import { applyAppearance, BrandMark } from "@statewalker/system.appearance/client";
+import { LanguagePicker } from "@statewalker/system.l10n/client";
 import { WorkbenchView } from "@statewalker/system.workbench/client";
 import { createRoot } from "react-dom/client";
 import { boot } from "./boot.js";
@@ -22,7 +24,13 @@ const app = document.getElementById("app");
 if (!app) throw new Error("no #app element");
 createRoot(app).render(
   <div className="app-frame">
-    <BrandMark appearance={platform.appearance} />
+    <div className="app-top">
+      <BrandMark appearance={platform.appearance} />
+      {/* The interface language, switched live: the chrome and the views follow, no reload. */}
+      <div className="app-language">
+        <LanguagePicker l10n={platform.l10n} />
+      </div>
+    </div>
     <div className="app-workbench">
       <WorkbenchView workbench={platform.workbench} />
     </div>

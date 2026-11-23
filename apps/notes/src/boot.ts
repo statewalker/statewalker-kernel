@@ -47,6 +47,12 @@ import {
   systemHostArchive,
 } from "@statewalker/system.host";
 import {
+  createSystemL10n,
+  type L10n,
+  SYSTEM_L10N_ID,
+  systemL10nArchive,
+} from "@statewalker/system.l10n";
+import {
   createSystemWorkbench,
   SYSTEM_WORKBENCH_ID,
   systemWorkbenchArchive,
@@ -63,6 +69,8 @@ export interface Platform {
   readonly workbench: Workbench;
   readonly a2ui: A2ui;
   readonly appearance: Appearance;
+  /** The interface language and every fragment's texts in it (system.l10n). */
+  readonly l10n: L10n;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
   /** Whether this run started from a fresh profile (and installed the baseline). */
@@ -104,7 +112,7 @@ declare global {
 export interface BootOptions {
   /** Where the app's fragments are served: `<base>fragments/<id>/...`. */
   readonly base: URL;
-  /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
+  /** The interface language at start (`navigator.language`); system.l10n's default otherwise. */
   readonly locale?: string;
   /** The user's profile; localStorage under `<application id>:` by default. */
   readonly profile?: ListableProfile;
@@ -234,7 +242,10 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   const userProfile = profile ?? createStorageProfile(localStorage, `${definition.id}:`);
   const appearance = createSystemAppearance({ brand: definition.brand });
   const commands = createSystemCommands();
-  const workbench = createSystemWorkbench({ commands: commands.bus, locale });
+  // The interface language: the browser's at start, switched live by the user.
+  const l10n = createSystemL10n({ ...(locale ? { locale } : {}) });
+  // Every label of the chrome is read through system.l10n, in the interface language.
+  const workbench = createSystemWorkbench({ commands: commands.bus, l10n: l10n.l10n });
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
   // is approved (fail-closed).
   const a2ui = createSystemA2ui({ commands: commands.bus });
@@ -252,6 +263,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
       systemA2uiArchive,
       systemAppearanceArchive,
       systemHostArchive,
+      systemL10nArchive,
     ],
     profile: userProfile,
     baseline: definition.baseline,
@@ -274,6 +286,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
         if (fragment.id === SYSTEM_APPEARANCE_ID) return appearance.activate(context);
         if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
+        if (fragment.id === SYSTEM_L10N_ID) return l10n.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -283,6 +296,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     dialogs: workbench.workbench.dialogs,
     notifications: workbench.workbench.notifications,
     host: host.services,
+    l10n: l10n.l10n,
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -297,6 +311,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     a2ui: a2ui.a2ui,
     host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
+    l10n: l10n.l10n,
     application: definition,
     firstRun,
     slots: { installed: installedFragmentsSlot, enabled: enabledFragmentsSlot },

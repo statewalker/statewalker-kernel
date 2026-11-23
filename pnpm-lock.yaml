@@ -308,6 +308,9 @@ importers:
       '@statewalker/system.host':
         specifier: workspace:^
         version: link:../../fragments/system.host
+      '@statewalker/system.l10n':
+        specifier: workspace:^
+        version: link:../../fragments/system.l10n
       '@statewalker/system.workbench':
         specifier: workspace:^
         version: link:../../fragments/system.workbench
