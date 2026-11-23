@@ -25,7 +25,8 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./schemas/fragment.v1.schema.json": "./schemas/fragment.v1.schema.json"
+    "./schemas/fragment.v1.schema.json": "./schemas/fragment.v1.schema.json",
+    "./schemas/fragment-aspect.v1.schema.json": "./schemas/fragment-aspect.v1.schema.json"
   },
   "files": [
     "dist",

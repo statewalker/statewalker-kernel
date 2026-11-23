@@ -13,7 +13,7 @@ import {
   type ModuleReference,
   type ReferenceKind,
 } from "./manifest.js";
-import { fragmentManifestSchemaV1 } from "./schema.js";
+import { fragmentAspectSchemaV1 } from "./schema.js";
 import {
   type ExtensionContribution,
   type ExtensionRefusal,
@@ -172,7 +172,7 @@ const contributionValidator = new Validator(
       data: true,
       reference: { $ref: "#/$defs/reference" },
     },
-    $defs: fragmentManifestSchemaV1.$defs,
+    $defs: fragmentAspectSchemaV1.$defs,
   } as never,
   "2020-12",
   false,
@@ -207,7 +207,7 @@ export function createExtensionRegistry(
     const points = new Map<string, Point>();
     for (const owner of resolved) {
       for (const aspect of ASPECTS) {
-        const declared = owner.manifest.aspects[aspect]?.extensionPoints ?? {};
+        const declared = owner.aspects[aspect]?.extensionPoints ?? {};
         for (const [name, declaration] of Object.entries(declared)) {
           const id = extensionPointId(owner.id, name);
           points.set(id, { id, owner, aspect, declaration });
@@ -276,7 +276,7 @@ export function createExtensionRegistry(
 
     for (const contributor of resolved) {
       for (const aspect of ASPECTS) {
-        const declared = contributor.manifest.aspects[aspect]?.extensions ?? [];
+        const declared = contributor.aspects[aspect]?.extensions ?? [];
         declared.forEach((d, n) => {
           consider(aspect, `${contributor.id}#${n}`, contributor, d);
         });
@@ -358,7 +358,7 @@ export function createExtensionRegistry(
     owner: InstalledFragment,
     aspect: Aspect,
   ): { points: OwnedExtensionPoints; close(): void } {
-    const names = Object.keys(owner.manifest.aspects[aspect]?.extensionPoints ?? {});
+    const names = Object.keys(owner.aspects[aspect]?.extensionPoints ?? {});
     const closed = signal();
     const listeners = new Set<() => void>();
     const views = new WeakMap<Entry, Extension>();

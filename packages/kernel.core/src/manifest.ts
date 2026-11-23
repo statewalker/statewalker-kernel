@@ -44,10 +44,23 @@ export interface ExtensionDeclaration {
 export interface AspectEntry {
   /** The aspect's folder, when not the default (`server/`, `client/`, `agent/`). */
   readonly dir?: string;
+}
+
+/**
+ * The content of an aspect file, version 1: `fragment.client.jsonc`, `fragment.agent.jsonc`,
+ * or `fragment.server.jsonc` (beside the server aspect's unchanged `wrangler.jsonc`).
+ */
+export interface AspectManifest {
+  readonly $schema: string;
   /** The extension points the fragment opens in this aspect, by name. */
   readonly extensionPoints?: Readonly<Record<string, ExtensionPointDeclaration>>;
   /** The fragment's extensions to points of this aspect. */
   readonly extensions?: readonly ExtensionDeclaration[];
+}
+
+/** The aspect file of `aspect`: `fragment.<aspect>.jsonc`. */
+export function aspectFileOf(aspect: Aspect): string {
+  return `fragment.${aspect}.jsonc`;
 }
 
 /** The content of a `fragment.jsonc`, version 1. */
@@ -73,6 +86,11 @@ export interface InstalledFragment {
   readonly id: string;
   readonly manifest: FragmentManifest;
   readonly files: FragmentFiles;
+  /**
+   * The aspect files read, by aspect: one for each client and agent aspect present, and
+   * for the server aspect when it has a `fragment.server.jsonc`.
+   */
+  readonly aspects: Readonly<Partial<Record<Aspect, AspectManifest>>>;
   /** Shipped with the platform (a core fragment). */
   readonly core: boolean;
 }

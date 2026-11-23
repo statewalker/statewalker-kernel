@@ -15,7 +15,7 @@ import {
   type InstalledFragment,
 } from "./manifest.js";
 import { orderNodes } from "./order.js";
-import { parseJsonc, readManifest } from "./parse-manifest.js";
+import { parseJsonc, readAspectFiles, readManifest } from "./parse-manifest.js";
 import {
   activeFragmentsSlot,
   enabledFragmentsSlot,
@@ -261,7 +261,11 @@ export function createKernel(options: KernelOptions): Kernel {
 
   /** Refusals of installing `entries` together, beside what is already installed. */
   function checkInstall(
-    entries: readonly { manifest: FragmentManifest; files: FragmentFiles }[],
+    entries: readonly {
+      manifest: FragmentManifest;
+      files: FragmentFiles;
+      aspects: InstalledFragment["aspects"];
+    }[],
     core: boolean,
   ): Refusal[] {
     const refusals: Refusal[] = [];
@@ -320,15 +324,14 @@ export function createKernel(options: KernelOptions): Kernel {
     }
     // Core points are known by their short name, so two core fragments cannot share one.
     const shortPoints = new Map<string, string>();
-    const corePoints = (m: FragmentManifest) =>
-      isSystemId(m.id)
-        ? ASPECTS.flatMap((a) => Object.keys(m.aspects[a]?.extensionPoints ?? {}))
-        : [];
+    const corePoints = (id: string, aspects: InstalledFragment["aspects"]) =>
+      isSystemId(id) ? ASPECTS.flatMap((a) => Object.keys(aspects[a]?.extensionPoints ?? {})) : [];
     for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
-      for (const name of corePoints(f.manifest)) shortPoints.set(name, f.id);
+      for (const name of corePoints(f.id, f.aspects)) shortPoints.set(name, f.id);
     }
-    for (const m of batch.values()) {
-      for (const name of corePoints(m)) {
+    for (const { manifest: m, aspects } of entries) {
+      if (batch.get(m.id) !== m) continue;
+      for (const name of corePoints(m.id, aspects)) {
         const other = shortPoints.get(name);
         if (other) {
           refusals.push({
@@ -380,16 +383,25 @@ export function createKernel(options: KernelOptions): Kernel {
 
   async function install(archives: readonly FragmentFiles[], core: boolean) {
     const refusals: Refusal[] = [];
-    const read: { manifest: FragmentManifest; files: FragmentFiles }[] = [];
+    const read: {
+      manifest: FragmentManifest;
+      files: FragmentFiles;
+      aspects: InstalledFragment["aspects"];
+    }[] = [];
     for (const files of archives) {
       const { manifest, refusal } = readManifest(files);
-      if (refusal) refusals.push(refusal);
-      else read.push({ manifest, files });
+      if (refusal) {
+        refusals.push(refusal);
+        continue;
+      }
+      const aspects = readAspectFiles(files, manifest);
+      if (aspects.refusals.length > 0) refusals.push(...aspects.refusals);
+      else read.push({ manifest, files, aspects: aspects.aspects });
     }
     refusals.push(...checkInstall(read, core));
     if (refusals.length > 0) throw new FragmentInstallError(refusals);
-    const result = read.map(({ manifest, files }) =>
-      Object.freeze({ id: manifest.id, manifest, files, core }),
+    const result = read.map(({ manifest, files, aspects }) =>
+      Object.freeze({ id: manifest.id, manifest, files, aspects, core }),
     );
     for (const fragment of result) join(installedFragmentsSlot, fragment);
     return result;

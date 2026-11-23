@@ -73,20 +73,44 @@ export const fragmentManifestSchemaV1 = {
           type: "string",
           minLength: 1,
         },
-        extensionPoints: {
-          description:
-            "The extension points this fragment opens in the aspect, by name. A point's id is <fragment-id>/<name>; a core fragment's point is known by its short name alone.",
-          type: "object",
-          propertyNames: { $ref: "#/$defs/pointName" },
-          additionalProperties: { $ref: "#/$defs/extensionPoint" },
-        },
-        extensions: {
-          description: "This fragment's extensions to points of the same aspect.",
-          type: "array",
-          items: { $ref: "#/$defs/extension" },
-        },
       },
     },
+  },
+} as const;
+
+/**
+ * The JSON Schema (2020-12) of an aspect file, version 1: `fragment.client.jsonc`,
+ * `fragment.agent.jsonc` and `fragment.server.jsonc` (the server aspect's points and
+ * extensions, beside its unchanged `wrangler.jsonc`). The package ships the same document
+ * as `schemas/fragment-aspect.v1.schema.json`; as for the manifest, the version comes from
+ * the file name the `$schema` ends with (`fragment-aspect.v<N>.schema.json`).
+ */
+export const fragmentAspectSchemaV1 = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "Fragment aspect file (fragment.<aspect>.jsonc), version 1",
+  type: "object",
+  required: ["$schema"],
+  additionalProperties: false,
+  properties: {
+    $schema: {
+      description: "The URL or path of this schema; its file name carries the version.",
+      type: "string",
+      pattern: "(^|/)fragment-aspect\\.v1\\.schema\\.json$",
+    },
+    extensionPoints: {
+      description:
+        "The extension points this fragment opens in the aspect, by name. A point's id is <fragment-id>/<name>; a core fragment's point is known by its short name alone.",
+      type: "object",
+      propertyNames: { $ref: "#/$defs/pointName" },
+      additionalProperties: { $ref: "#/$defs/extensionPoint" },
+    },
+    extensions: {
+      description: "This fragment's extensions to points of the same aspect.",
+      type: "array",
+      items: { $ref: "#/$defs/extension" },
+    },
+  },
+  $defs: {
     pointName: {
       description: "An extension point's name: lowercase letters, digits and inner hyphens.",
       type: "string",
