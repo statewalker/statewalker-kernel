@@ -26,8 +26,9 @@ import {
 | Export | Provides |
 | --- | --- |
 | `systemCommandsArchive`, `SYSTEM_COMMANDS_ID` | The fragment's files (`fragment.jsonc`, `fragment.client.jsonc`), for `createKernel({ core })`. |
-| `createSystemCommands()` → `{ bus, activate }` | The bus, and the body of the fragment's client activator. |
-| `CommandBus` | `call(id, input)`, `list()`, `get(id)`, `keybindings()`, `observe(listener)`. |
+| `createSystemCommands({ gate? })` → `{ bus, activate }` | The bus, and the body of the fragment's client activator; `gate` decides calls from callers other than the user (system.security's). |
+| `CommandBus` | `call(id, input, { caller? })`, `list()`, `get(id)`, `keybindings()`, `observe(listener)`. |
+| `Caller`, `CallOptions`, `CallGate`, `CallRequest` | Who makes a call (the user, or a holder of a capability), and the gate's contract. |
 | `CommandCallError`, `CommandCallErrorKind`, `CommandFailure` | The one error a call rejects with, and what a handler throws for a declared error. |
 | `harnessTools(commands, { locale })`, `mcpTools(commands, { locale, fragment })` | The projections, recomputed from `bus.list()`. |
 | `toolNames(commands)`, `toolByName(commands, name, exposure)`, `toolPermission(id)`, `defaultHttpPath(command)` | Provider-safe names, their reverse map, `tools.use:<id>`, the HTTP path `mcp` implies. |
@@ -130,6 +131,7 @@ A command's identity is `<fragment-id>/<command-id>`. When live extensions of on
 The bus is built on `@statewalker/shared-commands`: each live command is a `Command.required` declaration whose input and output Standard Schemas wrap the operation's JSON Schemas (validated with `@cfworker/json-schema`, draft 2020-12, no code generation), and the reference's handler is its listener. A call rejects with one `CommandCallError` whose `kind` is:
 
 - `unknown-command`: no live command has that identity;
+- `forbidden`: the caller is not the user, and the gate refused the call (its error as `cause`, its message as the call's), or no gate is wired; the handler does not run;
 - `invalid-input`: the input breaks the schema (`issues` lists the violations); the handler does not run;
 - `no-handler`: declared without a reference;
 - `unavailable`: the contributor left while the call ran (the kernel's `ExtensionUnavailable` as `cause`);
@@ -138,6 +140,16 @@ The bus is built on `@statewalker/shared-commands`: each live command is a `Comm
 - `invalid-output`: the result breaks the output schema.
 
 The bus follows the `commands` point through the activation context, so a command lives exactly while its fragment is resolved: disabling the fragment removes it from the bus and the projections, enabling it brings it back. Deactivating `system.commands` empties the bus. `observe` is called at once and after each change; projections are recomputed from `list()`, never stored.
+
+### Callers
+
+A call without `caller` (or with `{ kind: "user" }`) is the user's and is never restricted: whoever holds the bus is system code acting for the user. Every other caller (`{ capability }`: an agent session, a peer, a sandbox, through the system code that relays it) is gated. The bus copies the input (`structuredClone`; an input that is not plain data is `invalid-input`), hands the copy to the gate with the command's entry, and runs the call on that same copy once the gate returns, so a caller cannot change what an approval showed while it waits. A bus built without a gate refuses every such call (`forbidden`), and a command that left while the gate waited is `unknown-command`. system.security provides the gate:
+
+```ts
+const security = createSystemSecurity({ slots: kernel.slots, attended: true });
+const commands = createSystemCommands({ gate: security.gate });
+await commands.bus.call("org.example.notes/get-note", { id: "n1" }, { caller: { capability } });
+```
 
 A handler is called as `handler(input, { command })`. The context object is where call ids, progress and cancellation can be added if statewalker-root#204 asks for them, without changing a handler's signature.
 

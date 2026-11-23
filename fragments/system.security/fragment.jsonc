@@ -1,0 +1,15 @@
+// The system.security core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/fragment.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.security",
+  "version": "0.1.0",
+  "name": "Security",
+  "description": "Principals, the capabilities only system code issues, deny-by-default grants, and the user's Allow/Ask/Block policy.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}
