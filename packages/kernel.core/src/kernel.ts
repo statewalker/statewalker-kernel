@@ -227,6 +227,16 @@ export function createKernel(options: KernelOptions): Kernel {
   async function writeMigrationState(id: string, state: MigrationState): Promise<void> {
     await profile.set(appliedMigrationsKey(id), state);
   }
+  /** The archive's migration tags its data has not had, and a migration left unfinished. */
+  async function pendingMigrations(
+    f: InstalledFragment,
+  ): Promise<{ pending: string[]; unfinished?: string }> {
+    const state = (await readMigrationState(f.id)) ?? { applied: [] };
+    const pending = readMigrations(f.files, f.manifest)
+      .migrations.map((m) => m.tag)
+      .filter((tag) => !state.applied.includes(tag));
+    return state.started === undefined ? { pending } : { pending, unfinished: state.started };
+  }
   /** The tags the data has had, or may have had (one started or failed). */
   function touched(state: MigrationState): string[] {
     return [
@@ -415,6 +425,14 @@ export function createKernel(options: KernelOptions): Kernel {
       return;
     }
     stopWaiting(aspect, f.id);
+    // Its code never runs over data its migrations have not all reached.
+    const { pending, unfinished } = await pendingMigrations(f);
+    if (pending.length > 0 || unfinished !== undefined) {
+      const error = new FragmentMigrationsPendingError(f.id, pending, unfinished);
+      fail(aspect, f, error);
+      onError(f.id, aspect, error);
+      return;
+    }
     try {
       const activator = options.activators?.[aspect];
       const owned = registry.ownedBy(f, aspect);
@@ -723,6 +741,12 @@ export function createKernel(options: KernelOptions): Kernel {
     if (manifest.id !== id) {
       throw notAnUpgrade(`The archive is "${manifest.id}", not "${id}"`);
     }
+    const archive = await archiveHash(files);
+    if (upgrading && archive === current.archive) {
+      // The installed archive again resumes migrations a failed upgrade left to run.
+      if ((await pendingMigrations(current)).pending.length > 0) return current;
+      throw notAnUpgrade(`"${id}" ${manifest.version} is installed, its migrations all applied`);
+    }
     if (upgrading && !semver.gt(manifest.version, current.manifest.version)) {
       throw notAnUpgrade(
         `"${id}" ${manifest.version} is not later than the installed ${current.manifest.version}`,
@@ -747,7 +771,6 @@ export function createKernel(options: KernelOptions): Kernel {
       }
     }
     if (refusals.length > 0) throw new FragmentInstallError(refusals);
-    const archive = await archiveHash(files);
     return Object.freeze({
       id: current.id,
       manifest,
@@ -896,17 +919,20 @@ export function createKernel(options: KernelOptions): Kernel {
           throw new FragmentDeletesClassesError(id, deletions);
         }
         await archiveStore.put(next.archive, next.files);
+        // Resuming (the installed archive again), the upgrade being finished keeps its origin.
+        const resumed = next === current ? (await readRecord(id))?.upgrade : undefined;
+        const from = resumed?.from ?? {
+          version: current.manifest.version,
+          archive: current.archive,
+        };
         await swap(current, next, async () => {
-          const ran: string[] = [];
+          const ran: string[] = [...(resumed?.migrations ?? [])];
           const record = async () =>
             writeRecord(id, {
               version: next.manifest.version,
               archive: next.archive,
               enabled: has(enabledFragmentsSlot, id),
-              upgrade: {
-                from: { version: current.manifest.version, archive: current.archive },
-                migrations: [...ran],
-              },
+              upgrade: { from, migrations: [...ran] },
             });
           await record();
           for (const migration of pending) {

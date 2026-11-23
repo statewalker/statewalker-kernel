@@ -5,6 +5,7 @@ import {
   archiveHash,
   createMemoryArchiveStore,
   createMemoryProfile,
+  failedFragmentsSlot,
   FragmentDeletesClassesError,
   FragmentInstallError,
   FragmentMigrationError,
@@ -274,5 +275,50 @@ describe("migrations", () => {
     await memory.set(appliedMigrationsKey(A), { applied: ["v1", "v2"] });
     await kernel.upgrade(A, serverArchive("1.2.0", [V1, V2]));
     expect(ran).toEqual(["v2"]);
+  });
+
+  it("left pending by a failed upgrade keep the fragment from activating, until an upgrade to the same archive resumes them", async () => {
+    const V5 = { tag: "v5" };
+    let broken = true;
+    const { kernel, slots, log, profile } = await setup({
+      migrate: (_f, migration) => {
+        log.push(`migrate ${migration.tag}`);
+        if (migration.tag === "v5" && broken) throw new Error("boom");
+      },
+    });
+    const v2 = serverArchive("2.0.0", [V1, V2, V5]);
+    await expect(kernel.upgrade(A, v2)).rejects.toBeInstanceOf(FragmentMigrationError);
+    log.length = 0;
+
+    // Its code does not run over data v3 has not migrated: failed, with the reason.
+    await kernel.activate("client", A);
+    expect(log).toEqual([]);
+    const failure = slots.get(failedFragmentsSlot("client"), A);
+    expect(failure?.error).toBeInstanceOf(FragmentMigrationsPendingError);
+    expect((failure?.error as FragmentMigrationsPendingError).pending).toEqual(["v5"]);
+
+    // The same version is refused unless it is the same archive with migrations to run.
+    const other = serverArchive("2.0.0", [V1, V2, V5, { tag: "v9" }]);
+    const refused = await kernel.upgrade(A, other).catch((e: unknown) => e);
+    expect((refused as FragmentInstallError).refusals?.map((r) => r.code)).toEqual([
+      "not-an-upgrade",
+    ]);
+
+    broken = false;
+    await kernel.upgrade(A, v2);
+    expect(log).toEqual(["migrate v5"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1", "v2", "v5"] });
+    expect(await profile.get(fragmentRecordKey(A))).toMatchObject({
+      version: "2.0.0",
+      upgrade: { from: { version: "1.0.0" }, migrations: ["v2", "v5"] },
+    });
+    await kernel.activate("client", A);
+    expect(slots.get(activeFragmentsSlot("client"), A)?.manifest.version).toBe("2.0.0");
+
+    // Nothing left to run: the same archive again is no upgrade.
+    const again = await kernel.upgrade(A, v2).catch((e: unknown) => e);
+    expect((again as FragmentInstallError).refusals?.map((r) => r.code)).toEqual([
+      "not-an-upgrade",
+    ]);
   });
 });
