@@ -57,7 +57,7 @@ export function ActivityBar({ workbench }: { workbench: Workbench }) {
   return (
     <nav
       data-testid="activitybar"
-      aria-label="Activity bar"
+      aria-label={workbench.text("activitybar.label", "Activity bar")}
       className="flex w-12 shrink-0 flex-col items-center gap-1 border-r bg-muted py-2"
     >
       {workbench.activitybar().map((item) => (
@@ -129,9 +129,9 @@ export function Palette({
 }) {
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder="Type a command…" />
+      <CommandInput placeholder={workbench.text("palette.placeholder", "Type a command…")} />
       <CommandList>
-        <CommandEmpty>No commands found.</CommandEmpty>
+        <CommandEmpty>{workbench.text("palette.empty", "No commands found.")}</CommandEmpty>
         {open &&
           workbench.palette().map((entry) => (
             <CommandItem
@@ -242,17 +242,26 @@ export function NotificationHost({
   workbench: Workbench;
   notifications: readonly NotificationRequest[];
 }) {
-  const shown = useRef(new Set<number>());
+  /** The notifications shown, by request, as last rendered. */
+  const shown = useRef(new Map<number, NotificationRequest>());
   useEffect(() => {
     const live = new Set(notifications.map((n) => n.request));
-    for (const request of shown.current) {
+    for (const request of shown.current.keys()) {
       if (live.has(request)) continue;
       shown.current.delete(request);
       toast.dismiss(toastId(request));
     }
     for (const notification of notifications) {
-      if (shown.current.has(notification.request)) continue;
-      shown.current.add(notification.request);
+      const before = shown.current.get(notification.request);
+      if (before === notification) continue;
+      shown.current.set(notification.request, notification);
+      if (before) {
+        // Its texts changed (the interface language): the same toast, re-rendered.
+        toast.custom(() => <NotificationCard workbench={workbench} notification={notification} />, {
+          id: toastId(notification.request),
+        });
+        continue;
+      }
       const dismissed = () => workbench.notifications.answer(notification.request, {});
       toast.custom(() => <NotificationCard workbench={workbench} notification={notification} />, {
         id: toastId(notification.request),
@@ -303,7 +312,12 @@ function NotificationCard({
             {action.label}
           </Button>
         ))}
-        <Button size="sm" variant="ghost" aria-label="Dismiss" onClick={() => answer()}>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={workbench.text("notification.dismiss", "Dismiss")}
+          onClick={() => answer()}
+        >
           ×
         </Button>
       </div>

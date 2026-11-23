@@ -58,6 +58,7 @@
     "react": "catalog:peers"
   },
   "devDependencies": {
+    "@statewalker/system.l10n": "workspace:^",
     "@statewalker/system.profile": "workspace:^",
     "@statewalker/system.workbench": "workspace:^",
     "@tailwindcss/cli": "catalog:",

@@ -30,11 +30,14 @@ import type {
  */
 export function SettingsView({ settings }: { settings: Settings }) {
   const [state, setState] = useState<SettingsState>(() => settings.state());
-  useEffect(() => settings.observe(setState), [settings]);
+  // A new object on every call, so the view re-renders on a language change too.
+  useEffect(() => settings.observe((next) => setState({ ...next })), [settings]);
   return (
     <div data-testid="settings-view" className="flex flex-col gap-4 overflow-auto p-4">
       {state.pages.length === 0 && (
-        <p className="m-0 text-sm text-muted-foreground">No fragment has settings.</p>
+        <p className="m-0 text-sm text-muted-foreground">
+          {settings.text("view.empty", "No fragment has settings.")}
+        </p>
       )}
       {state.pages.map((page) => (
         <SettingsPageCard
@@ -42,6 +45,7 @@ export function SettingsView({ settings }: { settings: Settings }) {
           page={page}
           values={state.values[page.fragment] ?? {}}
           scoped={settings.of(page.fragment)}
+          text={settings.text}
         />
       ))}
     </div>
@@ -52,10 +56,12 @@ function SettingsPageCard({
   page,
   values,
   scoped,
+  text,
 }: {
   page: SettingsPage;
   values: Readonly<Record<string, SettingValue>>;
   scoped: FragmentSettings;
+  text: Settings["text"];
 }) {
   return (
     <Card data-testid="settings-page" data-fragment={page.fragment}>
@@ -73,11 +79,12 @@ function SettingsPageCard({
             field={field}
             value={values[field.key]}
             scoped={scoped}
+            text={text}
           />
         ))}
         <div>
           <Button type="button" variant="outline" size="sm" onClick={() => scoped.reset()}>
-            Reset to defaults
+            {text("view.reset", "Reset to defaults")}
           </Button>
         </div>
       </CardContent>
@@ -90,11 +97,13 @@ function SettingControl({
   field,
   value,
   scoped,
+  text,
 }: {
   id: string;
   field: SettingsField;
   value: SettingValue | undefined;
   scoped: FragmentSettings;
+  text: Settings["text"];
 }) {
   const [problem, setProblem] = useState<string>();
   function store(next: unknown) {
@@ -124,7 +133,13 @@ function SettingControl({
         <>
           <Label htmlFor={id}>{field.title}</Label>
           {field.enum ? (
-            <Choice id={id} field={field} value={value} onChange={store} />
+            <Choice
+              id={id}
+              field={field}
+              value={value}
+              onChange={store}
+              placeholder={text("view.choose", "Choose")}
+            />
           ) : (
             <TextField id={id} field={field} value={value} onChange={store} />
           )}
@@ -151,8 +166,17 @@ interface ControlProps {
   onChange: (value: unknown) => void;
 }
 
-/** An `enum`: a shadcn Select over the values (Radix takes strings: matched back by position). */
-function Choice({ id, field, value, onChange }: ControlProps) {
+/**
+ * An `enum`: a shadcn Select over the values, each shown by its label (Radix takes strings: the
+ * values are matched back by position).
+ */
+function Choice({
+  id,
+  field,
+  value,
+  onChange,
+  placeholder,
+}: ControlProps & { placeholder: string }) {
   const options = field.enum ?? [];
   const index = options.indexOf(value as string | number);
   return (
@@ -161,12 +185,12 @@ function Choice({ id, field, value, onChange }: ControlProps) {
       onValueChange={(picked) => onChange(options[Number(picked)])}
     >
       <SelectTrigger id={id} className="w-64">
-        <SelectValue placeholder="Choose" />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {options.map((option, i) => (
           <SelectItem key={String(option)} value={String(i)}>
-            {String(option)}
+            {field.enumTitles?.[i] ?? String(option)}
           </SelectItem>
         ))}
       </SelectContent>

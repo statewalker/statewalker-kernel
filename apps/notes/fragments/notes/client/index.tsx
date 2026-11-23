@@ -6,8 +6,10 @@ import {
   commands,
   dialogs,
   host,
+  l10n,
   notifications,
   settings,
+  translator,
 } from "@statewalker/client.core";
 import {
   Button,
@@ -26,6 +28,15 @@ const NEW_NOTE_DIALOG = `${NOTES}/new-note`;
 const NOTE_ADDED = `${NOTES}/note-added`;
 /** This fragment's own settings values (system.settings, kept in the user's profile). */
 const own = settings.of(NOTES);
+/** This fragment's texts in the interface language (its bundles in fragment.client.jsonc). */
+const t = translator(NOTES);
+
+/** Re-render when the interface language (or a bundle) changes. */
+function useLanguage(): string {
+  const [locale, setLocale] = useState(() => l10n.locale());
+  useEffect(() => l10n.observe((state) => setLocale(state.locale)), []);
+  return locale;
+}
 
 // The notes, in memory while the page lives (storage comes with system.profile).
 let notes: readonly string[] = [];
@@ -83,6 +94,7 @@ export function NotesView() {
   const added = useSyncExternalStore(subscribe, () => notes);
   const { sort, copyButtons } = useSettings();
   const all = sort === "alphabetical" ? [...added].sort((a, b) => a.localeCompare(b)) : added;
+  const locale = useLanguage();
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
 
@@ -108,25 +120,28 @@ export function NotesView() {
   }
 
   return (
-    <Card data-testid="notes-view" className="m-4">
+    <Card data-testid="notes-view" className="m-4" lang={locale}>
       <CardHeader>
-        <CardTitle>Notes</CardTitle>
+        <CardTitle data-testid="notes-title">{t("view.title", {}, "Notes")}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <form onSubmit={submit} className="flex gap-2">
           <Input
-            aria-label="Note"
-            placeholder="Write a note"
+            aria-label={t("view.field", {}, "Note")}
+            placeholder={t("view.placeholder", {}, "Write a note")}
             value={text}
             onChange={(event) => setText(event.target.value)}
           />
-          <Button type="submit">Add note</Button>
+          <Button type="submit">{t("view.add", {}, "Add note")}</Button>
         </form>
         {error && (
           <p role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}
+        <p data-testid="notes-count" className="m-0 text-xs text-muted-foreground">
+          {t("view.count", { count: all.length }, "{count} notes")}
+        </p>
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
           {all.map((note, index) => (
             // Notes have no ids yet; a key by position re-renders the texts when the order changes.
@@ -137,7 +152,7 @@ export function NotesView() {
               <span>{note}</span>
               {copyButtons !== false && (
                 <Button type="button" variant="outline" size="sm" onClick={() => copy(note)}>
-                  Copy
+                  {t("view.copy", {}, "Copy")}
                 </Button>
               )}
             </li>

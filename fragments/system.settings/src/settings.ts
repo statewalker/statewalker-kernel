@@ -1,6 +1,6 @@
 import { Validator } from "@cfworker/json-schema";
 import type { ActivationContext, Extension } from "@statewalker/kernel.core";
-import { SETTINGS_POINT } from "./archive.js";
+import { SETTINGS_POINT, SYSTEM_SETTINGS_ID } from "./archive.js";
 import { SettingsError } from "./errors.js";
 
 /** A setting's value: what the settings' schemas allow. */
@@ -44,6 +44,8 @@ export interface SettingsField {
   /** The schema's default, when it is valid against the setting's schema. */
   readonly default?: SettingValue;
   readonly enum?: readonly (string | number)[];
+  /** Each `enum` value's label, in order: `settings.<key>.enum.<value>`, else the value. */
+  readonly enumTitles?: readonly string[];
   readonly schema: SettingSchema;
 }
 
@@ -90,8 +92,13 @@ export interface Settings {
   page(fragment: string): SettingsPage | undefined;
   /** The settings of the fragment `fragment`, scoped to its namespace. */
   of(fragment: string): FragmentSettings;
+  /** A text of the settings view itself (system.settings' key `key`), in the interface language. */
+  text(key: string, fallback: string): string;
   state(): SettingsState;
-  /** Called at once, then after every change (pages or values). Returns a disposer. */
+  /**
+   * Called at once, then after every change (pages, values, or the interface language: labels and
+   * `text` follow it). Returns a disposer.
+   */
   observe(listener: (state: SettingsState) => void): () => void;
 }
 
@@ -114,9 +121,25 @@ export interface StoredSettings {
   readonly values: Readonly<Record<string, unknown>>;
 }
 
+/**
+ * What the settings need of system.l10n (its `L10n` model fits): a fragment's key's text with the
+ * contribution's inline text as the fallback, and a change subscription.
+ */
+export interface SettingsL10n {
+  text(namespace: string, key: string, options?: { readonly fallback?: string }): string;
+  /** Called at once, then after every change (the language, or the bundles). */
+  observe(listener: () => void): () => void;
+}
+
 export interface SystemSettingsOptions {
   /** Where the values are kept (system.profile's store); in memory by default. */
   readonly profile?: SettingsStore;
+  /**
+   * system.l10n's model: the pages' labels are read under keys derived from the contribution
+   * (`settings.title`, `settings.<key>.title`, ...) in the contributor's namespace, the inline
+   * texts as the default language's. Without it, the inline texts.
+   */
+  readonly l10n?: SettingsL10n;
 }
 
 /** The system.settings fragment's headless code. */
@@ -147,10 +170,43 @@ function memoryStore(): SettingsStore {
   };
 }
 
-/** A compiled page: its fields and a validator per setting. */
+/** A compiled page: its fields (inline labels) and a validator per setting. */
 interface Compiled {
   readonly page: SettingsPage;
   readonly validators: ReadonlyMap<string, Validator>;
+}
+
+/** A text of a contribution: the key in the namespace, the inline text as the fallback. */
+type TextOf = (namespace: string, key: string, fallback: string) => string;
+
+/**
+ * The page in the interface language: its title and description (`settings.title`,
+ * `settings.description`), each setting's (`settings.<key>.title`, `.description`) and each
+ * choice's (`settings.<key>.enum.<value>`), read in the contributor's namespace.
+ */
+function localize(page: SettingsPage, text: TextOf): SettingsPage {
+  const ns = page.fragment;
+  return {
+    ...page,
+    title: text(ns, "settings.title", page.title),
+    ...(page.description === undefined
+      ? {}
+      : { description: text(ns, "settings.description", page.description) }),
+    fields: page.fields.map((field) => ({
+      ...field,
+      title: text(ns, `settings.${field.key}.title`, field.title),
+      ...(field.description === undefined
+        ? {}
+        : { description: text(ns, `settings.${field.key}.description`, field.description) }),
+      ...(field.enum === undefined
+        ? {}
+        : {
+            enumTitles: field.enum.map((value) =>
+              text(ns, `settings.${field.key}.enum.${value}`, String(value)),
+            ),
+          }),
+    })),
+  };
 }
 
 function validatorOf(schema: SettingSchema): Validator | undefined {
@@ -187,7 +243,9 @@ function compile(extension: Extension): Compiled {
       title: schema.title ?? key,
       ...(schema.description === undefined ? {} : { description: schema.description }),
       ...(valid ? { default: schema.default } : {}),
-      ...(schema.enum === undefined ? {} : { enum: schema.enum }),
+      ...(schema.enum === undefined
+        ? {}
+        : { enum: schema.enum, enumTitles: schema.enum.map((value) => String(value)) }),
       schema,
     });
   }
@@ -211,10 +269,19 @@ function byOrder(a: SettingsPage, b: SettingsPage): number {
 
 export function createSystemSettings(options: SystemSettingsOptions = {}): SystemSettings {
   const profile = options.profile ?? memoryStore();
+  const { l10n } = options;
+  const text: TextOf = (namespace, key, fallback) =>
+    l10n ? l10n.text(namespace, key, { fallback }) : fallback;
   /** The pages by fragment: the first extension read per fragment. */
   let compiled = new Map<string, Compiled>();
   /** Observers, each with the JSON of what it saw last: told only of a change. */
-  const watchers = new Set<{ read: () => unknown; seen: string; call: (value: never) => void }>();
+  const watchers = new Set<{
+    read: () => unknown;
+    seen: string;
+    call: (value: never) => void;
+    /** Told of every language change too (the view's own texts follow it). */
+    texts: boolean;
+  }>();
 
   /** The stored values of a fragment, as stored (any keys), or none. */
   function stored(fragment: string): Record<string, unknown> {
@@ -255,7 +322,7 @@ export function createSystemSettings(options: SystemSettingsOptions = {}): Syste
     return values;
   }
 
-  const pages = () => [...compiled.values()].map((c) => c.page).sort(byOrder);
+  const pages = () => [...compiled.values()].map((c) => localize(c.page, text)).sort(byOrder);
 
   /** Write a fragment's stored values (none: the key is deleted). Profile errors are thrown. */
   function write(fragment: string, values: Record<string, unknown>) {
@@ -264,9 +331,14 @@ export function createSystemSettings(options: SystemSettingsOptions = {}): Syste
   }
 
   /** Call `listener` with `read()` at once, then whenever it changes. Returns a disposer. */
-  function watch<T>(read: () => T, listener: (value: T) => void): () => void {
+  function watch<T>(read: () => T, listener: (value: T) => void, texts = false): () => void {
     const value = read();
-    const entry = { read, seen: JSON.stringify(value), call: listener as (value: never) => void };
+    const entry = {
+      read,
+      seen: JSON.stringify(value),
+      call: listener as (value: never) => void,
+      texts,
+    };
     watchers.add(entry);
     listener(value);
     return () => {
@@ -274,12 +346,13 @@ export function createSystemSettings(options: SystemSettingsOptions = {}): Syste
     };
   }
 
-  function notify() {
+  /** Tell each observer whose value changed; with `texts`, the model's observers in any case. */
+  function notify(texts = false) {
     for (const entry of [...watchers]) {
       if (!watchers.has(entry)) continue;
       const value = entry.read();
       const seen = JSON.stringify(value);
-      if (seen === entry.seen) continue;
+      if (seen === entry.seen && !(texts && entry.texts)) continue;
       entry.seen = seen;
       try {
         entry.call(value as never);
@@ -324,13 +397,17 @@ export function createSystemSettings(options: SystemSettingsOptions = {}): Syste
 
   const settings: Settings = {
     pages,
-    page: (fragment) => compiled.get(fragment)?.page,
+    page: (fragment) => {
+      const found = compiled.get(fragment);
+      return found && localize(found.page, text);
+    },
+    text: (key, fallback) => text(SYSTEM_SETTINGS_ID, key, fallback),
     of: scoped,
     state: () => ({
       pages: pages(),
       values: Object.fromEntries(pages().map((p) => [p.fragment, valuesOf(p.fragment)])),
     }),
-    observe: (listener) => watch(settings.state, listener),
+    observe: (listener) => watch(settings.state, listener, true),
   };
 
   return {
@@ -344,8 +421,11 @@ export function createSystemSettings(options: SystemSettingsOptions = {}): Syste
         compiled = next;
         notify();
       });
+      // The labels follow the interface language and the bundles.
+      const stopL10n = l10n?.observe(() => notify(true));
       return () => {
         stop();
+        stopL10n?.();
         compiled = new Map();
         notify();
       };

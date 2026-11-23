@@ -101,8 +101,8 @@ export const fragmentManifest = {
 };
 
 /**
- * The client aspect: the `settings` point, and the settings view with its activity bar entry
- * (on system.workbench's points; dormant without it). The view's component is the fragment's
+ * The client aspect: the `settings` point, the settings view with its activity bar entry (on
+ * system.workbench's points) and its French texts (on system.l10n's); dormant without them. The view's component is the fragment's
  * client module export `SettingsView`, which the host resolves in process.
  */
 export const clientAspect = {
@@ -122,6 +122,20 @@ export const clientAspect = {
     {
       point: "activitybar",
       data: { id: "settings", title: "Settings", order: 1000, view: SETTINGS_VIEW },
+    },
+    // The view's and its entry's texts in French (system.l10n's `l10n` point; English is inline).
+    {
+      point: "l10n",
+      data: {
+        locale: "fr",
+        messages: {
+          "views.settings.title": "Paramètres",
+          "activitybar.settings.title": "Paramètres",
+          "view.empty": "Aucun fragment n'a de paramètres.",
+          "view.reset": "Rétablir les valeurs par défaut",
+          "view.choose": "Choisir",
+        },
+      },
     },
   ],
 };

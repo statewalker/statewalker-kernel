@@ -1,6 +1,7 @@
 // Seam 1 helpers: the real kernel with system.profile and system.settings as core fragments, and
 // test fragments contributing settings pages.
 import { createKernel, extensionRefusalsSlot, type Kernel } from "@statewalker/kernel.core";
+import { createSystemL10n, SYSTEM_L10N_ID, systemL10nArchive } from "@statewalker/system.l10n";
 import {
   createMemoryStorage,
   createSystemProfile,
@@ -15,6 +16,17 @@ const ASPECT_SCHEMA = "https://example.org/schemas/fragment-aspect.v1.schema.jso
 
 /** A client-only fragment contributing these `settings` pages (and nothing else). */
 export function fragment(id: string, ...pages: unknown[]): Record<string, string> {
+  return fragmentWith(
+    id,
+    pages.map((data) => ({ point: "settings", data })),
+  );
+}
+
+/** A client-only fragment with these extensions. */
+export function fragmentWith(
+  id: string,
+  extensions: readonly { point: string; data: unknown }[],
+): Record<string, string> {
   return {
     "fragment.jsonc": JSON.stringify({
       $schema: SCHEMA,
@@ -25,7 +37,7 @@ export function fragment(id: string, ...pages: unknown[]): Record<string, string
     }),
     "fragment.client.jsonc": JSON.stringify({
       $schema: ASPECT_SCHEMA,
-      extensions: pages.map((data) => ({ point: "settings", data })),
+      extensions,
     }),
   };
 }
@@ -55,19 +67,27 @@ export const notesPage = {
  */
 export async function platform(
   archives: Record<string, string>[],
-  { storage = createMemoryStorage() }: { storage?: StorageLike } = {},
+  {
+    storage = createMemoryStorage(),
+    locale,
+  }: { storage?: StorageLike /** With system.l10n, in this language. */; locale?: string } = {},
 ) {
   const profile = createSystemProfile({ storage, prefix: "app:" });
-  const system = createSystemSettings({ profile: profile.store });
+  const l10n = locale === undefined ? undefined : createSystemL10n({ locale });
+  const system = createSystemSettings({
+    profile: profile.store,
+    ...(l10n ? { l10n: l10n.l10n } : {}),
+  });
   const kernel: Kernel = createKernel({
     platform: { version: "1.0.0", bindings: [] },
-    core: [systemProfileArchive, systemSettingsArchive],
+    core: [systemProfileArchive, systemSettingsArchive, ...(l10n ? [systemL10nArchive] : [])],
     profile: profile.store,
     removeData: (f) => system.removeData(f.id),
     activators: {
       client: (f, context) => {
         if (f.id === SYSTEM_PROFILE_ID) return profile.activate(context);
         if (f.id === SYSTEM_SETTINGS_ID) return system.activate(context);
+        if (f.id === SYSTEM_L10N_ID) return l10n?.activate(context);
         return undefined;
       },
     },
@@ -76,5 +96,12 @@ export async function platform(
   for (const f of await kernel.install(archives)) await kernel.enable(f.id);
   await kernel.activate("client");
   const refused = () => [...kernel.slots.getSnapshot(extensionRefusalsSlot("client")).values()];
-  return { kernel, settings: system.settings, store: profile.store, storage, refused };
+  return {
+    kernel,
+    settings: system.settings,
+    store: profile.store,
+    storage,
+    refused,
+    l10n: l10n?.l10n,
+  };
 }

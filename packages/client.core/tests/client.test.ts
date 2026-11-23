@@ -3,14 +3,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ClientApiError,
   type ClientCommands,
+  type ClientL10n,
   type ClientSettings,
   commands,
   dialogs,
   type HostServices,
   host,
   installClient,
+  l10n,
   notifications,
   settings,
+  translator,
   type UrlState,
 } from "../src/index.js";
 
@@ -222,5 +225,57 @@ describe("settings", () => {
     mine.reset("sort");
     expect(mine.get("sort")).toBeUndefined();
     expect(seen).toEqual(["alphabetical"]);
+  });
+});
+
+/** An l10n model with a French bundle for one namespace, recording what is asked. */
+function fakeL10n(): ClientL10n {
+  let locale = "en";
+  const listeners = new Set<(s: { locale: string; locales: readonly string[] }) => void>();
+  const fr: Record<string, string> = { "org.example.notes\nview.add": "Ajouter {n}" };
+  const fill = (text: string, params: Record<string, unknown> = {}) =>
+    text.replace(/\{(\w+)\}/g, (w, k: string) => (params[k] === undefined ? w : String(params[k])));
+  const state = () => ({ locale, locales: ["en", "fr"] });
+  return {
+    locale: () => locale,
+    locales: () => ["en", "fr"],
+    setLocale(next) {
+      locale = next;
+      for (const l of listeners) l(state());
+    },
+    text(namespace, key, options = {}) {
+      const found = locale === "fr" ? fr[`${namespace}\n${key}`] : undefined;
+      return fill(found ?? options.fallback ?? key, options.params);
+    },
+    format: (text, params) => fill(text, params),
+    observe(listener) {
+      listeners.add(listener);
+      listener(state());
+      return () => listeners.delete(listener);
+    },
+  };
+}
+
+describe("the client API's l10n", () => {
+  it("refuses before the host installs it", () => {
+    uninstall = installClient({ commands: fakeBus() });
+    expect(() => l10n.locale()).toThrow(ClientApiError);
+    expect(() => translator("org.example.notes")("view.add")).toThrow(ClientApiError);
+  });
+
+  it("gives a fragment's texts in the interface language and follows its changes", () => {
+    uninstall = installClient({ commands: fakeBus(), l10n: fakeL10n() });
+    const t = translator("org.example.notes");
+    expect(t("view.add", { n: 2 }, "Add {n}")).toBe("Add 2");
+    const seen: string[] = [];
+    const stop = l10n.observe((s) => seen.push(s.locale));
+    l10n.setLocale("fr");
+    expect(l10n.locale()).toBe("fr");
+    expect(t("view.add", { n: 2 }, "Add {n}")).toBe("Ajouter 2");
+    expect(t("view.other")).toBe("view.other");
+    expect(l10n.locales()).toEqual(["en", "fr"]);
+    expect(l10n.format("{a}", { a: 1 })).toBe("1");
+    stop();
+    expect(seen).toEqual(["en", "fr"]);
   });
 });

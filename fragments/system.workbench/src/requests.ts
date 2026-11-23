@@ -1,5 +1,7 @@
 import type { Extension } from "@statewalker/kernel.core";
+import { SYSTEM_WORKBENCH_ID } from "./archive.js";
 import { WorkbenchError, type WorkbenchErrorKind } from "./errors.js";
+import type { TextOf } from "./l10n.js";
 
 /** Values a declared dialog's or notification's texts are filled from: `{name}` → `params.name`. */
 export type RequestParams = Readonly<Record<string, unknown>>;
@@ -82,9 +84,14 @@ export function fillText(text: string, params: RequestParams = {}): string {
 }
 
 interface Pending<R> {
-  readonly value: R;
+  value: R;
+  readonly extension: Extension;
+  readonly params: RequestParams;
   readonly resolve: (answer: RequestAnswer) => void;
 }
+
+/** The inline texts alone: `{name}` filled, no bundles. */
+const inlineText: TextOf = (_namespace, _key, fallback, params) => fillText(fallback, params);
 
 /**
  * A queue of requests of one kind, declared on a point (`declared()` is that point's live
@@ -94,9 +101,16 @@ interface Pending<R> {
 export function createRequests<R extends { readonly request: number; readonly fragment: string }>(
   unknownKind: WorkbenchErrorKind,
   declared: () => readonly Extension[],
-  build: (request: number, extension: Extension, data: DeclaredData, params: RequestParams) => R,
+  build: (
+    request: number,
+    extension: Extension,
+    data: DeclaredData,
+    params: RequestParams,
+    text?: TextOf,
+  ) => R,
   changed: () => void,
-): Requests<R> & { drop(live: (fragment: string) => boolean): void } {
+  text: TextOf = inlineText,
+): Requests<R> & { drop(live: (fragment: string) => boolean): void; retranslate(): void } {
   let queue: readonly Pending<R>[] = [];
   let next = 1;
   const settle = (match: (p: Pending<R>) => boolean, answer: (p: Pending<R>) => RequestAnswer) => {
@@ -112,9 +126,9 @@ export function createRequests<R extends { readonly request: number; readonly fr
         (e) => `${e.contributor}/${(e.data as DeclaredData).id}` === id,
       );
       if (!extension) throw new WorkbenchError(unknownKind, id);
-      const value = build(next++, extension, extension.data as DeclaredData, params);
+      const value = build(next++, extension, extension.data as DeclaredData, params, text);
       return new Promise<RequestAnswer>((resolve) => {
-        queue = [...queue, { value, resolve }];
+        queue = [...queue, { value, extension, params, resolve }];
         changed();
       });
     },
@@ -128,6 +142,21 @@ export function createRequests<R extends { readonly request: number; readonly fr
           ...(value !== undefined ? { value } : {}),
         }),
       );
+    },
+    /** Build the pending requests' texts again (the interface language changed). */
+    retranslate() {
+      if (queue.length === 0) return;
+      for (const p of queue) {
+        p.value = build(
+          p.value.request,
+          p.extension,
+          p.extension.data as DeclaredData,
+          p.params,
+          text,
+        );
+      }
+      queue = [...queue];
+      changed();
     },
     /** Dismiss the requests of fragments that are no longer `live`. */
     drop(live) {
@@ -145,27 +174,34 @@ export function dialogRequest(
   extension: Extension,
   data: DeclaredData,
   params: RequestParams,
+  text: TextOf = inlineText,
 ): DialogRequest {
+  const ns = extension.contributor;
+  const key = `dialogs.${data.id}`;
+  const t = (k: string, fallback: string) => text(ns, `${key}.${k}`, fallback, params);
+  const ok = text(SYSTEM_WORKBENCH_ID, "actions.ok", "OK");
+  const input = data.input;
   return {
     request,
-    id: `${extension.contributor}/${data.id}`,
-    fragment: extension.contributor,
-    title: fillText(data.title, params),
-    ...(data.message !== undefined ? { message: fillText(data.message, params) } : {}),
-    ...(data.input
+    id: `${ns}/${data.id}`,
+    fragment: ns,
+    title: t("title", data.title),
+    ...(data.message !== undefined ? { message: t("message", data.message) } : {}),
+    ...(input
       ? {
           input: {
-            ...data.input,
-            label: fillText(data.input.label, params),
-            ...(data.input.value !== undefined
-              ? { value: fillText(data.input.value, params) }
+            ...input,
+            label: t("input.label", input.label),
+            ...(input.placeholder !== undefined
+              ? { placeholder: t("input.placeholder", input.placeholder) }
               : {}),
+            ...(input.value !== undefined ? { value: t("input.value", input.value) } : {}),
           },
         }
       : {}),
-    actions: (data.actions ?? [{ id: "ok", label: "OK", primary: true }]).map((a) => ({
+    actions: (data.actions ?? [{ id: "ok", label: ok, primary: true }]).map((a) => ({
       ...a,
-      label: fillText(a.label, params),
+      label: t(`actions.${a.id}`, a.label),
     })),
   };
 }
@@ -176,14 +212,18 @@ export function notificationRequest(
   extension: Extension,
   data: DeclaredData,
   params: RequestParams,
+  text: TextOf = inlineText,
 ): NotificationRequest {
+  const ns = extension.contributor;
+  const t = (k: string, fallback: string) =>
+    text(ns, `notifications.${data.id}.${k}`, fallback, params);
   return {
     request,
-    id: `${extension.contributor}/${data.id}`,
-    fragment: extension.contributor,
-    title: fillText(data.title, params),
-    ...(data.message !== undefined ? { message: fillText(data.message, params) } : {}),
+    id: `${ns}/${data.id}`,
+    fragment: ns,
+    title: t("title", data.title),
+    ...(data.message !== undefined ? { message: t("message", data.message) } : {}),
     severity: data.severity ?? "info",
-    actions: (data.actions ?? []).map((a) => ({ ...a, label: fillText(a.label, params) })),
+    actions: (data.actions ?? []).map((a) => ({ ...a, label: t(`actions.${a.id}`, a.label) })),
   };
 }

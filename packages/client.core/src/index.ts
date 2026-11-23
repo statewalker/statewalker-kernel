@@ -115,6 +115,42 @@ export interface ClientSettings {
   of(fragment: string): ClientFragmentSettings;
 }
 
+/** Values a text's `{name}` placeholders are filled from. */
+export type ClientMessageParams = Readonly<Record<string, unknown>>;
+
+/** The interface language, and every locale a bundle is contributed in. */
+export interface ClientL10nState {
+  readonly locale: string;
+  readonly locales: readonly string[];
+}
+
+/**
+ * Localization, as system.l10n provides it: the interface language (switched live) and the
+ * texts of each fragment's keys in it, from the bundles fragments declare on its `l10n` point.
+ */
+export interface ClientL10n {
+  /** The interface language (`fr-CA`). */
+  locale(): string;
+  /** The default language first, then every locale a bundle is contributed in. */
+  locales(): readonly string[];
+  /** Switch the interface language; views following `observe` re-render, nothing reloads. */
+  setLocale(locale: string): void;
+  /**
+   * The text of `key` in the fragment `namespace`: the interface language's bundles, then the
+   * default language's, then `options.fallback`, then the key; `{name}` filled from
+   * `options.params`, formatted for the language (`Intl`).
+   */
+  text(
+    namespace: string,
+    key: string,
+    options?: { readonly params?: ClientMessageParams; readonly fallback?: string },
+  ): string;
+  /** `{name}` in `text` filled from `params`, formatted for the interface language. */
+  format(text: string, params?: ClientMessageParams): string;
+  /** Called at once, then after every change (the language, or the bundles). Returns a disposer. */
+  observe(listener: (state: ClientL10nState) => void): () => void;
+}
+
 /** What the host installs. */
 export interface ClientApi {
   readonly commands: ClientCommands;
@@ -122,6 +158,8 @@ export interface ClientApi {
   readonly host?: HostServices;
   /** The workbench's dialogs; a host without a workbench leaves it out. */
   readonly dialogs?: ClientRequests;
+  /** system.l10n's model; a host without it refuses `l10n`'s calls (`not-installed`). */
+  readonly l10n?: ClientL10n;
   /** The workbench's notifications; a host without a workbench leaves it out. */
   readonly notifications?: ClientRequests;
   /** system.settings' values; a host without it refuses `settings`' calls (`not-installed`). */
@@ -233,3 +271,34 @@ export const settings: ClientSettings = {
     observe: (listener) => currentSettings(fragment).observe(listener),
   }),
 };
+
+function currentL10n(): ClientL10n {
+  const found = current().l10n;
+  if (!found) throw new ClientApiError("not-installed");
+  return found;
+}
+
+/** Localization (system.l10n). Every member throws a `ClientApiError` before the install. */
+export const l10n: ClientL10n = {
+  locale: () => currentL10n().locale(),
+  locales: () => currentL10n().locales(),
+  setLocale: (locale) => currentL10n().setLocale(locale),
+  text: (namespace, key, options) => currentL10n().text(namespace, key, options),
+  format: (text, params) => currentL10n().format(text, params),
+  observe: (listener) => currentL10n().observe(listener),
+};
+
+/**
+ * `t` for one fragment's keys: `translator("org.example.notes")("view.add", { n: 2 }, "Add {n}")`
+ * is `l10n.text` in that namespace, the inline `fallback` the default language's text. A view
+ * re-renders on `l10n.observe` to follow the language.
+ */
+export function translator(
+  namespace: string,
+): (key: string, params?: ClientMessageParams, fallback?: string) => string {
+  return (key, params, fallback) =>
+    l10n.text(namespace, key, {
+      ...(params ? { params } : {}),
+      ...(fallback !== undefined ? { fallback } : {}),
+    });
+}

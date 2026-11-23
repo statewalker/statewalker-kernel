@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { activeFragmentsSlot, parseJsonc } from "@statewalker/kernel.core";
 import { describe, expect, it } from "vitest";
 import { SettingsError, SYSTEM_SETTINGS_ID, systemSettingsArchive } from "../src/index.js";
-import { fragment, notesPage, platform } from "./helpers.js";
+import { fragment, fragmentWith, notesPage, platform } from "./helpers.js";
 
 const NOTES = "org.example.notes";
 const OTHER = "org.example.other";
@@ -262,5 +262,88 @@ describe("the lifecycle", () => {
     expect(store.get(`settings/${OTHER}`)).toEqual({ version: 1, values: { a: "kept" } });
     for (const f of await kernel.install([fragment(NOTES, notesPage)])) await kernel.enable(f.id);
     expect(settings.of(NOTES).get("sort")).toBe("added");
+  });
+});
+
+describe("labels through system.l10n", () => {
+  const bundle = (locale: string, messages: Record<string, string>, namespace?: string) => ({
+    point: "l10n",
+    data: { locale, messages, ...(namespace ? { namespace } : {}) },
+  });
+  const notes = () =>
+    fragmentWith(NOTES, [
+      { point: "settings", data: { ...notesPage, description: "How notes show." } },
+      bundle("en", { "settings.sort.enum.added": "Order added" }),
+      bundle("fr", {
+        "settings.title": "Bloc-notes",
+        "settings.description": "Comment les notes s'affichent.",
+        "settings.sort.title": "Trier les notes par",
+        "settings.sort.enum.added": "Ordre d'ajout",
+        "settings.sort.enum.alphabetical": "Ordre alphabétique",
+      }),
+    ]);
+  const labels = (page: ReturnType<typeof platformSettings>) =>
+    page && {
+      title: page.title,
+      description: page.description,
+      sort: page.fields.find((f) => f.key === "sort"),
+      copy: page.fields.find((f) => f.key === "copyButtons")?.title,
+    };
+  const platformSettings = (settings: Awaited<ReturnType<typeof platform>>["settings"]) =>
+    settings.page(NOTES);
+
+  it("reads the page's, the settings' and the choices' labels under keys derived from them", async () => {
+    const { settings, l10n } = await platform([notes()], { locale: "en" });
+    const english = labels(platformSettings(settings));
+    expect(english?.title).toBe("Notes");
+    expect(english?.description).toBe("How notes show.");
+    expect(english?.sort?.title).toBe("Sort notes by");
+    // A choice's label: its bundle's text, else the value itself.
+    expect(english?.sort?.enumTitles).toEqual(["Order added", "alphabetical"]);
+    expect(english?.copy).toBe("Copy buttons");
+
+    const seen: string[] = [];
+    settings.observe((state) => seen.push(state.pages[0]?.title ?? ""));
+    l10n?.setLocale("fr");
+    const french = labels(platformSettings(settings));
+    expect(french?.title).toBe("Bloc-notes");
+    expect(french?.description).toBe("Comment les notes s'affichent.");
+    expect(french?.sort?.title).toBe("Trier les notes par");
+    expect(french?.sort?.enumTitles).toEqual(["Ordre d'ajout", "Ordre alphabétique"]);
+    // No French text: the inline one (the default language's).
+    expect(french?.copy).toBe("Copy buttons");
+    expect(seen).toEqual(["Notes", "Bloc-notes"]);
+    // The values are not texts: they stay as stored.
+    settings.of(NOTES).set("sort", "alphabetical");
+    expect(settings.of(NOTES).get("sort")).toBe("alphabetical");
+  });
+
+  it("keeps the owner's labels over a language pack's", async () => {
+    const pack = fragmentWith("org.example.pack", [
+      bundle("fr", { "settings.title": "Piraté", "settings.copyButtons.title": "Copier" }, NOTES),
+    ]);
+    const { settings } = await platform([notes(), pack], { locale: "fr" });
+    expect(settings.page(NOTES)?.title).toBe("Bloc-notes");
+    // A key the owner leaves untranslated in French: the pack fills it.
+    expect(settings.page(NOTES)?.fields.find((f) => f.key === "copyButtons")?.title).toBe("Copier");
+  });
+
+  it("gives the view's own texts in the interface language", async () => {
+    const { settings, l10n } = await platform([], { locale: "en" });
+    expect(settings.text("view.reset", "Reset to defaults")).toBe("Reset to defaults");
+    l10n?.setLocale("fr");
+    expect(settings.text("view.reset", "Reset to defaults")).toBe(
+      "Rétablir les valeurs par défaut",
+    );
+    expect(settings.text("view.empty", "No fragment has settings.")).toBe(
+      "Aucun fragment n'a de paramètres.",
+    );
+  });
+
+  it("uses the inline labels without system.l10n", async () => {
+    const { settings } = await platform([notes()]);
+    expect(settings.page(NOTES)?.title).toBe("Notes");
+    expect(settings.page(NOTES)?.fields[0]?.enumTitles).toEqual(["added", "alphabetical"]);
+    expect(settings.text("view.reset", "Reset to defaults")).toBe("Reset to defaults");
   });
 });

@@ -1,6 +1,6 @@
-// The client aspect of system.settings: the `settings` extension point, and the settings view
-// with its activity bar entry on system.workbench's points. Kept equal to src/archive.ts by
-// tests/settings.test.ts.
+// The client aspect of system.settings: the `settings` extension point, the settings view with its
+// activity bar entry on system.workbench's points, and its French texts on system.l10n's. Kept
+// equal to src/archive.ts by tests/settings.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
   "extensionPoints": {
@@ -125,6 +125,19 @@
         "title": "Settings",
         "order": 1000,
         "view": "system.settings/settings"
+      }
+    },
+    {
+      "point": "l10n",
+      "data": {
+        "locale": "fr",
+        "messages": {
+          "views.settings.title": "Paramètres",
+          "activitybar.settings.title": "Paramètres",
+          "view.empty": "Aucun fragment n'a de paramètres.",
+          "view.reset": "Rétablir les valeurs par défaut",
+          "view.choose": "Choisir"
+        }
       }
     }
   ]

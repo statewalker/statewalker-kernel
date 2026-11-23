@@ -51,6 +51,12 @@ import {
   systemHostArchive,
 } from "@statewalker/system.host";
 import {
+  createSystemL10n,
+  type L10n,
+  SYSTEM_L10N_ID,
+  systemL10nArchive,
+} from "@statewalker/system.l10n";
+import {
   createSystemProfile,
   type ProfileStore,
   SYSTEM_PROFILE_ID,
@@ -84,6 +90,8 @@ export interface Platform {
   readonly appearance: Appearance;
   /** system.settings: every enabled fragment's settings page, the values in the profile. */
   readonly settings: Settings;
+  /** The interface language and every fragment's texts in it (system.l10n). */
+  readonly l10n: L10n;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
   /** Whether this run started from a fresh profile (and installed the baseline). */
@@ -127,7 +135,7 @@ declare global {
 export interface BootOptions {
   /** Where the app's fragments are served: `<base>fragments/<id>/...`. */
   readonly base: URL;
-  /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
+  /** The interface language at start (`navigator.language`); system.l10n's default otherwise. */
   readonly locale?: string;
   /** The user's profile; localStorage under `<application id>:` by default. */
   readonly profile?: ProfileStore;
@@ -277,9 +285,12 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   const userProfile = profile ?? system.store;
   const appearance = createSystemAppearance({ brand: definition.brand });
   const commands = createSystemCommands();
+  // The interface language: the browser's at start, switched live by the user.
+  const l10n = createSystemL10n({ ...(locale ? { locale } : {}) });
   const workbench = createSystemWorkbench({
     commands: commands.bus,
-    locale,
+    // Every label of the chrome is read through system.l10n, in the interface language.
+    l10n: l10n.l10n,
     // The device mode of the window's width from the start: before React renders, the URL state
     // (bindLayoutToUrl) already edits, and so saves, the current mode's layout.
     mode: deviceModeOf(window.innerWidth),
@@ -292,7 +303,8 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   // The browser's clipboard, file picker and URL hash, until a fragment contributes its own.
   const host = createSystemHost({ defaults: createBrowserHostServices() });
   // Every fragment's settings page, its values in the profile (`settings/<fragment-id>`).
-  const settings = createSystemSettings({ profile: userProfile });
+  // Their labels in the interface language, through system.l10n.
+  const settings = createSystemSettings({ profile: userProfile, l10n: l10n.l10n });
   /** Core fragments' client modules: what their own references (`./index.js`) resolve to. */
   const coreModules: Record<string, () => Promise<Record<string, unknown>>> = {
     [SYSTEM_WORKBENCH_ID]: async () => workbench.module,
@@ -312,6 +324,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
       systemAppearanceArchive,
       systemHostArchive,
       systemSettingsArchive,
+      systemL10nArchive,
     ],
     profile: userProfile,
     baseline: definition.baseline,
@@ -339,6 +352,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
         if (fragment.id === SYSTEM_APPEARANCE_ID) return appearance.activate(context);
         if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
         if (fragment.id === SYSTEM_SETTINGS_ID) return settings.activate(context);
+        if (fragment.id === SYSTEM_L10N_ID) return l10n.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -349,6 +363,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     notifications: workbench.workbench.notifications,
     host: host.services,
     settings: settings.settings,
+    l10n: l10n.l10n,
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -365,6 +380,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
     settings: settings.settings,
+    l10n: l10n.l10n,
     application: definition,
     firstRun,
     slots: {

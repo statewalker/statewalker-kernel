@@ -24,10 +24,11 @@ import "@statewalker/system.settings/client.css"; // the settings view's prebuil
 | Export | Provides |
 | --- | --- |
 | `systemSettingsArchive`, `SYSTEM_SETTINGS_ID` | The fragment's files (`fragment.jsonc`, `fragment.client.jsonc`), for `createKernel({ core })`. |
-| `createSystemSettings({ profile? })` → `{ settings, activate, removeData }` | The model over `profile` (system.profile's store; memory by default), the body of the fragment's client activator, and the deletion of a fragment's values for the host's `removeData`. |
-| `Settings` | `pages()` (the resolved fragments' pages, by `order`, then title), `page(fragment)`, `of(fragment)`, `state()`, `observe(listener)`. |
+| `createSystemSettings({ profile?, l10n? })` → `{ settings, activate, removeData }` | The model over `profile` (system.profile's store; memory by default), its labels through `l10n` (system.l10n's model; the inline texts without it), the body of the fragment's client activator, and the deletion of a fragment's values for the host's `removeData`. |
+| `Settings` | `pages()` (the resolved fragments' pages, by `order`, then title, labelled in the interface language), `page(fragment)`, `of(fragment)`, `text(key, fallback)` (the view's own texts), `state()`, `observe(listener)`. |
+| `SettingsL10n` | What the model needs of system.l10n (its `L10n` fits): `text(namespace, key, { fallback })`, `observe(listener)`. |
 | `FragmentSettings` (`settings.of(id)`) | `values()`, `get(key)`, `set(key, value)`, `reset(key?)`, `observe(listener)`: one fragment's values. The client API's `settings.of` is this. |
-| `SettingsPage`, `SettingsField`, `SettingsState`, `SettingSchema`, `SettingsPageData`, `SettingValue`, `SettingsValues` | A page (fragment, title, description, order, fields), a setting as the view renders it (key, type, title, description, default, enum, schema), the model's state, the point's data. |
+| `SettingsPage`, `SettingsField` (with `enumTitles`, each choice's label), `SettingsState`, `SettingSchema`, `SettingsPageData`, `SettingValue`, `SettingsValues` | A page (fragment, title, description, order, fields), a setting as the view renders it (key, type, title, description, default, enum, schema), the model's state, the point's data. |
 | `SettingsStore`, `settingsKey(fragment)`, `SETTINGS_VERSION`, `StoredSettings` | The store the values are kept in; their key, `settings/<fragment-id>`; the stored form, version 1. |
 | `SettingsError` | `unknown-fragment` (no page: the fragment declares none, or is not resolved), `unknown-setting` (a key its schema does not declare), `invalid-value` (the schema refuses the value; `reason` says why). |
 | `settingsPageSchema`, `settingSchema`, `SETTINGS_POINT`, `SETTINGS_VIEW` | The point's schema (JSON Schema 2020-12), its short id, the view's identity (`system.settings/settings`). |
@@ -55,6 +56,22 @@ A fragment declares its settings page in its `fragment.client.jsonc`, with no `r
 }
 ```
 
+Its labels in another language, in a bundle on system.l10n's `l10n` point, under keys derived from the page:
+
+```jsonc
+{
+  "point": "l10n",
+  "data": {
+    "locale": "fr",
+    "messages": {
+      "settings.title": "Bloc-notes",
+      "settings.sort.title": "Trier les notes par",
+      "settings.sort.enum.alphabetical": "Ordre alphabétique"
+    }
+  }
+}
+```
+
 Its view reads and follows its own values through the client API:
 
 ```tsx
@@ -73,7 +90,7 @@ The host runs the fragment over the user's profile, resolves its view in process
 
 ```ts
 const profile = createSystemProfile({ storage: localStorage, prefix: "org.example.app:" });
-const system = createSystemSettings({ profile: profile.store });
+const system = createSystemSettings({ profile: profile.store, l10n: l10n.l10n });
 const kernel = createKernel({
   platform,
   core: [systemProfileArchive, systemWorkbenchArchive, systemSettingsArchive /* , ... */],
@@ -102,12 +119,15 @@ installClient({ commands: bus, settings: system.settings });
 
 **Removal.** A plain removal keeps the values, so a reinstall finds them; the host's `removeData` (the kernel calls it only for `remove(id, { withData: true })`) calls `removeData(id)`, which deletes `settings/<id>` and nothing else.
 
-**The view.** One view, `system.settings/settings`, in the centre zone, opened from the activity bar's "Settings". Each page is a card; an `enum` is a shadcn `Select` (labels are the values), a boolean a checkbox, a string a text field, a number or integer a number field. A value is stored as it changes; one the schema refuses stays in the field with the reason under it (`role="alert"`) and is not stored. "Reset to defaults" resets the page. Labels are the schema's `title` (else the key) and the page's `title` (else the fragment's id); they are not localized yet (system.l10n).
+**The view.** One view, `system.settings/settings`, in the centre zone, opened from the activity bar's "Settings". Each page is a card; an `enum` is a shadcn `Select` (labels are the values), a boolean a checkbox, a string a text field, a number or integer a number field. A value is stored as it changes; one the schema refuses stays in the field with the reason under it (`role="alert"`) and is not stored. "Reset to defaults" resets the page. Labels come from the model, in the interface language (below).
+
+**Labels.** With system.l10n wired (`createSystemSettings({ l10n })`), every label of a page is read in the contributor's namespace under a key derived from the contribution, its inline text the default language's fallback, as system.workbench does for its points: `settings.title` and `settings.description` (the page's `title`, else the fragment's id, and `description`), `settings.<key>.title` and `settings.<key>.description` (a setting's `title`, else its key, and `description`), and `settings.<key>.enum.<value>` (a choice's label, else the value itself). The owner's bundles come first; a language pack fills only what the owner leaves untranslated (system.l10n's resolution). Values are never translated: they are stored as the schema declares them. The view's own texts are system.settings' keys `view.empty`, `view.reset`, `view.choose`, and its tab and activity bar entry the workbench's `views.settings.title` and `activitybar.settings.title`, all with a French bundle in this fragment's `fragment.client.jsonc`. The model's observers are told of every language change, so the view re-renders in the new language at once.
 
 ### Dependencies
 
 - `@statewalker/kernel.core`: the activation context, the archive type.
 - `@cfworker/json-schema`: validating values against the settings' schemas.
+- system.l10n, through the structural `SettingsL10n` (no package dependency).
 - `@statewalker/ui.view.shadcn` (client half): the view's controls; React is a peer.
 
 ## License

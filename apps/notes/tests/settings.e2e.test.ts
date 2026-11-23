@@ -99,12 +99,12 @@ describe("settings", () => {
       const page_ = settingsPage(page, NOTES);
       await expect(page_.getByRole("heading").first().innerText()).resolves.toBe("Notes");
       // The defaults, from the schema the fragment declares.
-      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("added");
+      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("Order added");
       await expect(page_.getByLabel("Show Copy buttons").isChecked()).resolves.toBe(true);
 
-      await choose(page, "Sort notes by", "alphabetical");
+      await choose(page, "Sort notes by", "Alphabetical");
       await page_.getByLabel("Show Copy buttons").uncheck();
-      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("alphabetical");
+      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("Alphabetical");
 
       await showNotes(page);
       await expect(notes(page)).resolves.toEqual(["apples", "figs", "pears"]);
@@ -119,7 +119,7 @@ describe("settings", () => {
   it("keeps the values over a reload, and resets them to the defaults", async () => {
     await withPage(async (page) => {
       await openSettings(page);
-      await choose(page, "Sort notes by", "alphabetical");
+      await choose(page, "Sort notes by", "Alphabetical");
       await page.reload();
       await page.getByTestId("workbench").waitFor();
       await addNotes(page, "b", "a");
@@ -128,9 +128,9 @@ describe("settings", () => {
 
       await openSettings(page);
       const page_ = settingsPage(page, NOTES);
-      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("alphabetical");
+      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("Alphabetical");
       await page_.getByRole("button", { name: "Reset to defaults" }).click();
-      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("added");
+      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("Order added");
       await showNotes(page);
       await expect(notes(page)).resolves.toEqual(["b", "a"]);
       await expect(page.evaluate((key) => localStorage.getItem(key), NOTES_KEY)).resolves.toBe(
@@ -142,7 +142,7 @@ describe("settings", () => {
   it("drops a disabled fragment's page, and brings it back with its values", async () => {
     await withPage(async (page) => {
       await openSettings(page);
-      await choose(page, "Sort notes by", "alphabetical");
+      await choose(page, "Sort notes by", "Alphabetical");
       await page.evaluate((id) => window.platform.kernel.disable(id), NOTES);
       await settingsPage(page, NOTES).waitFor({ state: "detached" });
       await expect(settingsView(page).getByText("No fragment has settings.").count()).resolves.toBe(
@@ -150,7 +150,7 @@ describe("settings", () => {
       );
       await page.evaluate((id) => window.platform.kernel.enable(id), NOTES);
       await expect(settingsPage(page, NOTES).getByLabel("Sort notes by").innerText()).resolves.toBe(
-        "alphabetical",
+        "Alphabetical",
       );
     });
   });
@@ -158,7 +158,7 @@ describe("settings", () => {
   it("keeps a removed fragment's values unless it is removed with data", async () => {
     await withPage(async (page) => {
       await openSettings(page);
-      await choose(page, "Sort notes by", "alphabetical");
+      await choose(page, "Sort notes by", "Alphabetical");
       // A fragment installed at run time with a settings page (removable: not in the baseline).
       const install = () =>
         page.evaluate(async (id) => {
@@ -220,6 +220,35 @@ describe("settings", () => {
       await expect(
         page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), NOTES_KEY),
       ).resolves.toEqual({ version: 1, values: { sort: "alphabetical" } });
+    });
+  });
+
+  it("shows the labels in the interface language, switched live", async () => {
+    await withPage(async (page) => {
+      await openSettings(page);
+      await choose(page, "Sort notes by", "Alphabetical");
+      await page.evaluate(() => window.platform.l10n.setLocale("fr"));
+      const page_ = settingsPage(page, NOTES);
+      // The notes fragment's own French texts: its page, its settings and their choices.
+      await expect(page_.getByRole("heading").first().innerText()).resolves.toBe("Bloc-notes");
+      await expect(page_.getByLabel("Trier les notes par").innerText()).resolves.toBe(
+        "Ordre alphabétique",
+      );
+      await page_.getByLabel("Afficher les boutons Copier").waitFor();
+      // system.settings' own: the view's texts, its tab and its activity bar entry.
+      await page_.getByRole("button", { name: "Rétablir les valeurs par défaut" }).waitFor();
+      await page.getByTestId("activitybar").getByRole("button", { name: "Paramètres" }).waitFor();
+      await settingsPage(page, NOTES).getByLabel("Trier les notes par").click();
+      await page.getByRole("option", { name: "Ordre d'ajout" }).click();
+      await expect(page_.getByLabel("Trier les notes par").innerText()).resolves.toBe(
+        "Ordre d'ajout",
+      );
+      // The values are not texts: stored as declared.
+      await expect(
+        page.evaluate((key) => JSON.parse(localStorage.getItem(key) ?? "null"), NOTES_KEY),
+      ).resolves.toEqual({ version: 1, values: { sort: "added" } });
+      await page.evaluate(() => window.platform.l10n.setLocale("en"));
+      await expect(page_.getByLabel("Sort notes by").innerText()).resolves.toBe("Order added");
     });
   });
 });

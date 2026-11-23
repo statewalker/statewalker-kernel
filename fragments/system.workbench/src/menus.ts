@@ -42,6 +42,11 @@ export interface MenuCommands {
   /** The live command's title in the workbench's locale; undefined when not on the bus. */
   title(command: string): string | undefined;
   keybinding(command: string): string | undefined;
+  /**
+   * An entry's own title in the interface language: the key `key` of the contributing fragment,
+   * `fallback` (the inline title) without a translation. The inline title when not given.
+   */
+  text?(namespace: string, key: string, fallback: string): string;
 }
 
 interface Sortable {
@@ -72,7 +77,14 @@ export function buildMenu(
       // Shown only while the command is on the bus, whatever title the entry carries.
       const commandTitle = commands.title(data.command);
       if (commandTitle === undefined) continue;
-      const title = data.title ?? commandTitle;
+      const title =
+        data.title === undefined
+          ? commandTitle
+          : (commands.text?.(
+              extension.contributor,
+              `menus.${menu}.${data.command}.title`,
+              data.title,
+            ) ?? data.title);
       const keybinding = commands.keybinding(data.command);
       entries.push({
         group,
@@ -103,7 +115,14 @@ export function buildMenu(
           kind: "submenu",
           key: extension.id,
           submenu: data.submenu,
-          title: data.title ?? data.submenu,
+          title:
+            commands.text?.(
+              extension.contributor,
+              `menus.${data.submenu}.title`,
+              data.title ?? data.submenu,
+            ) ??
+            data.title ??
+            data.submenu,
           children,
           fragment: extension.contributor,
         },

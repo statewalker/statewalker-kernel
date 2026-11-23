@@ -1,4 +1,4 @@
-/* The page: the brand's bar on top, the workbench filling the rest of the window. */
+/* The page: the brand's bar (with the language picker) on top, the workbench filling the rest of the window. */
 #app {
   height: 100%;
 }
@@ -12,4 +12,20 @@
 .app-workbench {
   flex: 1;
   min-height: 0;
+}
+
+.app-top {
+  display: flex;
+}
+
+.app-top > .system-appearance-brand {
+  flex: 1;
+}
+
+.app-language {
+  display: flex;
+  align-items: center;
+  padding: 0 0.75rem;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
 }
