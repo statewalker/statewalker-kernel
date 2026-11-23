@@ -5,12 +5,12 @@ import {
   archiveHash,
   createMemoryArchiveStore,
   createMemoryProfile,
-  failedFragmentsSlot,
   FragmentDeletesClassesError,
   FragmentInstallError,
   FragmentMigrationError,
   FragmentMigrationsPendingError,
   FragmentRollbackError,
+  failedFragmentsSlot,
   fragmentRecordKey,
   installedFragmentsSlot,
   type KernelOptions,
@@ -295,7 +295,7 @@ describe("migrations", () => {
     expect(log).toEqual([]);
     const failure = slots.get(failedFragmentsSlot("client"), A);
     expect(failure?.error).toBeInstanceOf(FragmentMigrationsPendingError);
-    expect((failure?.error as FragmentMigrationsPendingError).pending).toEqual(["v5"]);
+    expect(failure?.error).toMatchObject({ pending: ["v5"] });
 
     // The same version is refused unless it is the same archive with migrations to run.
     const other = serverArchive("2.0.0", [V1, V2, V5, { tag: "v9" }]);
