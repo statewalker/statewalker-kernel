@@ -1,6 +1,7 @@
 // The shell's boot: the kernel with its core fragments (system.commands, system.workbench, its
-// chrome running commands on system.commands' bus, system.a2ui), the client API (commands,
-// dialogs, notifications) and the A2UI model installed, and the app's fragments fetched,
+// chrome running commands on system.commands' bus, system.a2ui, system.appearance, system.host
+// with the browser's host services as defaults), the client API (commands, dialogs,
+// notifications, host services) and the A2UI model installed, and the app's fragments fetched,
 // installed, enabled and activated. The application definition (application.json) gives
 // system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
 // restored from the profile afterwards. React-free; main.tsx renders the result.
@@ -18,6 +19,7 @@ import {
   parseJsonc,
   resolvedFragmentsSlot,
 } from "@statewalker/kernel.core";
+import { createBrowserHostServices } from "@statewalker/platform.browser";
 import {
   type A2ui,
   createSystemA2ui,
@@ -38,6 +40,12 @@ import {
   SYSTEM_COMMANDS_ID,
   systemCommandsArchive,
 } from "@statewalker/system.commands";
+import {
+  createSystemHost,
+  SYSTEM_HOST_ID,
+  type SystemHost,
+  systemHostArchive,
+} from "@statewalker/system.host";
 import {
   createSystemWorkbench,
   SYSTEM_WORKBENCH_ID,
@@ -64,6 +72,8 @@ export interface Platform {
     readonly installed: typeof installedFragmentsSlot;
     readonly enabled: typeof enabledFragmentsSlot;
   };
+  /** system.host: the host services in effect (`services`), and who provides each. */
+  readonly host: Pick<SystemHost, "services" | "provider">;
 }
 
 /**
@@ -228,6 +238,8 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
   // is approved (fail-closed).
   const a2ui = createSystemA2ui({ commands: commands.bus });
+  // The browser's clipboard, file picker and URL hash, until a fragment contributes its own.
+  const host = createSystemHost({ defaults: createBrowserHostServices() });
   /** Core fragments' client modules: what their own references (`./index.js`) resolve to. */
   const coreModules: Record<string, Record<string, unknown>> = {
     [SYSTEM_WORKBENCH_ID]: workbench.module,
@@ -239,6 +251,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
       systemWorkbenchArchive,
       systemA2uiArchive,
       systemAppearanceArchive,
+      systemHostArchive,
     ],
     profile: userProfile,
     baseline: definition.baseline,
@@ -260,6 +273,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
         if (fragment.id === SYSTEM_WORKBENCH_ID) return workbench.activate(context);
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
         if (fragment.id === SYSTEM_APPEARANCE_ID) return appearance.activate(context);
+        if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -268,6 +282,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     commands: commands.bus,
     dialogs: workbench.workbench.dialogs,
     notifications: workbench.workbench.notifications,
+    host: host.services,
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -280,6 +295,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     commands: commands.bus,
     workbench: workbench.workbench,
     a2ui: a2ui.a2ui,
+    host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
     application: definition,
     firstRun,

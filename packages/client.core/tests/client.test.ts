@@ -5,8 +5,11 @@ import {
   type ClientCommands,
   commands,
   dialogs,
+  type HostServices,
+  host,
   installClient,
   notifications,
+  type UrlState,
 } from "../src/index.js";
 
 function fakeBus(): ClientCommands & { calls: unknown[][] } {
@@ -60,6 +63,70 @@ describe("the client API", () => {
     uninstall();
     uninstall = installClient({ commands: fakeBus() });
     expect(commands.list()).toHaveLength(1);
+  });
+});
+
+/** Host services recording what fragments ask of them. */
+function fakeHost(): HostServices & { log: unknown[][] } {
+  const log: unknown[][] = [];
+  let url: UrlState = { path: "", query: {} };
+  const listeners = new Set<(state: UrlState) => void>();
+  return {
+    log,
+    clipboard: {
+      async writeText(text) {
+        log.push(["writeText", text]);
+      },
+      readText: async () => "pasted",
+    },
+    files: {
+      async pickFile(options) {
+        log.push(["pickFile", options]);
+        return { blobs: [], names: [] };
+      },
+    },
+    urlState: {
+      read: async () => url,
+      async write(state) {
+        url = state;
+        for (const listener of listeners) listener(state);
+      },
+      observe(listener) {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    },
+  };
+}
+
+describe("host services through the client API", () => {
+  it("refuses every call until the host installs them", async () => {
+    await expect(host.clipboard.writeText("a")).rejects.toBeInstanceOf(ClientApiError);
+    uninstall = installClient({ commands: fakeBus() });
+    await expect(host.urlState.read()).rejects.toBeInstanceOf(ClientApiError);
+    expect(() => host.urlState.observe(() => {})).toThrow(ClientApiError);
+  });
+
+  it("reaches the host's clipboard, file pickers and URL state once installed", async () => {
+    const services = fakeHost();
+    uninstall = installClient({ commands: fakeBus(), host: services });
+    await host.clipboard.writeText("Buy milk");
+    await expect(host.clipboard.readText()).resolves.toBe("pasted");
+    await expect(host.files.pickFile({ accept: [".md"] })).resolves.toEqual({
+      blobs: [],
+      names: [],
+    });
+    const seen: UrlState[] = [];
+    const stop = host.urlState.observe((state) => seen.push(state));
+    await host.urlState.write({ path: "/notes", query: { views: "a" } });
+    stop();
+    await host.urlState.write({ path: "/", query: {} });
+    await expect(host.urlState.read()).resolves.toEqual({ path: "/", query: {} });
+    expect(seen).toEqual([{ path: "/notes", query: { views: "a" } }]);
+    expect(services.log).toEqual([
+      ["writeText", "Buy milk"],
+      ["pickFile", { accept: [".md"] }],
+    ]);
   });
 });
 

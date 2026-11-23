@@ -1,4 +1,5 @@
-// The shell's entry: boot the platform, render the workbench, open the app's default layout.
+// The shell's entry: boot the platform, render the workbench, open the views the URL names (the
+// app's default layout when it names none) and keep the URL in step with them.
 import "@statewalker/system.workbench/theme.css";
 import "@statewalker/system.workbench/client.css";
 import "@statewalker/system.a2ui/client.css";
@@ -9,6 +10,7 @@ import { applyAppearance, BrandMark } from "@statewalker/system.appearance/clien
 import { WorkbenchView } from "@statewalker/system.workbench/client";
 import { createRoot } from "react-dom/client";
 import { boot } from "./boot.js";
+import { bindLayoutToUrl } from "./url-layout.js";
 
 const platform = await boot({ base: new URL(".", document.baseURI), locale: navigator.language });
 window.platform = platform;
@@ -26,8 +28,10 @@ createRoot(app).render(
     </div>
   </div>,
 );
-// The application's default layout: the views it opens, once they are contributed (no layout is
-// saved yet, so every run opens it).
-for (const view of platform.application.layout.open) {
-  if (platform.workbench.view(view)) platform.workbench.open(view);
-}
+// The views the URL state names, else the application's default layout (no layout is saved yet,
+// so every run without one opens it); then the URL follows the open views, and they follow it.
+await bindLayoutToUrl(
+  platform.workbench,
+  platform.host.services.urlState,
+  platform.application.layout.open,
+);

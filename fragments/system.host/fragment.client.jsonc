@@ -1,0 +1,21 @@
+// The client aspect of system.host: the `host-services` extension point.
+// Kept equal to src/archive.ts by tests/host-services.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "host-services": {
+      "description": "Host services replacing the host's own, each the implementation of one kind (the lazy reference).",
+      "schema": {
+        "type": "object",
+        "required": ["service"],
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "description": "The service provided: `clipboard` (ClipboardService), `files` (FilePickerService) or `url-state` (UrlStateService).",
+            "enum": ["clipboard", "files", "url-state"]
+          }
+        }
+      }
+    }
+  }
+}
