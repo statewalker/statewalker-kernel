@@ -1,9 +1,14 @@
 import { Slots } from "@statewalker/shared-slots";
 import semver from "semver";
+import { type ArchiveStore, archiveHash, createMemoryArchiveStore } from "./archives.js";
 import {
   FragmentCascadeError,
+  FragmentDeletesClassesError,
   FragmentInstallError,
   FragmentLifecycleError,
+  FragmentMigrationError,
+  FragmentMigrationsPendingError,
+  FragmentRollbackError,
   type Refusal,
 } from "./errors.js";
 import {
@@ -19,8 +24,17 @@ import {
   type FragmentManifest,
   type InstalledFragment,
 } from "./manifest.js";
+import { type ClassMigration, readMigrations } from "./migrations.js";
 import { orderNodes } from "./order.js";
 import { parseJsonc, readAspectFiles, readManifest } from "./parse-manifest.js";
+import {
+  appliedMigrationsKey,
+  createMemoryProfile,
+  type FragmentRecord,
+  fragmentRecordKey,
+  type KernelProfile,
+  type MigrationState,
+} from "./profile.js";
 import {
   activeFragmentsSlot,
   enabledFragmentsSlot,
@@ -84,6 +98,37 @@ export interface KernelOptions extends ExtensionRegistryOptions {
    * calls this only for a removal with `{ withData: true }`, once the fragment is gone.
    */
   readonly removeData?: (fragment: InstalledFragment) => void | Promise<void>;
+  /**
+   * The host's content-addressed store of installed archives; one in memory by default.
+   * Every archive installed or upgraded to is stored under its hash and kept.
+   */
+  readonly archives?: ArchiveStore;
+  /**
+   * Where the kernel records each installed fragment's version, archive and enabled state,
+   * its last upgrade and the migration tags applied to its data; one in memory by default.
+   */
+  readonly profile?: KernelProfile;
+  /**
+   * The host's code that runs one migration of a fragment being upgraded, with the new
+   * archive in place and every aspect of it inactive: the Durable Object class changes of
+   * the tag (on CellB, the fragment host; on Cloudflare, the deploy) and the fragment's
+   * own data migrations keyed by the same tag. Each tag is run once and recorded; an
+   * upgrade bringing tags to run is refused on a host without it.
+   */
+  readonly migrate?: (
+    fragment: InstalledFragment,
+    migration: ClassMigration,
+  ) => void | Promise<void>;
+}
+
+/** How to upgrade a fragment. */
+export interface UpgradeOptions {
+  /**
+   * Confirms running migrations with `deleted_classes`, which delete those Durable Object
+   * classes' data. Without it such an upgrade is refused with a
+   * `FragmentDeletesClassesError` and nothing changes.
+   */
+  readonly confirmDeletedClasses?: boolean;
 }
 
 /** How to remove a fragment. */
@@ -145,6 +190,18 @@ export interface Kernel {
   retry(aspect: Aspect, id?: string): Promise<void>;
   /** Deactivate every aspect of every fragment, in reverse activation order. */
   stop(): Promise<void>;
+  /**
+   * Upgrade an installed fragment to the archive `files`: deactivate it (its dependents
+   * first), swap the archive, run the migrations it brings, and activate again what was
+   * active. The previous archive stays in the store.
+   */
+  upgrade(id: string, files: FragmentFiles, options?: UpgradeOptions): Promise<InstalledFragment>;
+  /**
+   * Go back to the archive the last upgrade replaced: deactivate, swap it back, activate
+   * again. Refused with a `FragmentRollbackError`, nothing changed, when no upgrade is
+   * recorded or once the upgrade has run a migration.
+   */
+  rollback(id: string): Promise<InstalledFragment>;
 }
 
 // Every operation runs after the ones called before it. One called while an activator or a
@@ -156,6 +213,59 @@ const RANGE_OPTIONS = { includePrerelease: true };
 
 export function createKernel(options: KernelOptions): Kernel {
   const slots = options.slots ?? new Slots();
+  const archiveStore = options.archives ?? createMemoryArchiveStore();
+  const profile = options.profile ?? createMemoryProfile();
+  async function readRecord(id: string): Promise<FragmentRecord | undefined> {
+    return (await profile.get(fragmentRecordKey(id))) as FragmentRecord | undefined;
+  }
+  async function writeRecord(id: string, record: FragmentRecord): Promise<void> {
+    await profile.set(fragmentRecordKey(id), record);
+  }
+  async function readMigrationState(id: string): Promise<MigrationState | undefined> {
+    return (await profile.get(appliedMigrationsKey(id))) as MigrationState | undefined;
+  }
+  async function writeMigrationState(id: string, state: MigrationState): Promise<void> {
+    await profile.set(appliedMigrationsKey(id), state);
+  }
+  /** The archive's migration tags its data has not had, and a migration left unfinished. */
+  async function pendingMigrations(
+    f: InstalledFragment,
+  ): Promise<{ pending: string[]; unfinished?: string }> {
+    const state = (await readMigrationState(f.id)) ?? { applied: [] };
+    const pending = readMigrations(f.files, f.manifest)
+      .migrations.map((m) => m.tag)
+      .filter((tag) => !state.applied.includes(tag));
+    return state.started === undefined ? { pending } : { pending, unfinished: state.started };
+  }
+  /** The tags the data has had, or may have had (one started or failed). */
+  function touched(state: MigrationState): string[] {
+    return [
+      ...state.applied,
+      ...(state.started !== undefined ? [state.started] : []),
+      ...(state.failed !== undefined ? [state.failed] : []),
+    ];
+  }
+  /**
+   * The refusal of an archive whose migrations lack tags the fragment's data has had: its
+   * code would run on data migrated past it (no rollback after migrations).
+   */
+  function dataTooNew(
+    manifest: FragmentManifest,
+    tags: readonly string[],
+    applied: readonly string[],
+  ): Refusal | undefined {
+    const unknown = applied.filter((tag) => !tags.includes(tag));
+    if (unknown.length === 0) return undefined;
+    return {
+      id: manifest.id,
+      code: "data-too-new",
+      message: `"${manifest.id}" ${manifest.version} lacks the migrations ${unknown.join(", ")}, which its data has had`,
+    };
+  }
+  async function recordEnabled(id: string, enabled: boolean): Promise<void> {
+    const record = await readRecord(id);
+    if (record && record.enabled !== enabled) await writeRecord(id, { ...record, enabled });
+  }
   const memberships = new Map<string, () => void>();
 
   const cleanups = new Map<string, AspectCleanup>();
@@ -315,6 +425,14 @@ export function createKernel(options: KernelOptions): Kernel {
       return;
     }
     stopWaiting(aspect, f.id);
+    // Its code never runs over data its migrations have not all reached.
+    const { pending, unfinished } = await pendingMigrations(f);
+    if (pending.length > 0 || unfinished !== undefined) {
+      const error = new FragmentMigrationsPendingError(f.id, pending, unfinished);
+      fail(aspect, f, error);
+      onError(f.id, aspect, error);
+      return;
+    }
     try {
       const activator = options.activators?.[aspect];
       const owned = registry.ownedBy(f, aspect);
@@ -369,12 +487,16 @@ export function createKernel(options: KernelOptions): Kernel {
       aspects: InstalledFragment["aspects"];
     }[],
     core: boolean,
+    /** The installed fragment the entry replaces (an upgrade or a rollback). */
+    replacing?: string,
   ): Refusal[] {
     const refusals: Refusal[] = [];
     const batch = new Map<string, FragmentManifest>();
     const workerNames = new Map<string, string>();
     for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
-      if (f.manifest.aspects.server) workerNames.set(workerNameOf(f.id), f.id);
+      if (f.manifest.aspects.server && f.id !== replacing) {
+        workerNames.set(workerNameOf(f.id), f.id);
+      }
     }
     for (const { manifest: m, files } of entries) {
       const refuse = (code: Refusal["code"], message: string) =>
@@ -390,7 +512,7 @@ export function createKernel(options: KernelOptions): Kernel {
         );
         continue;
       }
-      if (installed(m.id) || batch.has(m.id)) {
+      if ((installed(m.id) && m.id !== replacing) || batch.has(m.id)) {
         refuse("already-installed", `"${m.id}" is already installed`);
         continue;
       }
@@ -497,14 +619,49 @@ export function createKernel(options: KernelOptions): Kernel {
         continue;
       }
       const aspects = readAspectFiles(files, manifest);
+      const { refusal: migrationRefusal } = readMigrations(files, manifest);
+      if (migrationRefusal) aspects.refusals.push(migrationRefusal);
       if (aspects.refusals.length > 0) refusals.push(...aspects.refusals);
       else read.push({ manifest, files, aspects: aspects.aspects });
     }
     refusals.push(...checkInstall(read, core));
+    // Data kept from an earlier install: the archive may not bring migrations it lacks,
+    // since an install runs none (reinstall the removed version, then upgrade).
+    for (const { manifest, files } of read) {
+      const state = await readMigrationState(manifest.id);
+      if (state === undefined) continue;
+      const tags = readMigrations(files, manifest).migrations.map((m) => m.tag);
+      const tooNew = dataTooNew(manifest, tags, touched(state));
+      if (tooNew) refusals.push(tooNew);
+      const pending = tags.filter((tag) => !state.applied.includes(tag));
+      if (pending.length > 0) {
+        refusals.push({
+          id: manifest.id,
+          code: "pending-migrations",
+          message: `"${manifest.id}" has data kept from an earlier install, which the migrations ${pending.join(", ")} would change; install the removed version, then upgrade`,
+        });
+      }
+    }
     if (refusals.length > 0) throw new FragmentInstallError(refusals);
-    const result = read.map(({ manifest, files, aspects }) =>
-      Object.freeze({ id: manifest.id, manifest, files, aspects, core }),
-    );
+    const result: InstalledFragment[] = [];
+    for (const { manifest, files, aspects } of read) {
+      const archive = await archiveHash(files);
+      await archiveStore.put(archive, files);
+      result.push(Object.freeze({ id: manifest.id, manifest, files, aspects, core, archive }));
+    }
+    for (const fragment of result) {
+      // A new project starts from its migrations applied (the runtime creates its classes
+      // as they end up); tags already recorded are data kept from an earlier install.
+      if ((await readMigrationState(fragment.id)) === undefined) {
+        const tags = readMigrations(fragment.files, fragment.manifest).migrations.map((m) => m.tag);
+        await writeMigrationState(fragment.id, { applied: tags });
+      }
+      await writeRecord(fragment.id, {
+        version: fragment.manifest.version,
+        archive: fragment.archive,
+        enabled: false,
+      });
+    }
     for (const fragment of result) join(installedFragmentsSlot, fragment);
     return result;
   }
@@ -514,6 +671,7 @@ export function createKernel(options: KernelOptions): Kernel {
     if (!fragment) throw new FragmentLifecycleError(`"${id}" is not installed`);
     join(enabledFragmentsSlot, fragment);
     resolve();
+    await recordEnabled(id, true);
   }
 
   /** Activators and cleanups running now; while any runs, operations are refused. */
@@ -558,6 +716,100 @@ export function createKernel(options: KernelOptions): Kernel {
     for (const aspect of ASPECTS) await deactivateAll(aspect, affected);
     leave(enabledFragmentsSlot, id);
     resolve();
+    await recordEnabled(id, false);
+  }
+
+  /**
+   * Read and check `files` as the next archive of the installed `current` (an upgrade when
+   * `upgrading`, else a rollback). Throws a `FragmentInstallError` with the refusals.
+   * Changes nothing: the caller stores the archive once every check has passed.
+   */
+  async function prepareSwap(
+    current: InstalledFragment,
+    files: FragmentFiles,
+    upgrading: boolean,
+  ): Promise<InstalledFragment> {
+    const { id } = current;
+    const { manifest, refusal } = readManifest(files);
+    if (refusal) throw new FragmentInstallError([refusal]);
+    const aspects = readAspectFiles(files, manifest);
+    const { refusal: migrationRefusal } = readMigrations(files, manifest);
+    if (migrationRefusal) aspects.refusals.push(migrationRefusal);
+    if (aspects.refusals.length > 0) throw new FragmentInstallError(aspects.refusals);
+    const notAnUpgrade = (message: string) =>
+      new FragmentInstallError([{ id: manifest.id, code: "not-an-upgrade", message }]);
+    if (manifest.id !== id) {
+      throw notAnUpgrade(`The archive is "${manifest.id}", not "${id}"`);
+    }
+    const archive = await archiveHash(files);
+    if (upgrading && archive === current.archive) {
+      // The installed archive again resumes migrations a failed upgrade left to run.
+      if ((await pendingMigrations(current)).pending.length > 0) return current;
+      throw notAnUpgrade(`"${id}" ${manifest.version} is installed, its migrations all applied`);
+    }
+    if (upgrading && !semver.gt(manifest.version, current.manifest.version)) {
+      throw notAnUpgrade(
+        `"${id}" ${manifest.version} is not later than the installed ${current.manifest.version}`,
+      );
+    }
+    const refusals = checkInstall([{ manifest, files, aspects: aspects.aspects }], false, id);
+    if (upgrading) {
+      const tags = readMigrations(files, manifest).migrations.map((m) => m.tag);
+      const state = await readMigrationState(id);
+      const tooNew = dataTooNew(manifest, tags, state ? touched(state) : []);
+      if (tooNew) refusals.push(tooNew);
+    }
+    // The installed fragments requiring it must accept the new version.
+    for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
+      const range = f.manifest.requires?.[id];
+      if (range !== undefined && !semver.satisfies(manifest.version, range, RANGE_OPTIONS)) {
+        refusals.push({
+          id: f.id,
+          code: "unmet-requirement",
+          message: `"${f.id}" requires "${id}" ${range}, which ${manifest.version} does not meet`,
+        });
+      }
+    }
+    if (refusals.length > 0) throw new FragmentInstallError(refusals);
+    return Object.freeze({
+      id: current.id,
+      manifest,
+      files,
+      aspects: aspects.aspects,
+      core: current.core,
+      archive,
+    });
+  }
+
+  /**
+   * Replace the installed `current` by `next` (same id): deactivate it and the fragments
+   * requiring it, swap it in every state slot it is in (dispose, then register: observers
+   * see it leave and come back), run `between`, then activate again what was active.
+   */
+  async function swap(
+    current: InstalledFragment,
+    next: InstalledFragment,
+    between: () => Promise<void>,
+  ): Promise<void> {
+    const affected = withDependents(resolvedFragmentsSlot, [current.id]);
+    const wasActive = new Map<Aspect, Set<string>>();
+    for (const aspect of ASPECTS) {
+      const order = activeOrder.get(aspect) ?? [];
+      wasActive.set(aspect, new Set(order.filter((x) => affected.has(x))));
+      await deactivateAll(aspect, affected);
+    }
+    const states = [installedFragmentsSlot, enabledFragmentsSlot, resolvedFragmentsSlot];
+    const held = states.filter((decl) => has(decl, current.id));
+    for (const decl of [...held].reverse()) leave(decl, current.id);
+    for (const decl of held) join(decl, next);
+    resolve();
+    await between();
+    for (const aspect of ASPECTS) {
+      const targets = wasActive.get(aspect) ?? new Set();
+      for (const f of ordered(resolvedFragmentsSlot)) {
+        if (targets.has(f.id) && f.manifest.aspects[aspect]) await activateOne(aspect, f);
+      }
+    }
   }
 
   function dependentsOf(id: string): string[] {
@@ -593,7 +845,12 @@ export function createKernel(options: KernelOptions): Kernel {
         }
         await disable(id, cascade, "remove");
         leave(installedFragmentsSlot, id);
-        if (withData) await hook(() => options.removeData?.(fragment));
+        await profile.delete(fragmentRecordKey(id));
+        if (withData) {
+          await hook(() => options.removeData?.(fragment));
+          // Only once the data is gone: kept data keeps its record.
+          await profile.delete(appliedMigrationsKey(id));
+        }
       },
     ),
     activate: serial(async (aspect: Aspect, id?: string) => {
@@ -626,6 +883,124 @@ export function createKernel(options: KernelOptions): Kernel {
     }),
     stop: serial(async () => {
       for (const aspect of ASPECTS) await deactivateAll(aspect, undefined);
+    }),
+    upgrade: serial(
+      async (id: string, files: FragmentFiles, upgradeOptions: UpgradeOptions = {}) => {
+        const current = installed(id);
+        if (!current) throw new FragmentLifecycleError(`"${id}" is not installed`);
+        if (current.core) {
+          throw new FragmentLifecycleError(
+            `"${id}" ships with the platform and cannot be upgraded`,
+          );
+        }
+        const next = await prepareSwap(current, files, true);
+        const state = (await readMigrationState(id)) ?? { applied: [] };
+        const applied = [...state.applied];
+        const pending = readMigrations(next.files, next.manifest).migrations.filter(
+          (m) => !applied.includes(m.tag),
+        );
+        if (state.started !== undefined) {
+          throw new FragmentMigrationsPendingError(
+            id,
+            pending.map((m) => m.tag),
+            state.started,
+          );
+        }
+        const migrate = options.migrate;
+        if (pending.length > 0 && !migrate) {
+          throw new FragmentLifecycleError(
+            `"${id}" cannot be upgraded: this host runs no migrations, and it brings ${pending.map((m) => m.tag).join(", ")}`,
+          );
+        }
+        const deletions = pending
+          .filter((m) => (m.deleted_classes ?? []).length > 0)
+          .map((m) => ({ tag: m.tag, classes: m.deleted_classes ?? [] }));
+        if (deletions.length > 0 && !upgradeOptions.confirmDeletedClasses) {
+          throw new FragmentDeletesClassesError(id, deletions);
+        }
+        await archiveStore.put(next.archive, next.files);
+        // Resuming (the installed archive again), the upgrade being finished keeps its origin.
+        const resumed = next === current ? (await readRecord(id))?.upgrade : undefined;
+        const from = resumed?.from ?? {
+          version: current.manifest.version,
+          archive: current.archive,
+        };
+        await swap(current, next, async () => {
+          const ran: string[] = [...(resumed?.migrations ?? [])];
+          const record = async () =>
+            writeRecord(id, {
+              version: next.manifest.version,
+              archive: next.archive,
+              enabled: has(enabledFragmentsSlot, id),
+              upgrade: { from, migrations: [...ran] },
+            });
+          await record();
+          for (const migration of pending) {
+            // Recorded as started first: if its end never gets recorded, nothing reruns it
+            // or rolls back over it before the host has checked the data.
+            await writeMigrationState(id, { applied, started: migration.tag });
+            try {
+              await hook(() => migrate?.(next, migration));
+            } catch (error) {
+              await writeMigrationState(id, { applied, failed: migration.tag });
+              throw new FragmentMigrationError(id, migration.tag, error);
+            }
+            applied.push(migration.tag);
+            ran.push(migration.tag);
+            await writeMigrationState(id, { applied });
+            await record();
+          }
+        });
+        return next;
+      },
+    ),
+    rollback: serial(async (id: string) => {
+      const current = installed(id);
+      if (!current) throw new FragmentLifecycleError(`"${id}" is not installed`);
+      const upgrade = (await readRecord(id))?.upgrade;
+      if (!upgrade) {
+        throw new FragmentRollbackError(id, `"${id}" has no upgrade to roll back`);
+      }
+      const files = await archiveStore.get(upgrade.from.archive);
+      // Every migration the upgrade ran, or that may have touched the data since (started,
+      // failed, or applied and unknown to the previous archive), forbids going back.
+      const state = (await readMigrationState(id)) ?? { applied: [] };
+      const previous = files
+        ? readMigrations(files, readManifest(files).manifest ?? current.manifest).migrations.map(
+            (m) => m.tag,
+          )
+        : [];
+      const migrated = [
+        ...new Set([
+          ...upgrade.migrations,
+          ...touched(state).filter(
+            (tag) => !state.applied.includes(tag) || !previous.includes(tag),
+          ),
+        ]),
+      ];
+      if (migrated.length > 0) {
+        throw new FragmentRollbackError(
+          id,
+          `"${id}" cannot be rolled back: the migrations ${migrated.join(", ")} have run on its data, or may have`,
+          migrated,
+        );
+      }
+      if (!files) {
+        throw new FragmentRollbackError(
+          id,
+          `"${id}" cannot be rolled back: the archive ${upgrade.from.archive} is not in the store`,
+        );
+      }
+      const next = await prepareSwap(current, files, false);
+      await archiveStore.put(next.archive, next.files);
+      await swap(current, next, async () => {
+        await writeRecord(id, {
+          version: next.manifest.version,
+          archive: next.archive,
+          enabled: has(enabledFragmentsSlot, id),
+        });
+      });
+      return next;
     }),
   };
 }
