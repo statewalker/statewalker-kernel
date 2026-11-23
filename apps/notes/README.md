@@ -2,10 +2,12 @@
 
 ## What it is
 
-The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. It started as the shell tracer (statewalker/statewalker-root#252) and now shows the workbench chrome (statewalker/statewalker-root#254) and A2UI surfaces (statewalker/statewalker-root#267). In the browser, the kernel loads the core fragments `system.commands`, `system.workbench` and `system.a2ui`, then fetches, installs, enables and activates the app's client-only fragments:
+The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. It started as the shell tracer (statewalker/statewalker-root#252) and now shows the workbench chrome (statewalker/statewalker-root#254) A2UI surfaces (statewalker/statewalker-root#267), and the three device modes with layouts remembered per mode (statewalker/statewalker-root#253). In the browser, the kernel loads the core fragments `system.profile` (the user's profile in `localStorage`, under `org.statewalker.apps.notes:`), `system.commands`, `system.workbench` and `system.a2ui`, then fetches, installs, enables and activates the app's client-only fragments:
 
 - `notes` contributes a view to the `views` point, two commands (`add-note`, `new-note`) to the `commands` point, and, all statically, a menu bar menu, a context menu and a tab menu entry for its view, a keybinding (`Ctrl+Alt+N`), two status bar items (one shown while its view is active), an activity bar entry, a dialog and a notification. `new-note` asks for the note's text in that dialog, adds it, and reports it in that notification, whose Undo takes it back.
-- `surfaces` contributes a catalog component, `NoteEditor` (CodeMirror), to the `catalog` point and a view placing an A2UI surface with it.
+- `surfaces` contributes a catalog component, `NoteEditor` (CodeMirror), to the `catalog` point and a view placing an A2UI surface with it, preferring the right zone.
+
+The app's default layout (`DEFAULT_LAYOUTS` in `src/boot.ts`, given to the workbench as the host's) opens the notes view in the centre, in every device mode. The workbench shows the device mode of the window's width and keeps each mode's layout in the profile once the user changes it.
 
 ## How to run it
 
@@ -15,7 +17,7 @@ From the repository root, after `pnpm install`:
 2. `pnpm --filter @statewalker/notes.app start`: serves `dist/` on http://127.0.0.1:4173/ (`PORT` changes it).
 3. `pnpm --filter @statewalker/notes.app test`: the browser tests, against `dist/` (build first). They need Chromium for the pinned `playwright`: `pnpm --filter @statewalker/notes.app exec playwright install chromium` once, if it is not there.
 
-`window.platform` holds the kernel, the command bus, the workbench model and the A2UI model, for the console and the tests.
+`window.platform` holds the kernel, the command bus, the workbench model, the A2UI model and the profile store, for the console and the tests. `localStorage.clear()` and a reload give a fresh profile.
 
 ## What the tests show
 
@@ -93,3 +95,14 @@ Every bundle (the shell, the shared modules, the fragments) leaves the shared mo
 ## License
 
 MIT. See [LICENSE](../../LICENSE).
+
+`tests/device-modes.e2e.test.ts` (seam 2) opens the app at a phone's, a tablet's and a desktop's width, each in a fresh profile:
+
+| Test step | Feature |
+| --- | --- |
+| At 1280×800, `data-mode="desktop"`: the menu bar, the activity bar, the notes view in a dock tab, no tab bar; the surfaces view opens in a group right of it, in the right zone | The desktop mode: one dockview whose groups are the zones; a view's preferred zone (`zone` in the `views` point) |
+| At 820×1180, `data-mode="tablet"`: the surfaces view opens in the "Right zone" drawer, not the dock; the drawer closes and the strip's "Right zone" button opens it again; a touch drag (CDP touch events) of the Notes tab to the dock's right edge splits it into a second group | The tablet mode: side zones as drawers, the centre a dockview whose panels drag by touch |
+| At 390×844, `data-mode="phone"`: the notes view alone, a "Views" tab bar with "Notes" selected, no menu bar or dock tabs; "More" lists the menu bar's Notes menu and the Surfaces view, which opens as the one panel; the Notes tab brings the notes view back | The phone mode: one panel, a bottom tab bar and a "More" menu |
+| Closing the notes tab on a desktop saves `workbench/layouts/desktop` (only the surfaces view); after a reload the notes view stays closed; resized to a phone's width the notes view is there (the phone's default layout, nothing saved for phone or tablet); back to a desktop's width it is closed again | A layout changed in one mode is saved in system.profile, survives a reload and leaves the other modes' layouts alone; the mode follows the width live |
+| Dragging the Notes tab (mouse) into the right zone's group saves it in the right zone, and a reload keeps it there | A panel dragged to another zone's group moves its view to that zone in the model |
+| `kernel.remove("org.statewalker.notes")` drops the notes view from the saved desktop layout; after a reload, which installs notes again, its view is contributed but not opened | A saved layout drops the views of a removed fragment |

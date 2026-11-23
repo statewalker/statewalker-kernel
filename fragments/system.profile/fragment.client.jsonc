@@ -1,0 +1,5 @@
+// The client aspect of system.profile: no extension points yet (`secrets` and the vault come with
+// statewalker-root#264 and #265). Kept equal to src/archive.ts by tests/profile.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json"
+}

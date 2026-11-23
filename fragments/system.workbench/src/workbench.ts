@@ -4,6 +4,7 @@ import {
   ACTIVITYBAR_POINT,
   COMMAND_FAILED_NOTIFICATION,
   DIALOGS_POINT,
+  LAYOUTS_POINT,
   MENUS_POINT,
   NOTIFICATIONS_POINT,
   STATUSBAR_POINT,
@@ -17,6 +18,22 @@ import {
   normalizeChord,
   type WorkbenchKeybinding,
 } from "./keybindings.js";
+import {
+  DEVICE_MODES,
+  type DeviceMode,
+  defaultLayout,
+  filterLayout,
+  type LayoutContribution,
+  layoutKey,
+  placeView,
+  readSavedLayout,
+  toSaved,
+  viewsOf,
+  type WorkbenchLayout,
+  withoutViews,
+  type Zone,
+  zoneIn,
+} from "./layout.js";
 import { buildMenu, type MenuNode } from "./menus.js";
 import {
   createRequests,
@@ -37,6 +54,8 @@ export interface ViewEntry {
   /** The contributing fragment. */
   readonly fragment: string;
   readonly title: string;
+  /** The zone it opens in unless asked otherwise (`center` when it names none). */
+  readonly zone: Zone;
   readonly extension: Extension;
   /**
    * The view's component, resolved through the extension's lazy reference. Rejects with the
@@ -76,7 +95,12 @@ export interface DockedSurface {
 /** What the workbench shows: the views there are, those open in the order opened, and the dock. */
 export interface WorkbenchState {
   readonly views: readonly ViewEntry[];
+  /** The open views of the current device mode, zone by zone (centre, left, right, bottom). */
   readonly opened: readonly string[];
+  /** The current device mode. */
+  readonly mode: DeviceMode;
+  /** The current mode's layout: its live views, per zone, and the active one. */
+  readonly layout: WorkbenchLayout;
   /** The dialogs waiting for an answer, oldest first (the client shows the first). */
   readonly dialogs: readonly DialogRequest[];
   /** The notifications waiting for an answer or to be dismissed. */
@@ -90,12 +114,33 @@ export interface Workbench {
   views(): readonly ViewEntry[];
   /** The live view `id` (`<fragment-id>/<view-id>`). */
   view(id: string): ViewEntry | undefined;
-  /** The open views' identities, in the order they were opened. */
+  /** The open views' identities in the current mode, zone by zone, in tab order. */
   opened(): readonly string[];
-  /** Open the view `id`; a view already open stays where it is. Throws `WorkbenchError`. */
-  open(id: string): void;
+  /**
+   * Open the view `id` at the end of `zone` (its preferred zone by default) and make it active;
+   * a view already open stays where it is. Throws `WorkbenchError`.
+   */
+  open(id: string, zone?: Zone): void;
   /** Close the view `id`, when open. */
   close(id: string): void;
+  /** The current device mode (`desktop` until the host says otherwise). */
+  mode(): DeviceMode;
+  /** Switch to `mode`: its own layout, saved or default, shows. */
+  setMode(mode: DeviceMode): void;
+  /**
+   * The current mode's layout, live views only: the mode's saved layout, or its default layout
+   * (the `layouts` point, after the host's) until the user changes it.
+   */
+  layout(): WorkbenchLayout;
+  /** The zone the open view `id` is in, in the current mode. */
+  zoneOf(id: string): Zone | undefined;
+  /**
+   * Move the view `id` to `zone`, before its `index`-th view (the end by default), opening it
+   * if closed. Throws `WorkbenchError`.
+   */
+  move(id: string, zone: Zone, index?: number): void;
+  /** Make the open view `id` the active one. */
+  setActive(id: string): void;
   /** Set (or clear) where docked surfaces come from; clearing it empties the dock. */
   setSurfaceSource(source: SurfaceSource | undefined): void;
   /**
@@ -159,8 +204,25 @@ export interface PaletteEntry {
   readonly fragment: string;
 }
 
+/**
+ * Where the workbench keeps its layouts: system.profile's store (a synchronous key-value store of
+ * JSON values, local to the device). Layouts go under `layoutKey(mode)`.
+ */
+export interface LayoutStore {
+  get(key: string): unknown;
+  set(key: string, value: unknown): void;
+}
+
 /** How the workbench is wired: the command bus its chrome runs commands on, and its locale. */
 export interface SystemWorkbenchOptions {
+  /** Where layouts are saved; without one they last as long as the workbench. */
+  readonly profile?: LayoutStore;
+  /** The device mode to start in; `desktop` by default. */
+  readonly mode?: DeviceMode;
+  /**
+   * The host's default layouts (an application definition's), before the `layouts` point's.
+   */
+  readonly layouts?: readonly LayoutContribution[];
   /** system.commands' bus. Without one, menus list no commands and `run` fails. */
   readonly commands?: CommandBus;
   /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
@@ -189,6 +251,7 @@ export interface SystemWorkbench {
 interface ViewData {
   readonly id: string;
   readonly title: string;
+  readonly zone?: Zone;
 }
 
 function entryOf(extension: Extension): ViewEntry {
@@ -199,6 +262,7 @@ function entryOf(extension: Extension): ViewEntry {
     viewId: data.id,
     fragment: extension.contributor,
     title: data.title,
+    zone: data.zone ?? "center",
     extension,
     async component<T>() {
       if (!extension.reference) throw new WorkbenchError("no-component", id);
@@ -224,7 +288,7 @@ export function needsInput(entry: CommandEntry): boolean {
 export const SURFACE_PANEL_PREFIX = "surface:";
 
 export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): SystemWorkbench {
-  const { commands, locale } = options;
+  const { commands, locale, profile } = options;
   /** A live command the chrome can run: on the bus, needing no input. */
   const runnable = (id: string): CommandEntry | undefined => {
     const entry = commands?.get(id);
@@ -234,14 +298,55 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
   /** The live extensions of the chrome's points (every point but `views`), by point. */
   const points = new Map<string, readonly Extension[]>();
   const read = (point: string) => points.get(point) ?? [];
-  let opened: readonly string[] = [];
+  let mode: DeviceMode = options.mode ?? "desktop";
+  /** The layouts the user changed, per mode, as saved: may name views not there (yet). */
+  const saved = new Map<DeviceMode, WorkbenchLayout | undefined>();
   let docked: readonly DockedSurface[] = [];
   let source: SurfaceSource | undefined;
   let unfollow: (() => void) | undefined;
   const listeners = new Set<(state: WorkbenchState) => void>();
+  const isLive = (id: string) => views.some((v) => v.id === id);
+  /** A mode's saved layout, read from the profile once. */
+  function savedLayout(of: DeviceMode): WorkbenchLayout | undefined {
+    if (!saved.has(of)) {
+      let value: unknown;
+      try {
+        value = profile?.get(layoutKey(of));
+      } catch (error) {
+        console.error("[system.workbench] the profile threw:", error);
+      }
+      saved.set(of, readSavedLayout(value));
+    }
+    return saved.get(of);
+  }
+  /** A mode's layout as kept: saved, or the default one. */
+  const rawLayout = (of: DeviceMode): WorkbenchLayout =>
+    savedLayout(of) ??
+    defaultLayout(of, [
+      ...(options.layouts ?? []),
+      ...read(LAYOUTS_POINT).map((e) => e.data as LayoutContribution),
+    ]);
+  const currentLayout = () => filterLayout(rawLayout(mode), isLive);
+  /** Keep `layout` as `of`'s saved layout, in the profile too. */
+  function save(of: DeviceMode, layout: WorkbenchLayout) {
+    saved.set(of, layout);
+    try {
+      profile?.set(layoutKey(of), toSaved(layout));
+    } catch (error) {
+      console.error("[system.workbench] the layout was not saved:", error);
+    }
+  }
+  /** Change the current mode's layout (the change saves it), and tell the listeners. */
+  function change(next: (layout: WorkbenchLayout) => WorkbenchLayout) {
+    save(mode, next(rawLayout(mode)));
+    notify();
+  }
+  const opened = () => viewsOf(currentLayout());
   const state = (): WorkbenchState => ({
     views,
-    opened,
+    opened: opened(),
+    mode,
+    layout: currentLayout(),
     dialogs: dialogs.pending(),
     notifications: notifications.pending(),
     docked,
@@ -296,32 +401,78 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
     notify();
   }
 
-  /** The live views are those of `extensions`, the first per identity winning. */
+  /**
+   * The live views are those of `extensions`, the first per identity winning. The views that
+   * leave (their fragment disabled or removed) leave every saved layout too.
+   */
   function sync(extensions: readonly Extension[]) {
     const next = new Map<string, ViewEntry>();
     for (const extension of extensions) {
       const entry = entryOf(extension);
       if (!next.has(entry.id)) next.set(entry.id, entry);
     }
+    const left = new Set(views.filter((v) => !next.has(v.id)).map((v) => v.id));
     views = [...next.values()];
-    opened = opened.filter((id) => next.has(id));
+    if (left.size > 0) {
+      for (const of of DEVICE_MODES) {
+        const layout = savedLayout(of);
+        if (layout && viewsOf(layout).some((id) => left.has(id))) {
+          save(
+            of,
+            withoutViews(layout, (id) => left.has(id)),
+          );
+        }
+      }
+    }
     notify();
   }
 
   const workbench: Workbench = {
     views: () => views,
     view: (id) => views.find((v) => v.id === id),
-    opened: () => opened,
-    open(id) {
-      if (!workbench.view(id)) throw new WorkbenchError("unknown-view", id);
-      if (opened.includes(id)) return;
-      opened = [...opened, id];
-      notify();
+    opened,
+    open(id, zone) {
+      const view = workbench.view(id);
+      if (!view) throw new WorkbenchError("unknown-view", id);
+      const at = zoneIn(currentLayout(), id);
+      if (at !== undefined) {
+        if (zone !== undefined && zone !== at) workbench.move(id, zone);
+        return;
+      }
+      change((layout) => ({ ...placeView(layout, id, zone ?? view.zone, isLive), active: id }));
     },
     close(id) {
-      if (!opened.includes(id)) return;
-      opened = opened.filter((o) => o !== id);
+      const current = currentLayout();
+      if (zoneIn(current, id) === undefined) return;
+      change((layout) => {
+        const rest = withoutViews(layout, (v) => v === id);
+        if (current.active !== id) return rest;
+        const next = viewsOf(filterLayout(rest, isLive))[0];
+        return next === undefined ? rest : { ...rest, active: next };
+      });
+    },
+    mode: () => mode,
+    setMode(next) {
+      if (next === mode) return;
+      mode = next;
       notify();
+    },
+    layout: currentLayout,
+    zoneOf: (id) => zoneIn(currentLayout(), id),
+    move(id, zone, index) {
+      if (!workbench.view(id)) throw new WorkbenchError("unknown-view", id);
+      const current = currentLayout();
+      if (zoneIn(current, id) === zone && index === undefined) return;
+      const opening = zoneIn(current, id) === undefined;
+      change((layout) => {
+        const placed = placeView(layout, id, zone, isLive, index);
+        return opening ? { ...placed, active: id } : placed;
+      });
+    },
+    setActive(id) {
+      const current = currentLayout();
+      if (current.active === id || zoneIn(current, id) === undefined) return;
+      change((layout) => ({ ...layout, active: id }));
     },
     menu(menu, context = {}) {
       return buildMenu(menu, read(MENUS_POINT), menuCommands, context);
@@ -486,8 +637,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
         for (const stop of stops) stop();
         points.clear();
         dropLeft();
-        views = [];
-        opened = [];
+        views = []; // the saved layouts stay as they are
         undockAll();
         notify();
       };

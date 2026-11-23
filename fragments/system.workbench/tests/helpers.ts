@@ -9,6 +9,7 @@ import {
 import {
   createSystemWorkbench,
   SYSTEM_WORKBENCH_ID,
+  type SystemWorkbenchOptions,
   systemWorkbenchArchive,
 } from "../src/index.js";
 
@@ -54,10 +55,10 @@ export const ext = (point: string, data: unknown): TestExtension => ({ point, da
 export async function platform(
   archives: Record<string, string>[],
   handlers: Record<string, (input: unknown) => unknown> = {},
-  options: { locale?: string } = {},
+  options: Omit<SystemWorkbenchOptions, "commands"> = {},
 ) {
   const commands = createSystemCommands();
-  const system = createSystemWorkbench({ commands: commands.bus, locale: options.locale });
+  const system = createSystemWorkbench({ ...options, commands: commands.bus });
   const loaded: string[] = [];
   const kernel = createKernel({
     platform: { version: "1.0.0", bindings: [] },

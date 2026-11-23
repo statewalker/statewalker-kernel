@@ -68,8 +68,10 @@ export function ActivityBar({ workbench }: { workbench: Workbench }) {
           aria-label={item.title}
           title={item.title}
           onClick={() => {
-            if (item.view) workbench.open(item.view);
-            else if (item.command) void workbench.execute(item.command);
+            if (item.view) {
+              workbench.open(item.view);
+              workbench.setActive(item.view);
+            } else if (item.command) void workbench.execute(item.command);
           }}
         >
           <span aria-hidden="true" className="text-sm font-semibold">
