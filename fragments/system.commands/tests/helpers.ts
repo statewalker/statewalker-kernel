@@ -1,5 +1,10 @@
 import { createKernel, type ExtensionReference } from "@statewalker/kernel.core";
-import { createSystemCommands, SYSTEM_COMMANDS_ID, systemCommandsArchive } from "../src/index.js";
+import {
+  type CallGate,
+  createSystemCommands,
+  SYSTEM_COMMANDS_ID,
+  systemCommandsArchive,
+} from "../src/index.js";
 
 const SCHEMA = "https://example.org/schemas/fragment.v1.schema.json";
 const ASPECT_SCHEMA = "https://example.org/schemas/fragment-aspect.v1.schema.json";
@@ -67,8 +72,12 @@ export type Handlers = Record<string, Record<string, (...args: never[]) => unkno
  * installed, enabled and their client aspect active. Handlers are module exports, by
  * contributor id then export name.
  */
-export async function platform(archives: Record<string, string>[], handlers: Handlers = {}) {
-  const system = createSystemCommands();
+export async function platform(
+  archives: Record<string, string>[],
+  handlers: Handlers = {},
+  options: { gate?: CallGate } = {},
+) {
+  const system = createSystemCommands(options);
   const errors: unknown[] = [];
   const kernel = createKernel({
     platform: { version: "1.0.0", bindings: [] },
