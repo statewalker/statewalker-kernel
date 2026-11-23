@@ -3,8 +3,10 @@ import { describe, expect, it } from "vitest";
 import { Avatar, AvatarFallback } from "./avatar.js";
 import { Button } from "./button.js";
 import { Card, CardContent, CardHeader, CardTitle } from "./card.js";
+import { Command, CommandItem, CommandList, CommandShortcut } from "./command.js";
 import { Input } from "./input.js";
 import { Label } from "./label.js";
+import { Menubar, MenubarMenu, MenubarTrigger } from "./menubar.js";
 import { Separator } from "./separator.js";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs.js";
 import { Textarea } from "./textarea.js";
@@ -96,5 +98,39 @@ describe("shadcn primitive wrappers (third-party)", () => {
       </Tabs>,
     );
     expect(getByText("Panel A")).toBeTruthy();
+  });
+
+  // smoke: Menubar (radix) mounts its triggers as menu items of a menubar
+  it("Menubar mounts with its triggers", () => {
+    const { getByRole } = render(
+      <Menubar>
+        <MenubarMenu>
+          <MenubarTrigger>File</MenubarTrigger>
+        </MenubarMenu>
+      </Menubar>,
+    );
+    expect(getByRole("menubar").textContent).toBe("File");
+  });
+
+  // smoke: Command (cmdk) mounts its items as options, with their shortcut
+  it("Command mounts its items", () => {
+    // jsdom has no ResizeObserver (cmdk's list measures itself) nor scrollIntoView (cmdk
+    // scrolls the selected item into view).
+    globalThis.ResizeObserver ??= class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+    Element.prototype.scrollIntoView ??= () => {};
+    const { getByRole } = render(
+      <Command>
+        <CommandList>
+          <CommandItem>
+            New note<CommandShortcut>Ctrl+Alt+N</CommandShortcut>
+          </CommandItem>
+        </CommandList>
+      </Command>,
+    );
+    expect(getByRole("option").textContent).toBe("New noteCtrl+Alt+N");
   });
 });
