@@ -171,7 +171,8 @@ function activateWhenResolved(kernel: Kernel): () => void {
 /**
  * Install the application's fragments. A fresh profile (no application record) gets the
  * baseline, enabled. Otherwise the fragments the profile records are installed again, enabled
- * as recorded, with any baseline fragment it lacks (one an update of the application added).
+ * as recorded, with any baseline fragment it lacks (one an update of the application added);
+ * a recorded fragment no longer served is skipped and its record dropped.
  * Returns whether this was the first run.
  */
 async function installFragments(
@@ -196,7 +197,19 @@ async function installFragments(
   for (const id of ids) {
     records.set(id, (await profile.get(fragmentRecordKey(id))) as FragmentRecord | undefined);
   }
-  const archives = await Promise.all(ids.map((id) => fetchArchive(base, id)));
+  // A recorded fragment the application no longer serves is skipped and forgotten, so it cannot
+  // stop every later boot; only a baseline fragment that cannot be fetched stops this one.
+  const fetched = await Promise.allSettled(ids.map((id) => fetchArchive(base, id)));
+  const archives: FragmentFiles[] = [];
+  for (const [i, result] of fetched.entries()) {
+    const id = ids[i] as string;
+    if (result.status === "fulfilled") archives.push(result.value);
+    else if (definition.baseline.includes(id)) throw result.reason;
+    else {
+      console.warn(`[shell] ${id} is no longer served; its record is dropped:`, result.reason);
+      await profile.delete(fragmentRecordKey(id));
+    }
+  }
   for (const fragment of await kernel.install(archives)) {
     if (records.get(fragment.id)?.enabled !== false) await kernel.enable(fragment.id);
   }

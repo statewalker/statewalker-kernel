@@ -152,6 +152,30 @@ describe("the baseline and the default layout", () => {
     }
   });
 
+  it("drops the record of a fragment the application no longer serves, and boots", async () => {
+    const { page, errors, close } = await open();
+    try {
+      await page.getByTestId("notes-view").waitFor();
+      const key = `${application.id}:fragments/org.example.gone`;
+      await page.evaluate((k) => {
+        const record = { version: "1.0.0", archive: `sha256:${"0".repeat(64)}`, enabled: true };
+        localStorage.setItem(k, JSON.stringify(record));
+      }, key);
+      await page.reload();
+      await page.getByTestId("notes-view").waitFor();
+      await expect(page.evaluate((k) => localStorage.getItem(k), key)).resolves.toBeNull();
+      const installed = await page.evaluate(() => [
+        ...window.platform.kernel.slots.getSnapshot(window.platform.slots.installed).keys(),
+      ]);
+      expect(installed).toEqual(expect.arrayContaining(application.baseline));
+      expect(installed).not.toContain("org.example.gone");
+      // The 404 of its manifest is the browser's own console error; nothing else failed.
+      expect(errors.filter((e) => !e.includes("404"))).toEqual([]);
+    } finally {
+      await close();
+    }
+  });
+
   it("refuses to remove a baseline fragment, and disables it, for this run and the next", async () => {
     const { page, errors, close } = await open();
     try {
