@@ -1,0 +1,29 @@
+/*
+ * system.workbench's prebuilt CSS (`dist/client.css`): dockview's stylesheet, the utilities the
+ * workbench's components use, against the shared shadcn tokens, and no preflight.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "./tokens.css";
+@import "dockview-react/dist/styles/dockview.css";
+
+@source "./";
+
+/*
+ * The dock reads its colours from the shadcn tokens, so it follows the theme (and `.dark`).
+ * Apply with `dockview-theme-workbench` beside dockview's own `dockview-theme-light`.
+ */
+.dockview-theme-workbench {
+  --dv-group-view-background-color: var(--background);
+  --dv-tabs-and-actions-container-background-color: var(--muted);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--background);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-separator-border: var(--border);
+  --dv-paneview-header-border-color: var(--border);
+}

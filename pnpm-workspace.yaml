@@ -31,6 +31,12 @@ catalog:
   react-resizable-panels: ^4.14.2
   tailwind-merge: ^3.7.0
   "dockview-core": ^8.4.0
+  # The shell tracer (apps/notes): bundling, per-fragment Tailwind CSS, the seam-2 browser tests.
+  # playwright is pinned exactly: its version fixes the Chromium revision it drives.
+  vite: ^8.3.6
+  tailwindcss: ^4.3.5
+  "@tailwindcss/cli": ^4.3.5
+  playwright: 1.63.0
   "idb-keyval": "^6.3.0"
   "@statewalker/webrun-builder": "^0.5.0"
   "@statewalker/vcs-utils-node": "^0.4.0"
