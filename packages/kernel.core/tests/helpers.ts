@@ -8,12 +8,41 @@ export function fragmentJsonc(manifest: Record<string, unknown>): string {
   return `// generated for a test\n${JSON.stringify({ $schema: SCHEMA, ...manifest }, null, 2)}\n`;
 }
 
-/** An archive's root files: a `fragment.jsonc` plus any other file. */
+export const ASPECT_SCHEMA = "https://example.org/schemas/fragment-aspect.v1.schema.json";
+
+/** The text of a `fragment.<aspect>.jsonc` for `content`, with a comment. */
+export function aspectJsonc(content: Record<string, unknown>): string {
+  return `// an aspect file\n${JSON.stringify({ $schema: ASPECT_SCHEMA, ...content }, null, 2)}\n`;
+}
+
+/**
+ * An archive's root files: a `fragment.jsonc` plus any other file. For brevity, a test may
+ * write an aspect's points and extensions inside `manifest.aspects.<aspect>`: they are
+ * moved to that aspect's file, which is also added (empty) for every client and agent
+ * aspect, so `fragment.jsonc` keeps only `dir`. Files given in `files` win.
+ */
 export function archive(
   manifest: Record<string, unknown>,
   files: Record<string, string> = {},
 ): Record<string, string> {
-  return { "fragment.jsonc": fragmentJsonc(manifest), ...files };
+  const aspectFiles: Record<string, string> = {};
+  const aspects = manifest.aspects;
+  if (aspects && typeof aspects === "object" && !Array.isArray(aspects)) {
+    const kept: Record<string, unknown> = {};
+    for (const [aspect, entry] of Object.entries(aspects as Record<string, unknown>)) {
+      if (!["server", "client", "agent"].includes(aspect) || !entry || typeof entry !== "object") {
+        kept[aspect] = entry;
+        continue;
+      }
+      const { dir, ...content } = entry as Record<string, unknown>;
+      kept[aspect] = dir === undefined ? {} : { dir };
+      if (aspect !== "server" || Object.keys(content).length > 0) {
+        aspectFiles[`fragment.${aspect}.jsonc`] = aspectJsonc(content);
+      }
+    }
+    manifest = { ...manifest, aspects: kept };
+  }
+  return { "fragment.jsonc": fragmentJsonc(manifest), ...aspectFiles, ...files };
 }
 
 /** The ids in a keyed slot, in registration order. */

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The platform kernel: fragment manifests (fragment.jsonc) validated against a versioned JSON Schema, and the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in keyed slots.",
+  "description": "The platform kernel: fragment manifests (fragment.jsonc) validated against a versioned JSON Schema, the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in keyed slots, and the extension registry routing extensions to the owners of extension points.",
   "bugs": {
     "url": "https://github.com/statewalker/statewalker-kernel/issues"
   },
@@ -25,7 +25,8 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./schemas/fragment.v1.schema.json": "./schemas/fragment.v1.schema.json"
+    "./schemas/fragment.v1.schema.json": "./schemas/fragment.v1.schema.json",
+    "./schemas/fragment-aspect.v1.schema.json": "./schemas/fragment-aspect.v1.schema.json"
   },
   "files": [
     "dist",

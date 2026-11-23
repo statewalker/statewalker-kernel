@@ -8,7 +8,7 @@ The kernel of a StateWalker application and its React shell. `packages/` holds t
 
 ```
 packages/
-  kernel.core                                                fragment manifests and the fragment lifecycle (private for now)
+  kernel.core                                                fragment manifests, lifecycle and extension registry (private for now)
   backbone.core      backbone.browser   backbone.node       start an app from an AppManifest
   workspace.core     workspace.browser                       Workspace, files, adapters
   workspace-vcs.core                                         git as an opt-in project nature
@@ -59,7 +59,7 @@ inline.view.react ─┼─> inline.core, mime.core
 
 | Package | What it does | npm |
 | --- | --- | --- |
-| [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots. | not published yet |
+| [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots, and routes extensions (static and runtime, dormant until their owner arrives, validated against the point's schema, with lazy references) to the extension points' owners. | not published yet |
 | [backbone.core](packages/backbone.core) | `AppManifest`, module resolution and the fragment activation loop. No dependencies. | [@statewalker/backbone.core](https://www.npmjs.com/package/@statewalker/backbone.core) |
 | [backbone.browser](packages/backbone.browser) | Browser bootstrap: bundler mode or runtime import maps with es-module-shims. | [@statewalker/backbone.browser](https://www.npmjs.com/package/@statewalker/backbone.browser) |
 | [backbone.node](packages/backbone.node) | Node bootstrap and the `backbone-start` / `backbone-watch` scripts. | [@statewalker/backbone.node](https://www.npmjs.com/package/@statewalker/backbone.node) |

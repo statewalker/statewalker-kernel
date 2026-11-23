@@ -1,6 +1,11 @@
 import { Slots } from "@statewalker/shared-slots";
 import semver from "semver";
 import { FragmentInstallError, FragmentLifecycleError, type Refusal } from "./errors.js";
+import {
+  createExtensionRegistry,
+  type ExtensionRegistryOptions,
+  type OwnedExtensionPoints,
+} from "./extensions.js";
 import { isFragmentId, isSystemId, MAX_WORKER_NAME_LENGTH, workerNameOf } from "./ids.js";
 import {
   ASPECTS,
@@ -10,7 +15,7 @@ import {
   type InstalledFragment,
 } from "./manifest.js";
 import { orderNodes } from "./order.js";
-import { parseJsonc, readManifest } from "./parse-manifest.js";
+import { parseJsonc, readAspectFiles, readManifest } from "./parse-manifest.js";
 import {
   activeFragmentsSlot,
   enabledFragmentsSlot,
@@ -36,10 +41,21 @@ export type AspectCleanup = () => void | Promise<void>;
  */
 export type AspectActivator = (
   fragment: InstalledFragment,
+  context: ActivationContext,
   // biome-ignore lint/suspicious/noConfusingVoidType: lets activators without a `return` type-check.
 ) => AspectCleanup | undefined | void | Promise<AspectCleanup | undefined | void>;
 
-export interface KernelOptions {
+/** What an activator receives beside the fragment. */
+export interface ActivationContext {
+  readonly aspect: Aspect;
+  /**
+   * The extension points the fragment opens in this aspect, with their extensions. Only
+   * the owner gets them. Reading is synchronous and allowed while the activator runs.
+   */
+  readonly extensions: OwnedExtensionPoints;
+}
+
+export interface KernelOptions extends ExtensionRegistryOptions {
   readonly platform: PlatformInfo;
   /** The slot bus the lifecycle state is published on; a new one by default. */
   readonly slots?: Slots;
@@ -100,10 +116,19 @@ export function createKernel(options: KernelOptions): Kernel {
   const memberships = new Map<string, () => void>();
 
   const cleanups = new Map<string, AspectCleanup>();
+  /** The extension points handed to each active (or activating) aspect of a fragment. */
+  const handles = new Map<string, { close(): void }>();
+  function closeHandle(aspect: Aspect, id: string) {
+    const key = `${aspect}\u0000${id}`;
+    handles.get(key)?.close();
+    handles.delete(key);
+  }
   const onError =
     options.onError ??
     ((id: string, aspect: Aspect, error: unknown) =>
       console.error(`[kernel] "${id}" (${aspect}):`, error));
+
+  const registry = createExtensionRegistry(slots, options, onError);
 
   /** Ids active per aspect, in activation order. */
   const activeOrder = new Map<Aspect, string[]>(ASPECTS.map((a) => [a, []]));
@@ -198,9 +223,13 @@ export function createKernel(options: KernelOptions): Kernel {
     );
     if (blocked) return;
     try {
-      const cleanup = await hook(() => options.activators?.[aspect]?.(f));
+      const activator = options.activators?.[aspect];
+      const owned = registry.ownedBy(f, aspect);
+      handles.set(`${aspect}\u0000${f.id}`, owned);
+      const cleanup = await hook(() => activator?.(f, { aspect, extensions: owned.points }));
       if (typeof cleanup === "function") cleanups.set(`${aspect}\u0000${f.id}`, cleanup);
     } catch (error) {
+      closeHandle(aspect, f.id);
       onError(f.id, aspect, error);
       return;
     }
@@ -222,6 +251,7 @@ export function createKernel(options: KernelOptions): Kernel {
         onError(id, aspect, error);
       }
       leave(activeFragmentsSlot(aspect), id);
+      closeHandle(aspect, id);
     }
   }
 
@@ -231,7 +261,11 @@ export function createKernel(options: KernelOptions): Kernel {
 
   /** Refusals of installing `entries` together, beside what is already installed. */
   function checkInstall(
-    entries: readonly { manifest: FragmentManifest; files: FragmentFiles }[],
+    entries: readonly {
+      manifest: FragmentManifest;
+      files: FragmentFiles;
+      aspects: InstalledFragment["aspects"];
+    }[],
     core: boolean,
   ): Refusal[] {
     const refusals: Refusal[] = [];
@@ -288,6 +322,28 @@ export function createKernel(options: KernelOptions): Kernel {
         }
       }
     }
+    // Core points are known by their short name, so two core fragments cannot share one.
+    const shortPoints = new Map<string, string>();
+    const corePoints = (id: string, aspects: InstalledFragment["aspects"]) =>
+      isSystemId(id) ? ASPECTS.flatMap((a) => Object.keys(aspects[a]?.extensionPoints ?? {})) : [];
+    for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
+      for (const name of corePoints(f.id, f.aspects)) shortPoints.set(name, f.id);
+    }
+    for (const { manifest: m, aspects } of entries) {
+      if (batch.get(m.id) !== m) continue;
+      for (const name of corePoints(m.id, aspects)) {
+        const other = shortPoints.get(name);
+        if (other) {
+          refusals.push({
+            id: m.id,
+            code: "extension-point-conflict",
+            message: `"${m.id}" opens the extension point "${name}", which "${other}" opens`,
+          });
+        } else {
+          shortPoints.set(name, m.id);
+        }
+      }
+    }
     for (const m of batch.values()) {
       const refuse = (code: Refusal["code"], message: string) =>
         refusals.push({ id: m.id, code, message });
@@ -327,16 +383,25 @@ export function createKernel(options: KernelOptions): Kernel {
 
   async function install(archives: readonly FragmentFiles[], core: boolean) {
     const refusals: Refusal[] = [];
-    const read: { manifest: FragmentManifest; files: FragmentFiles }[] = [];
+    const read: {
+      manifest: FragmentManifest;
+      files: FragmentFiles;
+      aspects: InstalledFragment["aspects"];
+    }[] = [];
     for (const files of archives) {
       const { manifest, refusal } = readManifest(files);
-      if (refusal) refusals.push(refusal);
-      else read.push({ manifest, files });
+      if (refusal) {
+        refusals.push(refusal);
+        continue;
+      }
+      const aspects = readAspectFiles(files, manifest);
+      if (aspects.refusals.length > 0) refusals.push(...aspects.refusals);
+      else read.push({ manifest, files, aspects: aspects.aspects });
     }
     refusals.push(...checkInstall(read, core));
     if (refusals.length > 0) throw new FragmentInstallError(refusals);
-    const result = read.map(({ manifest, files }) =>
-      Object.freeze({ id: manifest.id, manifest, files, core }),
+    const result = read.map(({ manifest, files, aspects }) =>
+      Object.freeze({ id: manifest.id, manifest, files, aspects, core }),
     );
     for (const fragment of result) join(installedFragmentsSlot, fragment);
     return result;
