@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Fragment archive, version 1",
+  "description": "A fragment's built folder as one JSON document: every file by its relative path, as text, and the content hash of those files.",
+  "type": "object",
+  "required": ["$schema", "hash", "files"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "description": "The URL or path of this schema; its file name carries the version.",
+      "type": "string",
+      "pattern": "(^|/)fragment-archive\\.v1\\.schema\\.json$"
+    },
+    "hash": {
+      "description": "sha256: and the lowercase hex SHA-256 of the UTF-8 JSON text of [[path, text], ...], sorted by path (JavaScript string order).",
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "files": {
+      "description": "The files by relative POSIX path (no leading slash, no . or .. segments, no backslash), as UTF-8 text.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1,
+        "not": { "pattern": "(^/|\\\\|(^|/)\\.{1,2}(/|$)|//)" }
+      },
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
