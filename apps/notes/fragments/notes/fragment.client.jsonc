@@ -194,6 +194,16 @@
       }
     },
     {
+      "point": "statusbar",
+      "data": {
+        "id": "active",
+        "text": "Notes view",
+        "alignment": "right",
+        "tooltip": "The notes view is active",
+        "when": "activeView == org.statewalker.notes/notes"
+      }
+    },
+    {
       "point": "activitybar",
       "data": {
         "id": "notes",

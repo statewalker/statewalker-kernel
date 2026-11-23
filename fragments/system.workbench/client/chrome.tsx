@@ -28,16 +28,17 @@ import {
   type DialogRequest,
   formatChord,
   type NotificationRequest,
+  type WhenContext,
   type Workbench,
 } from "../src/index.js";
 import { MenuEntries, menubarFamily } from "./menus.js";
 
 /** The menu bar: one menu per submenu contributed to `menubar`. */
-export function MenuBar({ workbench }: { workbench: Workbench }) {
+export function MenuBar({ workbench, context }: { workbench: Workbench; context: WhenContext }) {
   const run = (command: string) => void workbench.execute(command);
   return (
     <Menubar className="h-9 rounded-none border-0 border-b shadow-none">
-      {workbench.menu("menubar").map((node) =>
+      {workbench.menu("menubar", context).map((node) =>
         node.kind === "submenu" ? (
           <MenubarMenu key={node.key}>
             <MenubarTrigger>{node.title}</MenubarTrigger>
@@ -81,8 +82,8 @@ export function ActivityBar({ workbench }: { workbench: Workbench }) {
 }
 
 /** The status bar: items on the left and the right, a click running an item's command. */
-export function StatusBar({ workbench }: { workbench: Workbench }) {
-  const items = workbench.statusbar();
+export function StatusBar({ workbench, context }: { workbench: Workbench; context: WhenContext }) {
+  const items = workbench.statusbar(context);
   const side = (alignment: "left" | "right") =>
     items
       .filter((item) => item.alignment === alignment)

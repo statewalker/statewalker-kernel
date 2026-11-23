@@ -24,6 +24,7 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -98,16 +99,31 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
   const state = useWorkbenchState(workbench);
   const [api, setApi] = useState<DockviewApi>();
   const [palette, setPalette] = useState(false);
-  const activeView = useRef<string | undefined>(undefined);
+  // The chrome's context: menus' and bars' `when` read it, so changes re-render them.
+  const [activeView, setActiveView] = useState<string>();
+  const [inputFocus, setInputFocus] = useState(false);
+  const context = useMemo(() => ({ activeView, inputFocus }), [activeView, inputFocus]);
+  const activeViewRef = useRef<string | undefined>(undefined);
+  activeViewRef.current = activeView;
   const paletteOpen = useRef(false);
   paletteOpen.current = palette;
 
   useEffect(() => {
+    const focusIn = (event: FocusEvent) => setInputFocus(isTextInput(event.target));
+    const focusOut = (event: FocusEvent) => setInputFocus(isTextInput(event.relatedTarget));
+    document.addEventListener("focusin", focusIn);
+    document.addEventListener("focusout", focusOut);
+    return () => {
+      document.removeEventListener("focusin", focusIn);
+      document.removeEventListener("focusout", focusOut);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!api) return;
     const closed = api.onDidRemovePanel((panel) => workbench.close(panel.id));
-    const active = api.onDidActivePanelChange(({ panel }) => {
-      activeView.current = panel?.id;
-    });
+    setActiveView(api.activePanel?.id);
+    const active = api.onDidActivePanelChange(({ panel }) => setActiveView(panel?.id));
     const stop = workbench.observe((s) => syncPanels(api, s));
     return () => {
       stop();
@@ -128,7 +144,7 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
         return;
       }
       const command = workbench.keyCommand(event, {
-        activeView: activeView.current,
+        activeView: activeViewRef.current,
         inputFocus: isTextInput(event.target),
       });
       if (command === undefined) return;
@@ -142,7 +158,7 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
   return (
     <WorkbenchContext.Provider value={workbench}>
       <div className="flex h-full w-full flex-col bg-background text-foreground">
-        <MenuBar workbench={workbench} />
+        <MenuBar workbench={workbench} context={context} />
         <div className="flex min-h-0 flex-1">
           <ActivityBar workbench={workbench} />
           <div data-testid="workbench" className="h-full min-w-0 flex-1">
@@ -155,7 +171,7 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
             />
           </div>
         </div>
-        <StatusBar workbench={workbench} />
+        <StatusBar workbench={workbench} context={context} />
       </div>
       <Palette workbench={workbench} open={palette} onOpenChange={setPalette} />
       <DialogHost workbench={workbench} dialogs={state.dialogs} />

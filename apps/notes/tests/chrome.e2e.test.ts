@@ -178,6 +178,20 @@ describe("the workbench chrome runs notes' command", () => {
   });
 });
 
+describe("the chrome's context", () => {
+  it("shows a status item whose `when` names the active view only while that view is active", async () => {
+    await withPage(async ({ page }) => {
+      const item = page.getByTestId("statusbar").getByText("Notes view");
+      await notesView(page).waitFor();
+      await item.waitFor();
+      await page.evaluate((id) => window.platform.workbench.close(`${id}/notes`), NOTES);
+      await item.waitFor({ state: "detached" });
+      await page.getByTestId("activitybar").getByRole("button", { name: "Notes" }).click();
+      await item.waitFor();
+    });
+  });
+});
+
 describe("dialogs and notifications raised by a fragment", () => {
   it("return the user's answers to the fragment", async () => {
     await withPage(async ({ page }) => {
