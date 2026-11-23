@@ -79,6 +79,8 @@ function positionFor(
   tags: Map<string, GroupTag>,
   zone: GroupTag,
 ): AddPanelPositionOptions | undefined {
+  // No group yet: the first one. Once there are groups, always an explicit place: dockview would
+  // otherwise add to its active group, whatever zone (or the docked surfaces) it holds.
   if (api.groups.length === 0) return undefined;
   if (zone === "left") return { direction: "left" };
   if (zone === "dock") return { direction: "right" };
@@ -93,7 +95,9 @@ function positionFor(
   if (right) return { referenceGroup: right, direction: "left" };
   const bottom = groupOf(api, tags, "bottom");
   if (bottom) return { referenceGroup: bottom, direction: "above" };
-  return undefined;
+  const dock = groupOf(api, tags, "dock");
+  if (dock) return { referenceGroup: dock, direction: "left" };
+  return { direction: "left" };
 }
 
 /**
@@ -207,9 +211,10 @@ export function ZoneDock({
           tag = current;
           tags.set(panel.group.id, tag);
         }
-        // A view dragged among the docked surfaces is in the right zone.
-        const zone = tag === "dock" ? "right" : tag;
-        if (zone !== current) workbench.move(panel.id, zone);
+        // The docked surfaces' group is no zone: a view there keeps its zone, and the next sync
+        // moves it back to that zone's group.
+        if (tag === "dock") continue;
+        if (tag !== current) workbench.move(panel.id, tag);
       }
     }
     const subscriptions = [

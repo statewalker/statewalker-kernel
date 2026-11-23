@@ -305,6 +305,111 @@ describe("layouts are remembered per device mode", () => {
   });
 });
 
+describe("a reload at one width leaves the other modes' layouts alone", () => {
+  const sizes = { phone: PHONE, tablet: TABLET, desktop: DESKTOP } as const;
+  type Mode = keyof typeof sizes;
+  /** Every mode's saved layout, as stored (text). */
+  const storedLayouts = (page: Page) =>
+    page.evaluate(() =>
+      Object.fromEntries(
+        ["phone", "tablet", "desktop"].map((m) => [
+          m,
+          localStorage.getItem(`org.statewalker.apps.notes:workbench/layouts/${m}`),
+        ]),
+      ),
+    );
+
+  const cases: [Mode, Mode][] = [
+    ["desktop", "phone"],
+    ["desktop", "tablet"],
+    ["phone", "desktop"],
+    ["tablet", "desktop"],
+  ];
+  for (const [first, second] of cases) {
+    it(`${first} layout saved, then ${second}'s: a reload at ${second} width changes neither`, async () => {
+      await withApp(sizes[first], async ({ page }) => {
+        await expect.poll(() => mode(page)).toBe(first);
+        await notesView(page).waitFor();
+        // The first mode: the surfaces view alone.
+        await page.evaluate(
+          ([s, n]) => {
+            window.platform.workbench.open(s as string);
+            window.platform.workbench.close(n as string);
+          },
+          [SURFACES_VIEW, NOTES_VIEW],
+        );
+        await expect
+          .poll(() => savedLayout(page, first))
+          .toMatchObject({
+            zones: { center: [], right: [SURFACES_VIEW] },
+          });
+        // The second mode: the notes view and the surfaces view.
+        await page.setViewportSize(sizes[second]);
+        await expect.poll(() => mode(page)).toBe(second);
+        await openView(page, SURFACES_VIEW);
+        await expect
+          .poll(() => savedLayout(page, second))
+          .toMatchObject({
+            zones: { center: [NOTES_VIEW], right: [SURFACES_VIEW] },
+          });
+        const before = await storedLayouts(page);
+
+        await reload(page);
+        await expect.poll(() => mode(page)).toBe(second);
+        await expect
+          .poll(() => page.evaluate(() => [...window.platform.workbench.opened()]))
+          .toEqual([NOTES_VIEW, SURFACES_VIEW]);
+        await expect(storedLayouts(page)).resolves.toEqual(before);
+        await page.setViewportSize(sizes[first]);
+        await expect.poll(() => mode(page)).toBe(first);
+        await expect
+          .poll(() => page.evaluate(() => [...window.platform.workbench.opened()]))
+          .toEqual([SURFACES_VIEW]);
+      });
+    });
+  }
+});
+
+describe("the dock's zones", () => {
+  it("a centre view opened while only docked surfaces are in the dock opens in the centre, left of them", async () => {
+    await withApp(DESKTOP, async ({ page }) => {
+      await notesView(page).waitFor();
+      await openView(page, SURFACES_VIEW);
+      const inline = page.locator('[data-surface-view][data-where="inline"]');
+      await inline.locator(".cm-content").waitFor();
+      await inline.getByRole("button", { name: "Pop out" }).click();
+      const docked = page.locator('[data-surface-view][data-where="dock"]');
+      await docked.locator(".cm-content").waitFor();
+      await page.evaluate(
+        ([n, s]) => {
+          window.platform.workbench.close(n as string);
+          window.platform.workbench.close(s as string);
+        },
+        [NOTES_VIEW, SURFACES_VIEW],
+      );
+      // Exactly "Notes": the docked surface's tab is "Trip notes".
+      await expect.poll(() => page.locator('.dv-tab[aria-label="Notes"]').count()).toBe(0);
+      await expect(page.evaluate(() => window.platform.workbench.docked().length)).resolves.toBe(1);
+
+      await openView(page, NOTES_VIEW);
+      await notesView(page).waitFor();
+      await docked.locator(".cm-content").waitFor(); // the surface stays docked, beside it
+      await expect(page.evaluate(() => window.platform.workbench.layout().zones)).resolves.toEqual({
+        center: [NOTES_VIEW],
+        left: [],
+        right: [],
+        bottom: [],
+      });
+      const notesBox = await notesView(page).boundingBox();
+      const dockBox = await docked.boundingBox();
+      expect((notesBox?.x ?? 0) + (notesBox?.width ?? 0)).toBeLessThanOrEqual(dockBox?.x ?? 0);
+      await expect
+        .poll(() => savedLayout(page, "desktop"))
+        .toMatchObject({ zones: { center: [NOTES_VIEW], right: [] } });
+    });
+  });
+});
+
 /** A touch drag through CDP: press, hold until dockview arms the drag, move in steps, release. */
 async function touchDrag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }) {
   const cdp = await page.context().newCDPSession(page);

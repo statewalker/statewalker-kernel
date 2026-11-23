@@ -56,6 +56,7 @@ import {
 } from "@statewalker/system.profile";
 import {
   createSystemWorkbench,
+  deviceModeOf,
   type LayoutContribution,
   SYSTEM_WORKBENCH_ID,
   systemWorkbenchArchive,
@@ -258,6 +259,9 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   const workbench = createSystemWorkbench({
     commands: commands.bus,
     locale,
+    // The device mode of the window's width from the start: before React renders, the URL state
+    // (bindLayoutToUrl) already edits, and so saves, the current mode's layout.
+    mode: deviceModeOf(window.innerWidth),
     profile: userProfile,
     layouts: applicationLayouts(definition),
   });
