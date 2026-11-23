@@ -1,0 +1,72 @@
+// The client aspect of notes. Its code is client/index.js, built from client/index.tsx with the
+// shared modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the
+// shell's import map; its CSS is client/index.css.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "views",
+      "data": {
+        "id": "notes",
+        "title": "Notes"
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "NotesView"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "add-note",
+          "summary": "Add a note",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "The number of notes",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["count"],
+                    "properties": {
+                      "count": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "labels": {
+          "fr": {
+            "title": "Ajouter une note"
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "addNote"
+      }
+    }
+  ]
+}

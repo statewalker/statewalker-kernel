@@ -1,0 +1,13 @@
+{
+  "$comment": "The platform version this shell implements, and the modules it shares through its import map. Fragments declare engines.platform against the version; a shared module moving out of its range here is a platform version change (statewalker-root ADR 2026-11-18-react-only-shell-with-shared-modules). The build refuses an installed module outside its range.",
+  "version": "0.1.0",
+  "shared": {
+    "react": "^19.3.0",
+    "react/jsx-runtime": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-dom/client": "^19.3.0",
+    "dockview-react": "^8.9.0",
+    "@statewalker/ui.view.shadcn": "^0.1.4",
+    "@statewalker/client.core": "^0.1.0"
+  }
+}

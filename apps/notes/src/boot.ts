@@ -1,0 +1,125 @@
+// The shell's boot: the kernel with its core fragments (system.commands, system.workbench), the
+// client API installed, and the app's fragments fetched, installed, enabled and activated. React-
+// free; main.tsx renders the result.
+import { installClient } from "@statewalker/client.core";
+import {
+  createKernel,
+  type FragmentFiles,
+  type InstalledFragment,
+  type Kernel,
+  parseJsonc,
+} from "@statewalker/kernel.core";
+import {
+  type CommandBus,
+  createSystemCommands,
+  SYSTEM_COMMANDS_ID,
+  systemCommandsArchive,
+} from "@statewalker/system.commands";
+import {
+  createSystemWorkbench,
+  SYSTEM_WORKBENCH_ID,
+  systemWorkbenchArchive,
+  type Workbench,
+} from "@statewalker/system.workbench";
+import platform from "../platform.json" with { type: "json" };
+
+/** What the shell runs: also `window.platform`, for tests and the console. */
+export interface Platform {
+  readonly kernel: Kernel;
+  readonly commands: CommandBus;
+  readonly workbench: Workbench;
+}
+
+declare global {
+  interface Window {
+    platform: Platform;
+  }
+}
+
+export interface BootOptions {
+  /** Where the app's fragments are served: `<base>fragments/<id>/...`. */
+  readonly base: URL;
+}
+
+/** The folder of a fragment's aspect, relative to the page. */
+function aspectUrl(base: URL, fragment: InstalledFragment, aspect: "client"): URL {
+  const dir = fragment.manifest.aspects[aspect]?.dir ?? aspect;
+  return new URL(`fragments/${fragment.id}/${dir}/`, base);
+}
+
+async function text(url: URL): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status} ${response.statusText}`);
+  return response.text();
+}
+
+/** A fragment's root files, as the kernel installs them: `fragment.jsonc` and its aspect files. */
+async function fetchArchive(base: URL, id: string): Promise<FragmentFiles> {
+  const root = new URL(`fragments/${id}/`, base);
+  const manifest = await text(new URL("fragment.jsonc", root));
+  const aspects = Object.keys(
+    (parseJsonc(manifest).value as { aspects?: Record<string, unknown> })?.aspects ?? {},
+  );
+  const files: Record<string, string> = { "fragment.jsonc": manifest };
+  for (const aspect of aspects) {
+    const name = aspect === "server" ? "wrangler.jsonc" : `fragment.${aspect}.jsonc`;
+    files[name] = await text(new URL(name, root));
+  }
+  return files;
+}
+
+/**
+ * The client half of an app fragment: its prebuilt stylesheet (`<client dir>/index.css`) is
+ * linked while the aspect is active. Its code loads lazily, through its extensions' references.
+ */
+async function activateClient(base: URL, fragment: InstalledFragment): Promise<() => void> {
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = new URL("index.css", aspectUrl(base, fragment, "client")).href;
+  link.dataset.fragment = fragment.id;
+  await new Promise<void>((done) => {
+    link.onload = () => done();
+    link.onerror = () => {
+      link.remove(); // a fragment without CSS
+      done();
+    };
+    document.head.append(link);
+  });
+  return () => link.remove();
+}
+
+export async function boot({ base }: BootOptions): Promise<Platform> {
+  const commands = createSystemCommands();
+  const workbench = createSystemWorkbench();
+  const kernel = createKernel({
+    platform: { version: platform.version, bindings: [] },
+    core: [systemCommandsArchive, systemWorkbenchArchive],
+    onError: (id, aspect, error) => console.error(`[kernel] ${id} (${aspect}):`, error),
+    resolvers: {
+      // A client module export, from the fragment's client folder.
+      module: async (ref, { contributor }) => {
+        const url = new URL(ref.module, aspectUrl(base, contributor, "client")).href;
+        const module = (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
+        return module[ref.export ?? "default"];
+      },
+      command: (ref) => (input: unknown) => commands.bus.call(ref.command, input),
+    },
+    activators: {
+      client: (fragment, context) => {
+        if (fragment.id === SYSTEM_COMMANDS_ID) return commands.activate(context);
+        if (fragment.id === SYSTEM_WORKBENCH_ID) return workbench.activate(context);
+        return activateClient(base, fragment);
+      },
+    },
+  });
+  installClient({ commands: commands.bus });
+  await kernel.start();
+
+  const index = JSON.parse(await text(new URL("fragments/index.json", base))) as {
+    fragments: string[];
+  };
+  const archives = await Promise.all(index.fragments.map((id) => fetchArchive(base, id)));
+  for (const fragment of await kernel.install(archives)) await kernel.enable(fragment.id);
+  await kernel.activate("client");
+  return { kernel, commands: commands.bus, workbench: workbench.workbench };
+}

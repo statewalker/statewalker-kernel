@@ -1,0 +1,37 @@
+{
+  "name": "@statewalker/notes.app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The notes demo of the platform: the kernel with system.commands and system.workbench, and a client-only notes fragment installed while it runs.",
+  "license": "MIT",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "node scripts/serve.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@statewalker/client.core": "workspace:^",
+    "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/system.commands": "workspace:^",
+    "@statewalker/system.workbench": "workspace:^",
+    "@statewalker/ui.view.shadcn": "workspace:^",
+    "dockview-react": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:"
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@types/semver": "catalog:",
+    "playwright": "catalog:",
+    "semver": "catalog:",
+    "tailwindcss": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

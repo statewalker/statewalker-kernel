@@ -1,0 +1,15 @@
+// The notes fragment of apps/notes: client-only. It contributes a view to system.workbench's
+// `views` point and a command to system.commands' `commands` point, without requiring either.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "org.statewalker.notes",
+  "version": "0.1.0",
+  "name": "Notes",
+  "description": "Write short notes.",
+  "engines": {
+    "platform": "^0.1.0"
+  },
+  "aspects": {
+    "client": {}
+  }
+}
