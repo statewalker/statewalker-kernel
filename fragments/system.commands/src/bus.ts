@@ -80,9 +80,7 @@ export function createSystemCommands(): SystemCommands {
     }
   }
 
-  function add(extension: Extension) {
-    const entry = entryOf(extension);
-    if (live.has(entry.id)) return;
+  function liveOf(extension: Extension, entry: CommandEntry): Live {
     const declaration = Command.required(entry.id)
       .input(jsonStandardSchema(entry.input))
       .output(jsonStandardSchema(entry.output ?? true))
@@ -92,15 +90,36 @@ export function createSystemCommands(): SystemCommands {
     const unlisten = reference
       ? substrate.listen(declaration, (cmd) => reference.call(cmd.payload, context))
       : undefined;
-    live.set(entry.id, { entry, declaration, unlisten });
+    return { entry, declaration, unlisten };
   }
 
-  function remove(extension: Extension) {
-    const id = entryOf(extension).id;
-    const found = live.get(id);
-    if (found?.entry.extension !== extension) return;
-    found.unlisten?.();
-    live.delete(id);
+  /**
+   * Make the live commands those of `extensions`, the first extension per command id winning:
+   * a record whose extension is still the winner is kept, so a duplicate takes over when the
+   * extension before it leaves. Returns whether anything changed.
+   */
+  function sync(extensions: readonly Extension[]): boolean {
+    const next = new Map<string, Live>();
+    let changed = false;
+    for (const extension of extensions) {
+      const entry = entryOf(extension);
+      if (next.has(entry.id)) continue;
+      const kept = live.get(entry.id);
+      if (kept?.entry.extension === extension) next.set(entry.id, kept);
+      else {
+        next.set(entry.id, liveOf(extension, entry));
+        changed = true;
+      }
+    }
+    for (const [id, record] of live) {
+      if (next.get(id) === record) continue;
+      record.unlisten?.();
+      changed = true;
+    }
+    if (!changed) return false;
+    live.clear();
+    for (const [id, record] of next) live.set(id, record);
+    return true;
   }
 
   const bus: CommandBus = {
@@ -129,10 +148,8 @@ export function createSystemCommands(): SystemCommands {
   return {
     bus,
     activate(context) {
-      const stop = context.extensions.observe(COMMANDS_POINT, (_all, { added, removed }) => {
-        for (const e of removed) remove(e);
-        for (const e of added) add(e);
-        if (added.length > 0 || removed.length > 0) notify();
+      const stop = context.extensions.observe(COMMANDS_POINT, (all) => {
+        if (sync(all)) notify();
       });
       const stopKeys = context.extensions.observe(KEYBINDINGS_POINT, (all, { added, removed }) => {
         keybindings = all.map((e) => ({

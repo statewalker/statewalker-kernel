@@ -1,5 +1,6 @@
+import { extensionContributionsSlot } from "@statewalker/kernel.core";
 import { describe, expect, it } from "vitest";
-import { CommandCallError } from "../src/index.js";
+import { CommandCallError, harnessTools } from "../src/index.js";
 import { command, fragment, operation, platform } from "./helpers.js";
 
 const NOTES = "org.example.notes";
@@ -69,5 +70,25 @@ describe("commands follow their fragment", () => {
     await kernel.deactivate("client");
     expect(bus.list()).toEqual([]);
     await expect(bus.call(`${NOTES}/list`)).rejects.toMatchObject({ kind: "unknown-command" });
+  });
+
+  it("a live duplicate of a command takes over when the first is withdrawn", async () => {
+    const { kernel, bus } = await platform([fragment(NOTES)], {
+      [NOTES]: { v1: () => ({ v: 1 }), v2: () => ({ v: 2 }) },
+    });
+    const contribute = (key: string, handler: string) =>
+      kernel.slots.register(extensionContributionsSlot("client"), `${NOTES}/${key}`, {
+        contributor: NOTES,
+        point: "commands",
+        data: { operation: operation("list"), exposures: { agent: { action: "read" } } },
+        reference: { module: "./commands.js", export: handler },
+      });
+    const withdrawFirst = contribute("first", "v1");
+    contribute("second", "v2");
+    await expect(bus.call(`${NOTES}/list`)).resolves.toEqual({ v: 1 });
+    withdrawFirst();
+    expect(bus.list().map((c) => c.id)).toEqual([`${NOTES}/list`]);
+    expect(harnessTools(bus.list())).toHaveLength(1);
+    await expect(bus.call(`${NOTES}/list`)).resolves.toEqual({ v: 2 });
   });
 });
