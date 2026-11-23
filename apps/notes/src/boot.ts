@@ -1,14 +1,16 @@
 // The shell's boot: the kernel with its core fragments (system.profile, the user's profile in
 // localStorage; system.commands; system.workbench, its chrome running commands on system.commands'
 // bus and keeping its layouts per device mode in the profile; system.a2ui; system.appearance;
-// system.host with the browser's host services as defaults), the client API (commands, dialogs,
-// notifications, host services) and the A2UI model installed, and the app's fragments fetched,
+// system.host with the browser's host services as defaults; system.settings, every fragment's
+// settings in one view, the values in the profile), the client API (commands, dialogs,
+// notifications, host services, settings) and the A2UI model installed, and the app's fragments fetched,
 // installed, enabled and activated. The application definition (application.json) gives
 // system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
 // restored from the profile afterwards; its default layout is the workbench's default layout for
 // every device mode. React-free; main.tsx renders the result.
 import { installClient } from "@statewalker/client.core";
 import {
+  activeFragmentsSlot,
   createKernel,
   enabledFragmentsSlot,
   type FragmentFiles,
@@ -55,6 +57,12 @@ import {
   systemProfileArchive,
 } from "@statewalker/system.profile";
 import {
+  createSystemSettings,
+  type Settings,
+  SYSTEM_SETTINGS_ID,
+  systemSettingsArchive,
+} from "@statewalker/system.settings";
+import {
   createSystemWorkbench,
   deviceModeOf,
   type LayoutContribution,
@@ -74,6 +82,8 @@ export interface Platform {
   /** The user's profile on this device (system.profile): kernel records, layouts per mode. */
   readonly profile: ProfileStore;
   readonly appearance: Appearance;
+  /** system.settings: every enabled fragment's settings page, the values in the profile. */
+  readonly settings: Settings;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
   /** Whether this run started from a fresh profile (and installed the baseline). */
@@ -82,6 +92,8 @@ export interface Platform {
   readonly slots: {
     readonly installed: typeof installedFragmentsSlot;
     readonly enabled: typeof enabledFragmentsSlot;
+    /** The fragments whose client aspect is active. */
+    readonly active: ReturnType<typeof activeFragmentsSlot>;
   };
   /** system.host: the host services in effect (`services`), and who provides each. */
   readonly host: Pick<SystemHost, "services" | "provider">;
@@ -119,6 +131,15 @@ export interface BootOptions {
   readonly locale?: string;
   /** The user's profile; localStorage under `<application id>:` by default. */
   readonly profile?: ProfileStore;
+}
+
+/** `load` run once, its promise shared. */
+function once<T>(load: () => Promise<T>): () => Promise<T> {
+  let loaded: Promise<T> | undefined;
+  return () => {
+    loaded ??= load();
+    return loaded;
+  };
 }
 
 /** The folder of a fragment's aspect, relative to the page. */
@@ -270,9 +291,16 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   const a2ui = createSystemA2ui({ commands: commands.bus });
   // The browser's clipboard, file picker and URL hash, until a fragment contributes its own.
   const host = createSystemHost({ defaults: createBrowserHostServices() });
+  // Every fragment's settings page, its values in the profile (`settings/<fragment-id>`).
+  const settings = createSystemSettings({ profile: userProfile });
   /** Core fragments' client modules: what their own references (`./index.js`) resolve to. */
-  const coreModules: Record<string, Record<string, unknown>> = {
-    [SYSTEM_WORKBENCH_ID]: workbench.module,
+  const coreModules: Record<string, () => Promise<Record<string, unknown>>> = {
+    [SYSTEM_WORKBENCH_ID]: async () => workbench.module,
+    // The settings view is React: its module loads with the view, bound to the model.
+    [SYSTEM_SETTINGS_ID]: once(async () => {
+      const client = await import("@statewalker/system.settings/client");
+      return client.settingsModule(settings.settings);
+    }),
   };
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
@@ -283,15 +311,19 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
       systemA2uiArchive,
       systemAppearanceArchive,
       systemHostArchive,
+      systemSettingsArchive,
     ],
     profile: userProfile,
     baseline: definition.baseline,
     onError: (id, aspect, error) => console.error(`[kernel] ${id} (${aspect}):`, error),
+    // "Remove with data": the fragment's settings values leave the profile. A plain removal
+    // keeps them, so a reinstall finds them.
+    removeData: (fragment) => settings.removeData(fragment.id),
     resolvers: {
       // A client module export, from the fragment's client folder.
       module: async (ref, { contributor }) => {
         const core = coreModules[contributor.id];
-        if (core) return core[ref.export ?? "default"];
+        if (core) return (await core())[ref.export ?? "default"];
         const url = new URL(ref.module, aspectUrl(base, contributor, "client")).href;
         const module = (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
         return module[ref.export ?? "default"];
@@ -306,6 +338,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
         if (fragment.id === SYSTEM_APPEARANCE_ID) return appearance.activate(context);
         if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
+        if (fragment.id === SYSTEM_SETTINGS_ID) return settings.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -315,6 +348,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     dialogs: workbench.workbench.dialogs,
     notifications: workbench.workbench.notifications,
     host: host.services,
+    settings: settings.settings,
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -330,8 +364,13 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     profile: userProfile,
     host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
+    settings: settings.settings,
     application: definition,
     firstRun,
-    slots: { installed: installedFragmentsSlot, enabled: enabledFragmentsSlot },
+    slots: {
+      installed: installedFragmentsSlot,
+      enabled: enabledFragmentsSlot,
+      active: activeFragmentsSlot("client"),
+    },
   };
 }

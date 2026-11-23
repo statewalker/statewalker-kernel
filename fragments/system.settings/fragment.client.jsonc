@@ -1,0 +1,131 @@
+// The client aspect of system.settings: the `settings` extension point, and the settings view
+// with its activity bar entry on system.workbench's points. Kept equal to src/archive.ts by
+// tests/settings.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "settings": {
+      "description": "A fragment's settings page: its settings as a JSON Schema, values per device.",
+      "schema": {
+        "type": "object",
+        "required": ["schema"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "description": "The page's title; the fragment's name by default.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "order": {
+            "description": "Pages are sorted by order (0 by default), then title.",
+            "type": "number"
+          },
+          "schema": {
+            "description": "The settings: a JSON Schema 2020-12 object whose properties are the settings.",
+            "type": "object",
+            "required": ["type", "properties"],
+            "additionalProperties": false,
+            "properties": {
+              "$schema": {
+                "const": "https://json-schema.org/draft/2020-12/schema"
+              },
+              "type": {
+                "const": "object"
+              },
+              "properties": {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {
+                  "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "object",
+                  "required": ["type"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "type": {
+                      "enum": ["string", "number", "integer", "boolean"]
+                    },
+                    "title": {
+                      "description": "The setting's label in the settings view.",
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128
+                    },
+                    "description": {
+                      "description": "A line under the label.",
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 512
+                    },
+                    "default": {
+                      "description": "The value while the user has set none.",
+                      "type": ["string", "number", "boolean"]
+                    },
+                    "enum": {
+                      "description": "The values to choose from.",
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 64,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": ["string", "number"]
+                      }
+                    },
+                    "minimum": {
+                      "type": "number"
+                    },
+                    "maximum": {
+                      "type": "number"
+                    },
+                    "minLength": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "maxLength": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "pattern": {
+                      "type": "string",
+                      "maxLength": 512
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "extensions": [
+    {
+      "point": "views",
+      "data": {
+        "id": "settings",
+        "title": "Settings"
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "SettingsView"
+      }
+    },
+    {
+      "point": "activitybar",
+      "data": {
+        "id": "settings",
+        "title": "Settings",
+        "order": 1000,
+        "view": "system.settings/settings"
+      }
+    }
+  ]
+}

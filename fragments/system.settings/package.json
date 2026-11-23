@@ -1,0 +1,78 @@
+{
+  "name": "@statewalker/system.settings",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The system.settings core fragment: the settings extension point (each fragment's settings as a JSON Schema), the settings model over the user's profile (values validated on write and on read, defaults from the schema, one namespace per fragment), and its client half, one settings view in the workbench.",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/fragments/system.settings#readme",
+  "author": {
+    "name": "Mikhail Kotelnikov",
+    "email": "mikhail.kotelnikov@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "fragments/system.settings"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "source": "./client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client.css": "./dist/client.css"
+  },
+  "files": [
+    "dist",
+    "src",
+    "client",
+    "fragment.jsonc",
+    "fragment.client.jsonc"
+  ],
+  "scripts": {
+    "build": "tsdown && tailwindcss -i client/styles.css -o dist/client.css --minify",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "lint": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "catalog:",
+    "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/ui.view.shadcn": "workspace:^"
+  },
+  "peerDependencies": {
+    "react": "catalog:peers"
+  },
+  "devDependencies": {
+    "@statewalker/system.profile": "workspace:^",
+    "@statewalker/system.workbench": "workspace:^",
+    "@tailwindcss/cli": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

@@ -281,7 +281,10 @@ describe("static contributions", () => {
 
       await expect(menubar(page).getByRole("menuitem", { name: "Notes" }).count()).resolves.toBe(0);
       await expect(page.getByTestId("statusbar").getByRole("button").count()).resolves.toBe(0);
-      await expect(page.getByTestId("activitybar").getByRole("button").count()).resolves.toBe(0);
+      // system.settings' own entry stays; the fragment's is gone.
+      await expect(
+        page.getByTestId("activitybar").getByRole("button", { name: "Notes" }).count(),
+      ).resolves.toBe(0);
       await expect(page.evaluate(() => window.platform.workbench.keybindings())).resolves.toEqual(
         [],
       );

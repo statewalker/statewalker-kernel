@@ -1,6 +1,6 @@
 // The client aspect of notes: a view, two commands, and the chrome that reaches them (a menu bar
 // menu, the view's context and tab menus, a keybinding, a status bar item, an activity bar entry),
-// plus the dialog and the notification new-note raises. All static: the workbench shows them
+// plus the dialog and the notification new-note raises, and its settings page (system.settings). All static: the workbench shows them
 // before client/index.js loads. Its code is client/index.js, built from client/index.tsx with the
 // shared modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the
 // shell's import map; its CSS is client/index.css.
@@ -209,6 +209,29 @@
         "id": "notes",
         "title": "Notes",
         "view": "org.statewalker.notes/notes"
+      }
+    },
+    {
+      "point": "settings",
+      "data": {
+        "title": "Notes",
+        "description": "How the notes view shows your notes.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sort": {
+              "type": "string",
+              "title": "Sort notes by",
+              "enum": ["added", "alphabetical"],
+              "default": "added"
+            },
+            "copyButtons": {
+              "type": "boolean",
+              "title": "Show Copy buttons",
+              "default": true
+            }
+          }
+        }
       }
     }
   ]

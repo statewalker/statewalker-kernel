@@ -3,12 +3,14 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ClientApiError,
   type ClientCommands,
+  type ClientSettings,
   commands,
   dialogs,
   type HostServices,
   host,
   installClient,
   notifications,
+  settings,
   type UrlState,
 } from "../src/index.js";
 
@@ -172,5 +174,53 @@ describe("dialogs and notifications", () => {
       ["dialog", "org.example.notes/new-note", { who: "you" }],
       ["notification", "org.example.notes/saved", undefined],
     ]);
+  });
+});
+
+describe("settings", () => {
+  /** The host's settings: one value per fragment namespace. */
+  function fakeSettings(): ClientSettings {
+    const values: Record<string, Record<string, string | number | boolean>> = {
+      "org.example.notes": { sort: "added" },
+      "org.example.other": { sort: "theirs" },
+    };
+    return {
+      of: (fragment) => ({
+        values: () => ({ ...values[fragment] }),
+        get: (key) => values[fragment]?.[key],
+        set(key, value) {
+          values[fragment] = { ...values[fragment], [key]: value as string };
+        },
+        reset(key) {
+          if (key) delete values[fragment]?.[key];
+          else values[fragment] = {};
+        },
+        observe(listener) {
+          listener({ ...values[fragment] });
+          return () => {};
+        },
+      }),
+    };
+  }
+
+  it("are refused before the install, and when the host installed none", () => {
+    expect(() => settings.of("org.example.notes").values()).toThrow(ClientApiError);
+    uninstall = installClient({ commands: fakeBus() });
+    expect(() => settings.of("org.example.notes").get("sort")).toThrow(ClientApiError);
+    expect(() => settings.of("org.example.notes").observe(() => {})).toThrow(ClientApiError);
+  });
+
+  it("reach the host's settings, in the fragment's namespace", () => {
+    uninstall = installClient({ commands: fakeBus(), settings: fakeSettings() });
+    const mine = settings.of("org.example.notes");
+    expect(mine.get("sort")).toBe("added");
+    mine.set("sort", "alphabetical");
+    expect(mine.values()).toEqual({ sort: "alphabetical" });
+    expect(settings.of("org.example.other").get("sort")).toBe("theirs");
+    const seen: unknown[] = [];
+    mine.observe((values) => seen.push(values.sort));
+    mine.reset("sort");
+    expect(mine.get("sort")).toBeUndefined();
+    expect(seen).toEqual(["alphabetical"]);
   });
 });

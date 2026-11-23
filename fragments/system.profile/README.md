@@ -2,7 +2,7 @@
 
 ## What it is
 
-The core fragment that keeps the user's profile on this device: JSON values under string keys, in Web Storage (`localStorage`) or in memory. system.workbench keeps its layouts per device mode there, and the store is a `KernelProfile`, so the kernel can keep its fragment records in it too. It declares no extension points yet: the `secrets` point and the vault come later (statewalker-root#264, #265). It is a private workspace package, `@statewalker/system.profile`, with no React, no DOM and no Node built-ins.
+The core fragment that keeps the user's profile on this device: JSON values under string keys, in Web Storage (`localStorage`) or in memory. system.workbench keeps its layouts per device mode there, system.settings each fragment's settings values (under `settings/<fragment-id>`), and the store is a `KernelProfile`, so the kernel can keep its fragment records in it too. It declares no extension points yet: the `secrets` point and the vault come later (statewalker-root#264, #265). It is a private workspace package, `@statewalker/system.profile`, with no React, no DOM and no Node built-ins.
 
 ## Why it exists
 

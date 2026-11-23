@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, and system.host's host services (`host`: the clipboard, the file picker, the URL state). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
+The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, system.host's host services (`host`: the clipboard, the file picker, the URL state), and a fragment's own settings values (`settings`, from system.settings). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -13,7 +13,7 @@ ADR `2026-11-18-react-only-shell-with-shared-modules` (statewalker-root) shares 
 In a fragment's client code (bundled with `@statewalker/client.core` external):
 
 ```ts
-import { commands, dialogs, host, notifications } from "@statewalker/client.core";
+import { commands, dialogs, host, notifications, settings } from "@statewalker/client.core";
 
 await commands.call("org.statewalker.notes/add-note", { text: "Buy milk" });
 const stop = commands.observe((all) => console.log(all.map((c) => c.id)));
@@ -30,6 +30,12 @@ const { blobs, names } = await host.files.pickFile({ accept: [".md"] });
 const { path, query } = await host.urlState.read();
 await host.urlState.write({ path, query: { ...query, note: "n1" } }, { replace: true });
 const unfollow = host.urlState.observe((state) => console.log(state.query));
+
+// system.settings: this fragment's own values (its `settings` page in fragment.client.jsonc),
+// the schema's defaults until the user sets them in the settings view.
+const own = settings.of("org.statewalker.notes");
+own.get("sort"); // "added"
+const unwatch = own.observe((values) => render(values.sort));
 ```
 
 In the shell, once, at boot:
@@ -42,6 +48,7 @@ const uninstall = installClient({
   dialogs: systemWorkbench.workbench.dialogs,
   notifications: systemWorkbench.workbench.notifications,
   host: systemHost.services,
+  settings: systemSettings.settings,
 });
 ```
 
@@ -50,6 +57,8 @@ const uninstall = installClient({
 | `commands` | `call(id, input)`, `list()`, `observe(listener)` on the installed command bus. |
 | `dialogs`, `notifications` | `show(id, params?)` → `Promise<{ action?, value? }>`: raise a declared dialog or notification by identity (`<fragment-id>/<id>`), its texts filled from `params` (`{name}`); `{}` when dismissed. |
 | `host` | `clipboard` (`writeText`, `readText`), `files` (`pickFile(options?)` → `{ blobs, names }`), `urlState` (`read()`, `write(state, { replace? })`, `observe(listener)`): system.host's services. |
+| `settings` | `of(fragmentId)` → `values()`, `get(key)`, `set(key, value)`, `reset(key?)`, `observe(listener)`: the fragment's own settings values, defaults from its schema; `set` throws when the schema refuses the value. |
+| `ClientSettings`, `ClientFragmentSettings`, `ClientSettingsValues`, `ClientSettingValue` | The settings' shapes the host installs (system.settings' model is one). `settings` is optional, for a host without system.settings. |
 | `installClient(api)` | Install the host's bindings; returns the uninstaller. |
 | `ClientApi`, `ClientCommands`, `ClientCommand`, `ClientRequests`, `ClientAnswer`, `ClientParams` | The shapes the host installs. `dialogs` and `notifications` are optional, for a host without a workbench; `host` is optional, for a host without system.host. |
 | `HostServices`, `ClipboardService`, `FilePickerService`, `UrlStateService`, `UrlState`, `PickFileOptions`, `PickedFiles` | The host services' interfaces, which a fragment contributing one to `host-services` implements. `UrlState`, `PickFileOptions` and `PickedFiles` have the shapes of platform.core's `UrlState`, `PickFilePayload` and `PickFileResult`. |
@@ -57,7 +66,7 @@ const uninstall = installClient({
 
 ## Internals
 
-`commands`, `dialogs`, `notifications` and `host` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, and `host`'s members when it installed no host services. One host at a time: a second `installClient` throws until the first is uninstalled.
+`commands`, `dialogs`, `notifications`, `host` and `settings` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, `host`'s members when it installed no host services, and `settings`' when it installed no settings. A fragment names its own id in `settings.of`: in the page every fragment's code shares one realm, so the namespace is declared, not proven; the model behind it reads and writes only that fragment's namespace and the keys its schema declares. One host at a time: a second `installClient` throws until the first is uninstalled.
 
 ## License
 
