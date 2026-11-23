@@ -213,4 +213,21 @@ describe("migrations", () => {
     await expect(kernel.remove(A, { withData: true })).rejects.toThrow(/storage down/);
     expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
   });
+
+  it("refuse an install or an upgrade whose archive lacks a tag the data has had", async () => {
+    const { kernel, slots } = await setup();
+    await kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]));
+    const refusal = async (run: Promise<unknown>) =>
+      ((await run.catch((e: unknown) => e)) as FragmentInstallError).refusals?.map((r) => r.code);
+    expect(await refusal(kernel.upgrade(A, serverArchive("1.2.0", [V1])))).toEqual([
+      "data-too-new",
+    ]);
+    expect(slots.get(activeFragmentsSlot("client"), A)?.manifest.version).toBe("1.1.0");
+    // Removed with its data kept, the older version cannot come back over migrated data.
+    await kernel.remove(A);
+    expect(await refusal(kernel.install([serverArchive("1.0.0", [V1])]))).toEqual([
+      "data-too-new",
+    ]);
+    await kernel.install([serverArchive("1.1.0", [V1, V2])]);
+  });
 });

@@ -222,6 +222,23 @@ export function createKernel(options: KernelOptions): Kernel {
   async function readApplied(id: string): Promise<string[] | undefined> {
     return (await profile.get(appliedMigrationsKey(id))) as string[] | undefined;
   }
+  /**
+   * The refusal of an archive whose migrations lack tags the fragment's data has had: its
+   * code would run on data migrated past it (no rollback after migrations).
+   */
+  function dataTooNew(
+    manifest: FragmentManifest,
+    tags: readonly string[],
+    applied: readonly string[],
+  ): Refusal | undefined {
+    const unknown = applied.filter((tag) => !tags.includes(tag));
+    if (unknown.length === 0) return undefined;
+    return {
+      id: manifest.id,
+      code: "data-too-new",
+      message: `"${manifest.id}" ${manifest.version} lacks the migrations ${unknown.join(", ")}, which its data has had`,
+    };
+  }
   async function recordEnabled(id: string, enabled: boolean): Promise<void> {
     const record = await readRecord(id);
     if (record && record.enabled !== enabled) await writeRecord(id, { ...record, enabled });
@@ -582,9 +599,10 @@ export function createKernel(options: KernelOptions): Kernel {
     for (const { manifest, files } of read) {
       const applied = await readApplied(manifest.id);
       if (applied === undefined) continue;
-      const pending = readMigrations(files, manifest)
-        .migrations.map((m) => m.tag)
-        .filter((tag) => !applied.includes(tag));
+      const tags = readMigrations(files, manifest).migrations.map((m) => m.tag);
+      const tooNew = dataTooNew(manifest, tags, applied);
+      if (tooNew) refusals.push(tooNew);
+      const pending = tags.filter((tag) => !applied.includes(tag));
       if (pending.length > 0) {
         refusals.push({
           id: manifest.id,
@@ -698,6 +716,11 @@ export function createKernel(options: KernelOptions): Kernel {
       );
     }
     const refusals = checkInstall([{ manifest, files, aspects: aspects.aspects }], false, id);
+    if (upgrading) {
+      const tags = readMigrations(files, manifest).migrations.map((m) => m.tag);
+      const tooNew = dataTooNew(manifest, tags, (await readApplied(id)) ?? []);
+      if (tooNew) refusals.push(tooNew);
+    }
     // The installed fragments requiring it must accept the new version.
     for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
       const range = f.manifest.requires?.[id];

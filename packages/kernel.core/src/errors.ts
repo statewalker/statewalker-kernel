@@ -24,7 +24,12 @@ export type RefusalCode =
    * A reinstall over data kept from an earlier install, bringing migrations that data has
    * not had: an install runs none.
    */
-  | "pending-migrations";
+  | "pending-migrations"
+  /**
+   * An install or an upgrade whose archive lacks migration tags the fragment's data has
+   * had (kept from an earlier install, or applied by an upgrade): old code on newer data.
+   */
+  | "data-too-new";
 
 export interface Refusal {
   /** The fragment refused (as far as it could be read). */
