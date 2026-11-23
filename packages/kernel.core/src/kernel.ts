@@ -27,6 +27,7 @@ import {
   failedFragmentsSlot,
   installedFragmentsSlot,
   resolvedFragmentsSlot,
+  waitingFragmentsSlot,
 } from "./slots.js";
 
 /** What the host offers fragments. */
@@ -173,10 +174,28 @@ export function createKernel(options: KernelOptions): Kernel {
   const registry = createExtensionRegistry(slots, options, onError);
 
   /**
-   * Per aspect, the fragments an activation was asked for but skipped because a
-   * requirement was not active (failed, or waiting itself): `retry` activates them.
+   * The fragments an activation was asked for but skipped because a requirement was not
+   * active (failed, or waiting itself), published in `waitingFragmentsSlot`, which `retry`
+   * reads: each entry's blockers and disposer.
    */
-  const waiting = new Map<Aspect, Set<string>>(ASPECTS.map((a) => [a, new Set()]));
+  const waiting = new Map<string, { blockers: string; dispose: () => void }>();
+  function wait(aspect: Aspect, fragment: InstalledFragment, blockers: string[]) {
+    const key = `${aspect}\u0000${fragment.id}`;
+    const held = waiting.get(key);
+    if (held?.blockers === blockers.join("\u0000")) return;
+    stopWaiting(aspect, fragment.id);
+    const dispose = slots.register(waitingFragmentsSlot(aspect), fragment.id, {
+      fragment,
+      aspect,
+      blockers,
+    });
+    waiting.set(key, { blockers: blockers.join("\u0000"), dispose });
+  }
+  function stopWaiting(aspect: Aspect, id: string) {
+    const key = `${aspect}\u0000${id}`;
+    waiting.get(key)?.dispose();
+    waiting.delete(key);
+  }
 
   /** Ids active per aspect, in activation order. */
   const activeOrder = new Map<Aspect, string[]>(ASPECTS.map((a) => [a, []]));
@@ -281,15 +300,21 @@ export function createKernel(options: KernelOptions): Kernel {
     if (has(slot, f.id)) return;
     // Every requirement, direct or through fragments lacking the aspect, that has the
     // aspect must be active first.
-    const blocked = [...withRequirements(resolvedFragmentsSlot, f.id)].some(
-      (dep) =>
-        dep !== f.id && installed(dep)?.manifest.aspects[aspect] !== undefined && !has(slot, dep),
-    );
-    if (blocked) {
-      waiting.get(aspect)?.add(f.id);
+    const requirements = withRequirements(resolvedFragmentsSlot, f.id);
+    const blockers = ordered(resolvedFragmentsSlot)
+      .map((r) => r.id)
+      .filter(
+        (dep) =>
+          dep !== f.id &&
+          requirements.has(dep) &&
+          installed(dep)?.manifest.aspects[aspect] !== undefined &&
+          !has(slot, dep),
+      );
+    if (blockers.length > 0) {
+      wait(aspect, f, blockers);
       return;
     }
-    waiting.get(aspect)?.delete(f.id);
+    stopWaiting(aspect, f.id);
     try {
       const activator = options.activators?.[aspect];
       const owned = registry.ownedBy(f, aspect);
@@ -312,8 +337,9 @@ export function createKernel(options: KernelOptions): Kernel {
     for (const id of slots.getSnapshot(failedFragmentsSlot(aspect)).keys()) {
       if (!ids || ids.has(id)) clearFailure(aspect, id);
     }
-    const queued = waiting.get(aspect);
-    for (const id of queued ?? []) if (!ids || ids.has(id)) queued?.delete(id);
+    for (const id of slots.getSnapshot(waitingFragmentsSlot(aspect)).keys()) {
+      if (!ids || ids.has(id)) stopWaiting(aspect, id);
+    }
     const order = activeOrder.get(aspect) ?? [];
     for (const id of [...order].reverse()) {
       if (ids && !ids.has(id)) continue;
@@ -593,7 +619,7 @@ export function createKernel(options: KernelOptions): Kernel {
         throw new FragmentLifecycleError(`"${id}" has not failed in the ${aspect} aspect`);
       }
       const targets = id === undefined ? new Set(failed.keys()) : new Set([id]);
-      const queued = waiting.get(aspect) ?? new Set<string>();
+      const queued = slots.getSnapshot(waitingFragmentsSlot(aspect));
       for (const f of ordered(resolvedFragmentsSlot)) {
         if (targets.has(f.id) || queued.has(f.id)) await activateOne(aspect, f);
       }

@@ -5,6 +5,7 @@ import {
   FragmentLifecycleError,
   failedFragmentsSlot,
   resolvedFragmentsSlot,
+  waitingFragmentsSlot,
 } from "../src/index.js";
 import { archive, fragment, ids, membershipLog, newKernel } from "./helpers.js";
 
@@ -132,5 +133,76 @@ describe("failure isolation", () => {
     ]);
     await kernel.stop();
     expect(ids(slots.getSnapshot(failedFragmentsSlot("client")))).toEqual([]);
+  });
+});
+
+describe("fragments waiting for a failed requirement", () => {
+  it("are published in the waiting slot with the requirements they wait for", async () => {
+    const { activator } = breakable("org.example.b");
+    const { kernel, slots } = await setup(activator);
+    await kernel.activate("client");
+    const waiting = slots.getSnapshot(waitingFragmentsSlot("client"));
+    expect(ids(waiting)).toEqual(["org.example.c"]);
+    const entry = waiting.get("org.example.c");
+    expect(entry?.fragment.id).toBe("org.example.c");
+    expect(entry?.aspect).toBe("client");
+    expect(entry?.blockers).toEqual(["org.example.b"]);
+    expect(ids(slots.getSnapshot(waitingFragmentsSlot("server")))).toEqual([]);
+  });
+
+  it("name a blocker reached through a fragment lacking the aspect", async () => {
+    const { kernel, slots } = newKernel({
+      activators: {
+        client: (f) => {
+          if (f.id === "org.example.c") throw new Error("boom");
+        },
+      },
+      onError: () => {},
+    });
+    await kernel.install([
+      archive(fragment("org.example.c")),
+      archive(
+        fragment("org.example.b", {
+          aspects: { agent: {} },
+          requires: { "org.example.c": "^1.0.0" },
+        }),
+      ),
+      archive(fragment("org.example.a", { requires: { "org.example.b": "^1.0.0" } })),
+    ]);
+    for (const id of ["org.example.c", "org.example.b", "org.example.a"]) await kernel.enable(id);
+    await kernel.activate("client");
+    const waiting = slots.getSnapshot(waitingFragmentsSlot("client"));
+    expect(ids(waiting)).toEqual(["org.example.a"]);
+    expect(waiting.get("org.example.a")?.blockers).toEqual(["org.example.c"]);
+  });
+
+  it("leave the waiting slot once retry activates them", async () => {
+    const { activator, fix } = breakable("org.example.b");
+    const { kernel, slots } = await setup(activator);
+    await kernel.activate("client");
+    const waiting = membershipLog(slots, waitingFragmentsSlot("client"));
+    fix("org.example.b");
+    await kernel.retry("client", "org.example.b");
+    expect(waiting.events).toEqual(["-org.example.c"]);
+  });
+
+  it("leave the waiting slot on a cascaded disable or removal, and on stop", async () => {
+    for (const end of ["disable", "remove", "stop"] as const) {
+      const { activator } = breakable("org.example.b");
+      const { kernel, slots } = await setup(activator);
+      await kernel.activate("client");
+      expect(ids(slots.getSnapshot(waitingFragmentsSlot("client")))).toEqual(["org.example.c"]);
+      if (end === "stop") await kernel.stop();
+      else await kernel[end]("org.example.b", { cascade: true });
+      expect(ids(slots.getSnapshot(waitingFragmentsSlot("client")))).toEqual([]);
+    }
+  });
+
+  it("never hold a fragment the host did not ask to activate", async () => {
+    const { activator } = breakable("org.example.a");
+    const { kernel, slots } = await setup(activator);
+    await kernel.activate("client", "org.example.a");
+    expect(ids(slots.getSnapshot(failedFragmentsSlot("client")))).toEqual(["org.example.a"]);
+    expect(ids(slots.getSnapshot(waitingFragmentsSlot("client")))).toEqual([]);
   });
 });

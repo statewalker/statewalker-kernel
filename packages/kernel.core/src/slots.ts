@@ -50,6 +50,36 @@ export function failedFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<Fragme
   return decl;
 }
 
+/**
+ * A resolved fragment an activation of `aspect` was asked for but skipped, because
+ * requirements with the aspect are not active (failed, or waiting themselves).
+ */
+export interface FragmentWaiting {
+  readonly fragment: InstalledFragment;
+  readonly aspect: Aspect;
+  /**
+   * The requirements with the aspect that are not active, direct or reached through
+   * fragments lacking the aspect, in dependency order.
+   */
+  readonly blockers: readonly string[];
+}
+
+const waitingSlots = new Map<Aspect, KeyedSlotDeclaration<FragmentWaiting>>();
+
+/**
+ * Resolved fragments waiting, in `aspect`, for requirements that are not active, with
+ * them, by id (`system:fragments:waiting:<aspect>`). `retry` activates them once their
+ * requirements are; deactivating, disabling, removing and `stop` drop them.
+ */
+export function waitingFragmentsSlot(aspect: Aspect): KeyedSlotDeclaration<FragmentWaiting> {
+  let decl = waitingSlots.get(aspect);
+  if (!decl) {
+    decl = defineKeyedSlot<FragmentWaiting>(`system:fragments:waiting:${aspect}`);
+    waitingSlots.set(aspect, decl);
+  }
+  return decl;
+}
+
 /** An extension contributed at runtime, by code, through `extensionContributionsSlot`. */
 export interface ExtensionContribution {
   /** The contributing fragment's id; the slot key must start with `<contributor>/`. */
