@@ -12,6 +12,7 @@ import { registerPreferenceSetBrowser } from "./handlers/preference-set.browser.
 import { registerPinoLogger } from "./pino-logger.browser.js";
 
 export * from "./bind-url-state.js";
+export * from "./host-services.browser.js";
 export { registerCopyToClipboardBrowser } from "./handlers/copy-to-clipboard.browser.js";
 export { registerDownloadBlobBrowser } from "./handlers/download-blob.browser.js";
 export { registerDownloadToFilesBrowser } from "./handlers/download-to-files.browser.js";
