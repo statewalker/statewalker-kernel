@@ -1,0 +1,15 @@
+// The system.profile core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/profile.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.profile",
+  "version": "0.1.0",
+  "name": "Profile",
+  "description": "The user's profile on this device: settings values, layouts and the kernel's records, kept locally.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

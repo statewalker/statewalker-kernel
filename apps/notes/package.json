@@ -22,6 +22,7 @@
     "@statewalker/system.appearance": "workspace:^",
     "@statewalker/system.commands": "workspace:^",
     "@statewalker/system.host": "workspace:^",
+    "@statewalker/system.profile": "workspace:^",
     "@statewalker/system.workbench": "workspace:^",
     "@statewalker/ui.view.shadcn": "workspace:^",
     "dockview-react": "catalog:",

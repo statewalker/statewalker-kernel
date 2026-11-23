@@ -11,7 +11,7 @@
     },
     {
       "point": "views",
-      "data": { "id": "surfaces", "title": "Surfaces" },
+      "data": { "id": "surfaces", "title": "Surfaces", "zone": "right" },
       "reference": { "module": "./index.js", "export": "SurfacesView" }
     }
   ]

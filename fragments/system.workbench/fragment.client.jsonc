@@ -1,6 +1,6 @@
-// The client aspect of system.workbench: the `views`, `menus`, `notifications`, `dialogs`,
-// `statusbar` and `activitybar` extension points, the workbench's own notification, and the
-// commands that dock surfaces.
+// The client aspect of system.workbench: the `views`, `layouts`, `menus`, `notifications`,
+// `dialogs`, `statusbar` and `activitybar` extension points, the workbench's own notification,
+// and the commands that dock surfaces.
 // Kept equal to src/archive.ts by tests/views.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
@@ -22,6 +22,68 @@
             "description": "The title its tab shows.",
             "type": "string",
             "minLength": 1
+          },
+          "zone": {
+            "description": "The zone it opens in unless asked otherwise; the centre by default.",
+            "enum": ["center", "left", "right", "bottom"]
+          }
+        }
+      }
+    },
+    "layouts": {
+      "description": "Default layouts: the views each zone opens with, per device mode.",
+      "schema": {
+        "type": "object",
+        "required": ["zones"],
+        "additionalProperties": false,
+        "properties": {
+          "mode": {
+            "description": "The device mode it is for; every mode when absent.",
+            "enum": ["phone", "tablet", "desktop"]
+          },
+          "zones": {
+            "description": "The views (`<fragment-id>/<view-id>`) each zone opens with, in tab order.",
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "center": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+                }
+              },
+              "left": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+                }
+              },
+              "right": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+                }
+              },
+              "bottom": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+                }
+              }
+            }
+          },
+          "active": {
+            "description": "The view in front (on a phone, the one shown).",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
           }
         }
       }

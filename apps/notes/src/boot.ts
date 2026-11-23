@@ -1,10 +1,12 @@
-// The shell's boot: the kernel with its core fragments (system.commands, system.workbench, its
-// chrome running commands on system.commands' bus, system.a2ui, system.appearance, system.host
-// with the browser's host services as defaults), the client API (commands, dialogs,
+// The shell's boot: the kernel with its core fragments (system.profile, the user's profile in
+// localStorage; system.commands; system.workbench, its chrome running commands on system.commands'
+// bus and keeping its layouts per device mode in the profile; system.a2ui; system.appearance;
+// system.host with the browser's host services as defaults), the client API (commands, dialogs,
 // notifications, host services) and the A2UI model installed, and the app's fragments fetched,
 // installed, enabled and activated. The application definition (application.json) gives
 // system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
-// restored from the profile afterwards. React-free; main.tsx renders the result.
+// restored from the profile afterwards; its default layout is the workbench's default layout for
+// every device mode. React-free; main.tsx renders the result.
 import { installClient } from "@statewalker/client.core";
 import {
   createKernel,
@@ -47,14 +49,21 @@ import {
   systemHostArchive,
 } from "@statewalker/system.host";
 import {
+  createSystemProfile,
+  type ProfileStore,
+  SYSTEM_PROFILE_ID,
+  systemProfileArchive,
+} from "@statewalker/system.profile";
+import {
   createSystemWorkbench,
+  deviceModeOf,
+  type LayoutContribution,
   SYSTEM_WORKBENCH_ID,
   systemWorkbenchArchive,
   type Workbench,
 } from "@statewalker/system.workbench";
 import application from "../application.json" with { type: "json" };
 import platform from "../platform.json" with { type: "json" };
-import { createStorageProfile, type ListableProfile } from "./profile.js";
 
 /** What the shell runs: also `window.platform`, for tests and the console. */
 export interface Platform {
@@ -62,6 +71,8 @@ export interface Platform {
   readonly commands: CommandBus;
   readonly workbench: Workbench;
   readonly a2ui: A2ui;
+  /** The user's profile on this device (system.profile): kernel records, layouts per mode. */
+  readonly profile: ProfileStore;
   readonly appearance: Appearance;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
@@ -107,7 +118,7 @@ export interface BootOptions {
   /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
   readonly locale?: string;
   /** The user's profile; localStorage under `<application id>:` by default. */
-  readonly profile?: ListableProfile;
+  readonly profile?: ProfileStore;
 }
 
 /** The folder of a fragment's aspect, relative to the page. */
@@ -187,7 +198,7 @@ function activateWhenResolved(kernel: Kernel): () => void {
  */
 async function installFragments(
   kernel: Kernel,
-  profile: ListableProfile,
+  profile: ProfileStore,
   base: URL,
   definition: ApplicationDefinition,
 ): Promise<boolean> {
@@ -229,12 +240,31 @@ async function installFragments(
   return firstRun;
 }
 
+/**
+ * The application's default layout as the workbench's (the host's `layouts`, before the `layouts`
+ * point's): the views it opens, in the centre, in every device mode.
+ */
+export function applicationLayouts(definition: ApplicationDefinition): LayoutContribution[] {
+  return [{ zones: { center: [...definition.layout.open] } }];
+}
+
 export async function boot({ base, locale, profile }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
-  const userProfile = profile ?? createStorageProfile(localStorage, `${definition.id}:`);
+  const system = createSystemProfile(
+    profile ? {} : { storage: localStorage, prefix: `${definition.id}:` },
+  );
+  const userProfile = profile ?? system.store;
   const appearance = createSystemAppearance({ brand: definition.brand });
   const commands = createSystemCommands();
-  const workbench = createSystemWorkbench({ commands: commands.bus, locale });
+  const workbench = createSystemWorkbench({
+    commands: commands.bus,
+    locale,
+    // The device mode of the window's width from the start: before React renders, the URL state
+    // (bindLayoutToUrl) already edits, and so saves, the current mode's layout.
+    mode: deviceModeOf(window.innerWidth),
+    profile: userProfile,
+    layouts: applicationLayouts(definition),
+  });
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
   // is approved (fail-closed).
   const a2ui = createSystemA2ui({ commands: commands.bus });
@@ -247,6 +277,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
     core: [
+      systemProfileArchive,
       systemCommandsArchive,
       systemWorkbenchArchive,
       systemA2uiArchive,
@@ -269,6 +300,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     },
     activators: {
       client: (fragment, context) => {
+        if (fragment.id === SYSTEM_PROFILE_ID) return system.activate(context);
         if (fragment.id === SYSTEM_COMMANDS_ID) return commands.activate(context);
         if (fragment.id === SYSTEM_WORKBENCH_ID) return workbench.activate(context);
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
@@ -295,6 +327,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     commands: commands.bus,
     workbench: workbench.workbench,
     a2ui: a2ui.a2ui,
+    profile: userProfile,
     host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
     application: definition,

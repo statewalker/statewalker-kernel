@@ -1,5 +1,5 @@
-// The shell's entry: boot the platform, render the workbench, open the views the URL names (the
-// app's default layout when it names none) and keep the URL in step with them.
+// The shell's entry: boot the platform, render the workbench in the device mode the window's
+// width gives, and keep the open views in the URL (src/url-layout.ts says which layout wins).
 import "@statewalker/system.workbench/theme.css";
 import "@statewalker/system.workbench/client.css";
 import "@statewalker/system.a2ui/client.css";
@@ -28,10 +28,7 @@ createRoot(app).render(
     </div>
   </div>,
 );
-// The views the URL state names, else the application's default layout (no layout is saved yet,
-// so every run without one opens it); then the URL follows the open views, and they follow it.
-await bindLayoutToUrl(
-  platform.workbench,
-  platform.host.services.urlState,
-  platform.application.layout.open,
-);
+// The views the URL state names win: they open in the current device mode's layout (and are saved
+// there). Otherwise the mode's saved layout shows, else the application's default layout; the URL
+// then follows the open views, and they follow it.
+await bindLayoutToUrl(platform.workbench, platform.host.services.urlState);
