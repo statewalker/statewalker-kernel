@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readArchive } from "@statewalker/fragment-build.core";
@@ -85,5 +86,32 @@ describe("buildFragment", () => {
       new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0xff, 0xfe]),
     );
     await expect(buildFragment(dir)).rejects.toThrow(/client\/logo\.png.*text/);
+  });
+
+  it("packs only what the current config generates, whatever was generated before", async () => {
+    const CLIENT_ONLY = `import { defineFragment } from "@statewalker/fragment-build.core";
+export default defineFragment({
+  id: "org.example.counter",
+  version: "1.0.1",
+  engines: { platform: "^1.0.0" },
+  client: {},
+});
+`;
+    const dir = await copyFixture("counter");
+    await buildFragment(dir); // writes wrangler.jsonc, openapi.json, ...
+    await writeFile(join(dir, "fragment.server.jsonc"), "{}\n"); // left by an older config
+    await writeFile(join(dir, "fragment.config.ts"), CLIENT_ONLY);
+    const rebuilt = await buildFragment(dir);
+    expect(Object.keys(rebuilt.archive.files)).toEqual([
+      "client/index.js",
+      "fragment.client.jsonc",
+      "fragment.jsonc",
+    ]);
+    for (const name of ["wrangler.jsonc", "openapi.json", "fragment.server.jsonc"]) {
+      expect(existsSync(join(dir, name)), name).toBe(false);
+    }
+    const fresh = await copyFixture("counter");
+    await writeFile(join(fresh, "fragment.config.ts"), CLIENT_ONLY);
+    expect((await buildFragment(fresh)).hash).toBe(rebuilt.hash);
   });
 });

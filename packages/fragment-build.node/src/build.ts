@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -46,6 +46,11 @@ export async function generateFragment(dir: string): Promise<Record<string, stri
   const config = await loadFragmentConfig(dir);
   if (!config) return undefined;
   const files = generateFragmentFiles(config);
+  // The config is the contract: a root file it no longer generates (an older config's
+  // wrangler.jsonc, openapi.json, fragment.server.jsonc) is removed, never packed.
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (ROOT_FILES.test(entry.name) && !(entry.name in files)) await rm(join(dir, entry.name));
+  }
   for (const [name, text] of Object.entries(files)) await writeFile(join(dir, name), text);
   return files;
 }
@@ -76,14 +81,20 @@ async function walk(root: string, dir: string, out: Record<string, string>): Pro
  * The files of a fragment's built folder, by relative POSIX path: the root files
  * (`fragment.jsonc`, `fragment.<aspect>.jsonc`, `wrangler.jsonc`, `openapi.json`) and every
  * file under the folder of each aspect `fragment.jsonc` lists (its `dir`, else `server/`,
- * `client/`, `agent/`), skipping dot entries and `node_modules`.
+ * `client/`, `agent/`), skipping dot entries and `node_modules`. `rootFiles`, when given (the
+ * files a config generated), are the root files instead of those on disk.
  */
-export async function readFragmentFolder(dir: string): Promise<Record<string, string>> {
+export async function readFragmentFolder(
+  dir: string,
+  rootFiles?: Readonly<Record<string, string>>,
+): Promise<Record<string, string>> {
   if (!existsSync(dir)) throw new Error(`${dir} does not exist`);
-  const files: Record<string, string> = {};
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    if (entry.isFile() && ROOT_FILES.test(entry.name)) {
-      files[entry.name] = await readFile(join(dir, entry.name), "utf8");
+  const files: Record<string, string> = { ...rootFiles };
+  if (!rootFiles) {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      if (entry.isFile() && ROOT_FILES.test(entry.name)) {
+        files[entry.name] = await readFile(join(dir, entry.name), "utf8");
+      }
     }
   }
   const text = files[MANIFEST_FILE];
@@ -124,8 +135,9 @@ export interface BuildResult {
  */
 export async function buildFragment(dir: string, options: BuildOptions = {}): Promise<BuildResult> {
   if (!existsSync(dir)) throw new Error(`${dir} does not exist`);
-  const generated = (await generateFragment(dir)) !== undefined;
-  const archive = await packArchive(await readFragmentFolder(dir));
+  const rootFiles = await generateFragment(dir);
+  const generated = rootFiles !== undefined;
+  const archive = await packArchive(await readFragmentFolder(dir, rootFiles));
   const { value } = parseJsonc(archive.files[MANIFEST_FILE] ?? "");
   const { id, version } = value as FragmentManifest;
   const outDir = resolve(options.outDir ?? join(dir, "dist"));
