@@ -19,6 +19,7 @@ export { registerPickDirectoryBrowser } from "./handlers/pick-directory.browser.
 export { registerPickFileBrowser } from "./handlers/pick-file.browser.js";
 export { registerPreferenceGetBrowser } from "./handlers/preference-get.browser.js";
 export { registerPreferenceSetBrowser } from "./handlers/preference-set.browser.js";
+export * from "./host-services.browser.js";
 export { PinoLoggerAdapter, registerPinoLogger } from "./pino-logger.browser.js";
 
 /**
