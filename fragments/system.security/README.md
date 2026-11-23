@@ -26,7 +26,7 @@ import {
 | `createSystemSecurity({ slots?, attended? })` → `SystemSecurity` | The fragment's code, held only by the host (system code). |
 | `SystemSecurity` | `issue(principal, grant)`, `revoke(capability)`, `policy()`, `setPolicy(policy)`, `approvals()`, `answer(id, "allow" \| "deny")`, `gate`, `activate(context)`. |
 | `approvalsSlot` | `system:security:approvals`: the calls waiting on the user, by approval id (`ApprovalRequest`). |
-| `capabilityRefusalsSlot` | `system:security:refused`: extensions to `capabilities` refused because their contributor is not system code (`CapabilityRefusal`). |
+| `capabilityRefusalsSlot` | `system:security:refused`: extensions to `capabilities` refused because they are not a system fragment's static extension (`CapabilityRefusal`: `not-system-code` or `runtime-contribution`). |
 | `decide(policy, tool, action)` | The policy's verdict for one call. |
 | `capabilitySchema`, `PERMISSION_PATTERN` | The point's schema; the form of a permission. |
 | `Principal`, `PrincipalKind`, `Grant`, `Policy`, `Verdict`, `ActionKind`, `Answer`, `SecurityRefusal` | The types; the error the gate refuses with (the `cause` of the bus's `forbidden`). |
@@ -99,7 +99,7 @@ The user is the one principal without a capability: a call without `caller` is t
 
 The gate reads the principal from the verified token, never from the caller's word. A token signed by any other key fails verification; an attenuation block's facts are never trusted by the authorizer, so a holder can add checks (`command(...)` and `permission(...)` are the facts they may test) but no rights. Evaluating a token is bounded (`RUN_LIMITS`: 1000 facts, 100 iterations, 100 ms), since its holder writes the attenuation blocks.
 
-`revoke(capability)` adds the token's last block's revocation id: the token is refused from then on, and so is every token narrowed from it (they carry its ids); a narrowed token can be revoked alone. Calls waiting on an approval with a revoked token are refused at once.
+`revoke(capability)` adds the token's last block's revocation id: the token is refused from then on, and so is every token narrowed from it (they carry its ids); a narrowed token can be revoked alone. The ids come from the signature chain alone, with no Datalog evaluated, so no block a holder writes can make revocation fail. Calls waiting on an approval with a revoked token are refused at once.
 
 ### The gate
 
@@ -109,7 +109,7 @@ For a call from a principal (`CallRequest`: the command's entry, the caller, a c
 2. the capability verifies against the root key and is not revoked;
 3. the command is exposed to the principal's kind: an agent only an `agent`-exposed command, a peer only an `http`-exposed one (`mcp` implies `http`); a sandbox any command its grant names;
 4. the token's rights, plus the standing grants of system code to its kind, include `tools.use:<command>` (Biscuit `allow if right({permission})`, the holder's checks applying);
-5. the policy decides: Allow passes, Block is refused, Ask suspends the call. Where nobody attends (`attended: false`, the default) or the capability was issued `unattended`, Ask is refused at once with a reason. Otherwise an `ApprovalRequest` (`id`, `principal`, `command`, `action`, `permission`, `input`, `reason`) is published in `approvalsSlot` until `answer(id, ...)`: `allow` lets the call run, `deny` refuses it; deactivating system.security refuses every waiting call. The call is checked again for activity and revocation after the answer.
+5. the policy decides: Allow passes, Block is refused, Ask suspends the call. Where nobody attends (`attended: false`, the default) or the capability was issued `unattended`, Ask is refused at once with a reason. Otherwise an `ApprovalRequest` (`id`, `principal`, `command`, `action`, `permission`, `input`, `reason`; `input` a deep-frozen copy of its own, so nothing reading the slot reaches the input that runs) is published in `approvalsSlot` until `answer(id, ...)`: `allow` lets the call run, `deny` refuses it; deactivating system.security refuses every waiting call. The call is checked again for activity and revocation after the answer.
 
 A refusal is a `SecurityRefusal`, and the bus rejects the call `forbidden` with it as `cause`.
 
@@ -119,7 +119,7 @@ A refusal is a `SecurityRefusal`, and the bus rejects the call `forbidden` with 
 
 ### The `capabilities` point
 
-An extension's data is `{ principals, permissions, description? }`: a standing grant of these permissions to every principal of these kinds. Only extensions whose contributor is system code (a `system.` id, which the kernel reserves for the fragments shipped with the platform) are applied; any other is kept out and published in `capabilityRefusalsSlot` with the code `not-system-code` while it is live.
+An extension's data is `{ principals, permissions, description? }`: a standing grant of these permissions to every principal of these kinds. Only static extensions of system code are applied: those declared in the aspect file of a `system.` fragment (ids `<contributor>#<n>`; the kernel reserves the prefix for the fragments shipped with the platform). Any other is kept out and published in `capabilityRefusalsSlot` while it is live: a static extension of any other fragment as `not-system-code`, and every runtime contribution (keyed `<contributor>/<name>` in `system:extensions:contributed:*`) as `runtime-contribution`, whatever contributor it names, since a runtime contribution names its contributor itself and the kernel checks only its key's prefix.
 
 ### Correspondence with the harness (statewalker-ai `ai-access`)
 
@@ -140,14 +140,14 @@ An extension's data is `{ principals, permissions, description? }`: a standing g
 | Property | How | Tests |
 | --- | --- | --- |
 | Grants are deny-by-default | A capability grants only the permissions named at issue; none by default; a command not named is refused. | `gate.test.ts` "grants are deny-by-default" |
-| Only system code issues | The root key lives in `createSystemSecurity`'s closure, held by the host; a token signed by any other key is refused; a non-system contribution to `capabilities` is refused, published and grants nothing. | `issuing.test.ts` "only system code issues capabilities", "the capabilities point" |
+| Only system code issues | The root key lives in `createSystemSecurity`'s closure, held by the host; a token signed by any other key is refused; a contribution to `capabilities` that is not a system fragment's static extension (including a runtime contribution claiming a system contributor) is refused, published and grants nothing. | `issuing.test.ts` "only system code issues capabilities", "the capabilities point", "a runtime contribution to the capabilities point" |
 | Capabilities only narrow | Biscuit: facts in attenuation blocks are not trusted by the authorizer; checks are. | `issuing.test.ts` "lets a holder narrow its capability, never widen it" |
 | Exposures bound principals | Agents reach only `agent`-exposed commands, peers only `http`-exposed ones, whatever they are granted. | `gate.test.ts` "exposures" |
 | The user's policy decides | Block refuses; the strictest applying verdict wins; unmatched asks. | `policy.test.ts` "Block", "Ask" |
 | Ask never auto-allows | Ask suspends until `answer`; headless and unattended capabilities are refused at once; deactivation refuses the waiting calls. | `policy.test.ts` "Ask" |
-| Revocation | Revoked tokens and tokens narrowed from them are refused, also when revoked while waiting on an approval. | `gate.test.ts` "revocation", "revoking an issued capability"; `policy.test.ts` "an approved call" |
+| Revocation | Revoked tokens and tokens narrowed from them are refused, also when revoked while waiting on an approval; revocation never evaluates the holder's Datalog. | `gate.test.ts` "revocation", "revoking an issued capability", "revoking a token whose holder's Datalog exceeds the evaluation limits"; `policy.test.ts` "an approved call" |
 | Fail-closed wiring | A bus without a gate refuses every principal's call; an inactive system.security refuses too. | system.commands `bus.test.ts` "callers other than the user"; `fragment.test.ts` |
-| What was approved is what runs | The bus clones the input before the gate and runs that clone. | system.commands `bus.test.ts` "a gated call's input" |
+| What was approved is what runs | The bus clones the input before the gate and runs that clone; the approval request publishes a separate deep-frozen copy. | system.commands `bus.test.ts` "a gated call's input"; `policy.test.ts` "an approval request's input" |
 | The user is not restricted | Calls without a caller never reach the gate. | `policy.test.ts` "the user's own calls"; system.commands `bus.test.ts` "the user's own calls" |
 
 **Not covered yet:**
@@ -156,7 +156,7 @@ An extension's data is `{ principals, permissions, description? }`: a standing g
 - **The root key is ephemeral.** It is generated in memory, so capabilities do not survive a restart, and no other runtime (a server half, a peer) can verify them. Keeping it in the vault (`system.profile`) and sharing a public key come later.
 - **No expiry and no audit.** Tokens carry no time limit; refusals and answers are not logged. Revocations are kept in memory.
 - **Peers are not authenticated here.** A peer's identity is whatever system code issued its capability to; binding it to an HTTPeers identity (third-party blocks) is the peer server's work.
-- **Inputs in approval requests** are published as given (after the copy), for the approvals UI to show; they are not redacted, so a command whose input holds secrets would show them there. Agents never get secret values (ADR `2026-11-20`).
+- **Inputs in approval requests** are published as a frozen copy, for the approvals UI to show; they are not redacted, so a command whose input holds secrets would show them there. Agents never get secret values (ADR `2026-11-20`). An input holding a typed array cannot be frozen, so a call with one is refused when it asks.
 - **Policy storage and modes.** The policy lives in memory; the harness's modes, "approve for this session" and auto mode's classifier are not carried over.
 
 ### Dependencies
