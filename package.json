@@ -22,7 +22,7 @@
     "test": "pnpm -r run test && pnpm run test:repo",
     "typecheck": "pnpm -r run typecheck && tsc -p tests",
     "lint": "biome check --write .",
-    "lint:check": "biome check .",
+    "lint:check": "biome check . && node scripts/check-no-react.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",
     "changeset": "changeset",

@@ -62,7 +62,7 @@ inline.core                                              (shared-* only)
 
 Every package is public; there are no private packages or apps in this repository yet.
 
-This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: a Biome rule fails `lint:check` on any `react` or `react-dom` import there, and `tests/no-react-in-packages.test.ts` checks that the rule holds. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`.
+This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`.
 
 Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
 

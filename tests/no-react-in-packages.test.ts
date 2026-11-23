@@ -62,3 +62,77 @@ describe("the no-React rule on packages/", () => {
     expect(result.status).toBe(0);
   });
 });
+
+// React can also enter without an import: JSX in a .tsx file under the automatic runtime, a
+// tsconfig `jsx` option, or a React dependency in a package.json. `scripts/check-no-react.mjs`
+// (run by `lint:check`) refuses those under packages/.
+function checkNoReact() {
+  const run = spawnSync(process.execPath, [join(ROOT, "scripts", "check-no-react.mjs")], {
+    cwd: ROOT,
+    encoding: "utf8",
+  });
+  return { status: run.status, output: `${run.stdout}${run.stderr}` };
+}
+
+function probe(relativePath: string, source: string) {
+  probes.push(join(ROOT, relativePath.split("/").slice(0, 2).join("/")));
+  mkdirSync(join(ROOT, dirname(relativePath)), { recursive: true });
+  writeFileSync(join(ROOT, relativePath), source);
+}
+
+describe("check-no-react on packages/", () => {
+  it("passes on the repository as it is", () => {
+    expect(checkNoReact()).toMatchObject({ status: 0 });
+  });
+
+  const cases: [string, string, string][] = [
+    [
+      "a .tsx file",
+      "packages/__no-react-probe__/src/view.tsx",
+      "export const C = () => <div />;\n",
+    ],
+    [
+      "a .jsx file",
+      "packages/__no-react-probe__/src/view.jsx",
+      "export const C = () => <div />;\n",
+    ],
+    [
+      "a tsconfig jsx option",
+      "packages/__no-react-probe__/tsconfig.json",
+      '{ "compilerOptions": { "jsx": "react-jsx" } }\n',
+    ],
+    [
+      "a react dependency",
+      "packages/__no-react-probe__/package.json",
+      '{ "name": "probe", "dependencies": { "react": "^19.0.0" } }\n',
+    ],
+    [
+      "a react-dom peer dependency",
+      "packages/__no-react-probe__/package.json",
+      '{ "name": "probe", "peerDependencies": { "react-dom": "^19.0.0" } }\n',
+    ],
+    [
+      "an @types/react dev dependency",
+      "packages/__no-react-probe__/package.json",
+      '{ "name": "probe", "devDependencies": { "@types/react": "^19.0.0" } }\n',
+    ],
+  ];
+
+  for (const [what, path, source] of cases) {
+    it(`fails for ${what}`, () => {
+      probe(path, source);
+      const result = checkNoReact();
+      expect(result.status).toBe(1);
+      expect(result.output).toContain("packages/__no-react-probe__");
+    });
+  }
+
+  it("lets packages-react/ hold .tsx files and React dependencies", () => {
+    probe("packages-react/__no-react-probe__/src/view.tsx", "export const C = () => <div />;\n");
+    probe(
+      "packages-react/__no-react-probe__/package.json",
+      '{ "name": "probe", "dependencies": { "react": "^19.0.0" } }\n',
+    );
+    expect(checkNoReact()).toMatchObject({ status: 0 });
+  });
+});
