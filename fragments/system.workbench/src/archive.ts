@@ -239,6 +239,38 @@ export const fragmentManifest = {
   aspects: { client: {} },
 };
 
+/** The input of `open-surface`: the surface, and the title its tab shows. */
+const surfaceInput = (withTitle: boolean) => ({
+  type: "object",
+  required: ["surfaceId"],
+  additionalProperties: false,
+  properties: {
+    surfaceId: { type: "string", minLength: 1, maxLength: 256 },
+    ...(withTitle ? { title: { type: "string", minLength: 1, maxLength: 256 } } : {}),
+  },
+});
+
+/** A command of the workbench's own, its handler an export of the fragment's client module. */
+const command = (operationId: string, summary: string, withTitle: boolean, handler: string) => ({
+  point: "commands",
+  data: {
+    operation: {
+      operationId,
+      summary,
+      requestBody: { content: { "application/json": { schema: surfaceInput(withTitle) } } },
+      responses: {
+        "200": {
+          description: "Done",
+          content: {
+            "application/json": { schema: { type: "object", additionalProperties: false } },
+          },
+        },
+      },
+    },
+  },
+  reference: { module: "./index.js", export: handler },
+});
+
 export const clientAspect = {
   $schema: `${KERNEL_SCHEMAS}/fragment-aspect.v1.schema.json`,
   extensionPoints: {
@@ -279,6 +311,8 @@ export const clientAspect = {
         severity: "error",
       },
     },
+    command("open-surface", "Pop a surface out into the workbench's dock", true, "openSurface"),
+    command("close-surface", "Take a surface out of the dock", false, "closeSurface"),
   ],
 };
 

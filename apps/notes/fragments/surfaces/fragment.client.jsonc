@@ -1,0 +1,18 @@
+// The client aspect of the surfaces demo. Its code is client/index.js, built from
+// client/index.tsx with the shared modules (react, @statewalker/system.a2ui and its client) left
+// to the shell's import map; the editor's view (CodeMirror) is a lazy chunk beside it.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "catalog",
+      "data": { "name": "NoteEditor" },
+      "reference": { "module": "./index.js", "export": "NoteEditor" }
+    },
+    {
+      "point": "views",
+      "data": { "id": "surfaces", "title": "Surfaces" },
+      "reference": { "module": "./index.js", "export": "SurfacesView" }
+    }
+  ]
+}

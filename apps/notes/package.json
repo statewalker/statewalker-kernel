@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "The notes demo of the platform: the kernel with system.commands and system.workbench, and a client-only notes fragment installed while it runs.",
+  "description": "The notes demo of the platform: the kernel with system.commands, system.workbench and system.a2ui, a client-only notes fragment installed while it runs, and a surfaces demo fragment placing an A2UI surface.",
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -12,14 +12,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@codemirror/commands": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
     "@statewalker/client.core": "workspace:^",
     "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/system.a2ui": "workspace:^",
     "@statewalker/system.commands": "workspace:^",
     "@statewalker/system.workbench": "workspace:^",
     "@statewalker/ui.view.shadcn": "workspace:^",
     "dockview-react": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:"
+    "react-dom": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/cli": "catalog:",

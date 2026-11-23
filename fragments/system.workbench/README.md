@@ -4,7 +4,7 @@
 
 The core fragment that owns the workbench. It opens the `views`, `menus`, `notifications`, `dialogs`, `statusbar` and `activitybar` extension points in its client aspect, keeps the workbench model (which views fragments contribute and which are open, the menus, the keyboard shortcuts over system.commands' `keybindings`, the command palette, the bars, the dialogs and notifications waiting for an answer), and its client half renders that model: a menu bar, an activity bar, one dockview (`dockview-react`), a status bar, context and tab menus per view, the command palette, keyboard shortcuts, dialogs and Sonner notifications, all shadcn, styled with the shadcn tokens. Every command the chrome runs goes through system.commands' bus. It is a private workspace package, `@statewalker/system.workbench`, in two halves: `src/` (React-free, tested in Node at seam 1; `lint:check` fails a React import or a `.tsx` file there) and `client/` (React, the fragment's default client folder).
 
-Layouts per device mode, the last point ADR `2026-11-20-kernel-and-core-fragments` gives it, come with statewalker/statewalker-root#253.
+It also has a dock for surfaces: system.a2ui's surfaces popped out by the user or by its commands `system.workbench/open-surface` and `close-surface`. Layouts per device mode, the last point ADR `2026-11-20-kernel-and-core-fragments` gives it, come with statewalker/statewalker-root#253.
 
 ## Why it exists
 
@@ -27,13 +27,14 @@ import "@statewalker/system.workbench/client.css"; // the workbench's prebuilt C
 | Export | Provides |
 | --- | --- |
 | `systemWorkbenchArchive`, `SYSTEM_WORKBENCH_ID` | The fragment's files (`fragment.jsonc`, `fragment.client.jsonc`), for `createKernel({ core })`. |
-| `createSystemWorkbench({ commands?, locale? })` → `{ workbench, activate }` | The model, and the body of the fragment's client activator. `commands` is system.commands' bus (the chrome titles, binds and runs commands on it), `locale` the one labels are read in. |
-| `Workbench` | Views: `views()`, `view(id)`, `opened()`, `open(id)`, `close(id)`. Chrome: `menu(menu, context?)`, `keybindings()`, `keyCommand(event, context?)`, `palette()`, `statusbar(context?)`, `activitybar()`, `dialogs`, `notifications`, `execute(id)`, `run(id, input?)`. `observe(listener)`. |
-| `ViewEntry`, `WorkbenchState` | A view (`id`, `viewId`, `fragment`, `title`, `extension`, `component()`); the views, the open ones, the pending dialogs and notifications. |
+| `createSystemWorkbench({ commands?, locale? })` → `{ workbench, module, activate }` | The model, the fragment's client module (its commands' handlers, what its references resolve to), and the body of its client activator. `commands` is system.commands' bus (the chrome titles, binds and runs commands on it), `locale` the one labels are read in. |
+| `Workbench` | Views: `views()`, `view(id)`, `opened()`, `open(id)`, `close(id)`. Chrome: `menu(menu, context?)`, `keybindings()`, `keyCommand(event, context?)`, `palette()`, `statusbar(context?)`, `activitybar()`, `dialogs`, `notifications`, `execute(id)`, `run(id, input?)`. Dock: `setSurfaceSource(source)`, `openSurface(surfaceId, { title? })`, `closeSurface(surfaceId)`, `docked()`. `observe(listener)`. |
+| `SurfaceSource`, `DockedSurface`, `SURFACE_PANEL_PREFIX` | Where docked surfaces come from (`title`, `component`, `docked`, optional `onRemoved`); a docked surface (panel id `surface:<surfaceId>`). |
+| `ViewEntry`, `WorkbenchState` | A view (`id`, `viewId`, `fragment`, `title`, `extension`, `component()`); the views, the open ones, the pending dialogs and notifications, the docked surfaces. |
 | `MenuNode`, `WorkbenchKeybinding`, `PaletteEntry`, `StatusItem`, `ActivityItem` | What the chrome renders. |
 | `Requests`, `DialogRequest`, `NotificationRequest`, `RequestAnswer`, `RequestAction` | Raising (`show(id, params)` → the answer), listing (`pending()`) and answering (`answer(request, answer)`) dialogs and notifications. |
 | `needsInput`, `normalizeChord`, `chordOf`, `typesText`, `formatChord`, `commandForKey`, `PALETTE_CHORDS`, `evaluateWhen`, `fillText` | The keybinding registry's and `when` expressions' pure parts. |
-| `WorkbenchError` | `unknown-view` (opening a view nobody contributes), `no-component`, `no-commands`, `unknown-dialog`, `unknown-notification`. |
+| `WorkbenchError` | `unknown-view` (opening a view nobody contributes), `no-component`, `no-commands`, `unknown-dialog`, `unknown-notification`, `unknown-surface` (docking a surface no source holds). |
 | `viewSchema`, `menuSchema`, `notificationSchema`, `dialogSchema`, `statusItemSchema`, `activityItemSchema`, `*_POINT` | The points' schemas (JSON Schema 2020-12) and short ids. |
 | `./client`: `WorkbenchView` | The React component rendering a `Workbench`: the chrome around one dockview. |
 | `./client.css`, `./theme.css`, `./tokens.css` | The prebuilt CSS; the shadcn token values (light, `.dark`); the tokens as Tailwind theme variables, for fragments' CSS. |
@@ -107,7 +108,13 @@ const workbench = createSystemWorkbench({ commands: commands.bus, locale: naviga
 const kernel = createKernel({
   platform,
   core: [systemCommandsArchive, systemWorkbenchArchive],
-  resolvers: { module: (ref, { contributor }) => importExport(contributor, ref) },
+  resolvers: {
+    // system.workbench's own references (its commands) name its in-process module.
+    module: (ref, { contributor }) =>
+      contributor.id === SYSTEM_WORKBENCH_ID
+        ? workbench.module[ref.export ?? "default"]
+        : importExport(contributor, ref),
+  },
   activators: {
     client: (fragment, context) =>
       fragment.id === SYSTEM_WORKBENCH_ID ? workbench.activate(context) : activateClient(fragment),
@@ -156,9 +163,13 @@ All of them are read from the kernel's registry, never from the contributor's co
 - **`dialogs`**: `{ id, title, message?, input?: { label, placeholder?, value? }, actions? }` (one OK button by default). **`notifications`**: `{ id, title, message?, severity?, actions? }` (`info` by default). A fragment raises one by identity, `<fragment-id>/<id>`, with params its texts name as `{name}` (`dialogs.show(id, params)` in the model, the same in `@statewalker/client.core`); the promise resolves with the user's answer, `{ action?, value? }`: the action picked and the text typed, `{}` when dismissed. Raising an undeclared one rejects with a `WorkbenchError`. A request whose fragment leaves is answered `{}`. Requests are queued (`pending()`); the client answers them (`answer(request, answer)`).
 - **`execute(id)`** runs a command as the chrome does: a failure raises system.workbench's own notification, `system.workbench/command-failed` (declared in this fragment's `fragment.client.jsonc`), instead of rejecting. `run(id, input)` is the plain bus call.
 
+### The dock
+
+A surface source (system.a2ui's `createSurfaceDock`, set by the host with `setSurfaceSource`) gives the workbench surfaces without the workbench knowing how they render. `openSurface(surfaceId, { title? })` docks one the source holds (titled by the source unless a title is given) and tells the source; `closeSurface` takes it out and tells the source too; a surface docked already stays, and the source is told again that it is docked. While a source is set, the workbench follows its `onRemoved`: a surface the source drops leaves the dock. The fragment declares two commands in its own `fragment.client.jsonc`, `open-surface` (`{ surfaceId, title? }`) and `close-surface` (`{ surfaceId }`), both answering `{}`, their handlers the exports `openSurface`/`closeSurface` of its client module (`module`), which a host resolves in process; with system.commands they are `system.workbench/open-surface` and `close-surface` on the bus. Deactivating the fragment, or changing the source, empties the dock.
+
 ### The client half
 
-`WorkbenchView` renders the chrome around one `DockviewReact`: the menu bar (shadcn `Menubar`, one menu per `menubar` submenu), the activity bar, the status bar, the command palette (`CommandDialog`), the oldest pending dialog (`Dialog`, Enter answers with its primary action, Escape or closing with none), every pending notification as a Sonner toast rendered by one card component (staying until answered when it has actions, closing by itself otherwise), and a window `keydown` listener dispatching keybindings (not while a dialog or the palette is open). A view's panel carries its `view/context` entries as a `ContextMenu` (the browser's own menu when there are none) and its tab bar the `view/title` entries as a `DropdownMenu` ("View actions"). The dock's panels are the open views: a newly opened view gets a panel titled with the view's title, a closed one loses its panel, and a panel the user closes closes its view. A panel resolves its view's component and renders it inside an error boundary, so a view that fails to load or throws shows its error in its panel and nothing else. React context crosses into panels (dockview renders them through portals).
+`WorkbenchView` renders the chrome around one `DockviewReact`: the menu bar (shadcn `Menubar`, one menu per `menubar` submenu), the activity bar, the status bar, the command palette (`CommandDialog`), the oldest pending dialog (`Dialog`, Enter answers with its primary action, Escape or closing with none), every pending notification as a Sonner toast rendered by one card component (staying until answered when it has actions, closing by itself otherwise), and a window `keydown` listener dispatching keybindings (not while a dialog or the palette is open). A view's panel carries its `view/context` entries as a `ContextMenu` (the browser's own menu when there are none) and its tab bar the `view/title` entries as a `DropdownMenu` ("View actions"). The dock's panels are the open views: a newly opened view gets a panel titled with the view's title, a closed one loses its panel, and a panel the user closes closes its view. Docked surfaces get panels of their own in one group on the right, the dock zone; closing such a panel closes the surface's dock entry, so it goes back inline. A panel resolves its view's (or surface's) component and renders it inside an error boundary, so a view that fails to load or throws shows its error in its panel and nothing else. React context crosses into panels (dockview renders them through portals).
 
 dockview's light theme takes its colours from the shadcn tokens (`.dockview-theme-workbench` in `client/styles.css`). The prebuilt `dist/client.css` holds dockview's stylesheet and the utilities the client half and the shadcn primitives it renders use, compiled with the Tailwind CLI against `tokens.css`, without preflight. `theme.css` holds the token values and the page's base rules, among them the few preflight rules the shadcn primitives need (no UA borders or button chrome) in the `base` layer, which every fragment's utilities override; it is plain CSS the shell loads once (branding will set the values).
 

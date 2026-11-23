@@ -28,7 +28,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { chordOf, PALETTE_CHORDS, type Workbench, type WorkbenchState } from "../src/index.js";
+import {
+  chordOf,
+  PALETTE_CHORDS,
+  SURFACE_PANEL_PREFIX,
+  type Workbench,
+  type WorkbenchState,
+} from "../src/index.js";
 import {
   ActivityBar,
   DialogHost,
@@ -55,6 +61,7 @@ function useWorkbenchState(workbench: Workbench): WorkbenchState {
       opened: workbench.opened(),
       dialogs: workbench.dialogs.pending(),
       notifications: workbench.notifications.pending(),
+      docked: workbench.docked(),
     }
   );
 }
@@ -65,10 +72,17 @@ function useRevision(workbench: Workbench | undefined): void {
   useEffect(() => workbench?.observe(() => setRevision((r) => r + 1)), [workbench]);
 }
 
-/** Make the dock's panels the open views: add the newly opened, close the closed. */
-function syncPanels(api: DockviewApi, { views, opened }: WorkbenchState) {
+interface SurfaceParams {
+  readonly surface: string;
+}
+
+/**
+ * Make the dockview's panels the open views and the docked surfaces: add the new ones, close the
+ * gone. Docked surfaces share one group on the right, the dock zone.
+ */
+function syncPanels(api: DockviewApi, { views, opened, docked }: WorkbenchState) {
   for (const panel of [...api.panels]) {
-    if (!opened.includes(panel.id)) panel.api.close();
+    if (!opened.includes(panel.id) && !docked.some((d) => d.id === panel.id)) panel.api.close();
   }
   for (const id of opened) {
     const existing = api.getPanel(id);
@@ -76,6 +90,19 @@ function syncPanels(api: DockviewApi, { views, opened }: WorkbenchState) {
     const view = views.find((v) => v.id === id);
     if (!view) continue;
     api.addPanel<ViewParams>({ id, component: "view", title: view.title, params: { view: id } });
+  }
+  for (const surface of docked) {
+    if (api.getPanel(surface.id)) continue;
+    const zone = api.panels.find((p) => p.id.startsWith(SURFACE_PANEL_PREFIX));
+    api.addPanel<SurfaceParams>({
+      id: surface.id,
+      component: "surface",
+      title: surface.title,
+      params: { surface: surface.surfaceId },
+      position: zone
+        ? { referencePanel: zone.id, direction: "within" }
+        : { direction: api.panels.length > 0 ? "right" : "within" },
+    });
   }
 }
 
@@ -121,10 +148,14 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
 
   useEffect(() => {
     if (!api) return;
-    const closed = api.onDidRemovePanel((panel) => workbench.close(panel.id));
+    const closed = api.onDidRemovePanel((panel) =>
+      panel.id.startsWith(SURFACE_PANEL_PREFIX)
+        ? workbench.closeSurface(panel.id.slice(SURFACE_PANEL_PREFIX.length))
+        : workbench.close(panel.id),
+    );
     setActiveView(api.activePanel?.id);
     const active = api.onDidActivePanelChange(({ panel }) => setActiveView(panel?.id));
-    const stop = workbench.observe((s) => syncPanels(api, s));
+    const stop = workbench.observe((state) => syncPanels(api, state));
     return () => {
       stop();
       closed.dispose();
@@ -181,7 +212,7 @@ export function WorkbenchView({ workbench }: { workbench: Workbench }) {
   );
 }
 
-const components = { view: ViewPanel };
+const components = { view: ViewPanel, surface: SurfacePanel };
 
 /** dockview's light theme with its colours taken from the shadcn tokens (client/styles.css). */
 const theme: DockviewTheme = {
@@ -278,6 +309,39 @@ function ViewContextMenu({
         />
       </ContextMenuContent>
     </ContextMenu>
+  );
+}
+
+/** One docked surface: its component, from the workbench's surface source. */
+function SurfacePanel({ params }: IDockviewPanelProps<SurfaceParams>) {
+  const workbench = useContext(WorkbenchContext);
+  const [loaded, setLoaded] = useState<{ Surface?: ComponentType; error?: unknown }>({});
+  useEffect(() => {
+    const surface = workbench?.docked().find((d) => d.surfaceId === params.surface);
+    if (!surface) return;
+    let live = true;
+    surface.component<ComponentType>().then(
+      (Surface) => live && setLoaded({ Surface }),
+      (error: unknown) => live && setLoaded({ error }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workbench, params.surface]);
+
+  const name = `surface ${params.surface}`;
+  if (loaded.error !== undefined) return <ViewFailure view={name} error={loaded.error} />;
+  if (!loaded.Surface) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  return (
+    <ViewBoundary view={name}>
+      <div
+        data-testid="docked-surface"
+        data-surface={params.surface}
+        className="h-full overflow-auto"
+      >
+        <loaded.Surface />
+      </div>
+    </ViewBoundary>
   );
 }
 

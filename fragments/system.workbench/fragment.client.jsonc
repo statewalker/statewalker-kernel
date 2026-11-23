@@ -1,5 +1,6 @@
 // The client aspect of system.workbench: the `views`, `menus`, `notifications`, `dialogs`,
-// `statusbar` and `activitybar` extension points, and the workbench's own notification.
+// `statusbar` and `activitybar` extension points, the workbench's own notification, and the
+// commands that dock surfaces.
 // Kept equal to src/archive.ts by tests/views.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
@@ -296,6 +297,99 @@
         "title": "{command} failed",
         "message": "{error}",
         "severity": "error"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "open-surface",
+          "summary": "Pop a surface out into the workbench's dock",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["surfaceId"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surfaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Done",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "openSurface"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "close-surface",
+          "summary": "Take a surface out of the dock",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["surfaceId"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surfaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Done",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "closeSurface"
       }
     }
   ]
