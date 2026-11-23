@@ -38,10 +38,23 @@ export function fragmentRecordKey(id: string): string {
 }
 
 /**
- * The profile key of the migration tags applied to a fragment's data, in the order they
- * ran (`migrations/<id>`, a `string[]`). It describes the data, so it is kept when the
- * fragment is removed with its data kept, and deleted with the data.
+ * The migrations of a fragment's data (under `appliedMigrationsKey(id)`). It describes the
+ * data, so it is kept when the fragment is removed with its data kept, and deleted with
+ * the data. Each migration is recorded as `started` before it runs, then moved to
+ * `applied` once it has run, or to `failed` when it threw: a `started` left behind is a
+ * migration whose end was never recorded (the process died, a write failed), which the
+ * host reconciles by checking the data and writing this record itself.
  */
+export interface MigrationState {
+  /** The tags applied, in the order they ran. */
+  readonly applied: readonly string[];
+  /** A tag that started and whose end was not recorded: it may or may not have run. */
+  readonly started?: string;
+  /** A tag whose migration threw: it may have changed part of the data; it runs again. */
+  readonly failed?: string;
+}
+
+/** The profile key of a fragment's `MigrationState`: `migrations/<id>`. */
 export function appliedMigrationsKey(id: string): string {
   return `migrations/${id}`;
 }

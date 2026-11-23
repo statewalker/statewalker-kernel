@@ -145,3 +145,27 @@ export class FragmentMigrationError extends FragmentLifecycleError {
     this.cause = cause;
   }
 }
+
+/**
+ * A fragment whose data lacks migrations its archive brings, or whose last migration
+ * started and never recorded its end (`unfinished`). Its code does not run, and no upgrade
+ * reruns an unfinished migration: the host checks the data and records the outcome in the
+ * profile (`appliedMigrationsKey`) first.
+ */
+export class FragmentMigrationsPendingError extends FragmentLifecycleError {
+  readonly id: string;
+  /** The archive's tags not applied to the data. */
+  readonly pending: readonly string[];
+  readonly unfinished?: string;
+  constructor(id: string, pending: readonly string[], unfinished?: string) {
+    super(
+      unfinished !== undefined
+        ? `The migration "${unfinished}" of "${id}" started and its end was never recorded; check the data and record it`
+        : `"${id}" waits for the migrations ${pending.join(", ")}; upgrade it again to run them`,
+    );
+    this.name = "FragmentMigrationsPendingError";
+    this.id = id;
+    this.pending = pending;
+    if (unfinished !== undefined) this.unfinished = unfinished;
+  }
+}

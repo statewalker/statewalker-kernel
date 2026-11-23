@@ -8,6 +8,7 @@ import {
   FragmentDeletesClassesError,
   FragmentInstallError,
   FragmentMigrationError,
+  FragmentMigrationsPendingError,
   FragmentRollbackError,
   fragmentRecordKey,
   installedFragmentsSlot,
@@ -57,14 +58,14 @@ describe("migrations", () => {
   it("are the installed archive's tags, recorded as applied, without running them", async () => {
     const { log, profile } = await setup();
     expect(log).toEqual([]);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1"] });
   });
 
   it("an upgrade runs the new tags once, after the swap and before activation, and records them", async () => {
     const { kernel, log, profile } = await setup();
     await kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]));
     expect(log).toEqual(["cleanup 1.0.0", "migrate v2 on 1.1.0", "activate 1.1.0"]);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1", "v2"] });
     expect(await profile.get(fragmentRecordKey(A))).toMatchObject({
       version: "1.1.0",
       upgrade: { migrations: ["v2"] },
@@ -74,7 +75,7 @@ describe("migrations", () => {
     log.length = 0;
     await kernel.upgrade(A, serverArchive("1.2.0", [V1, V2]));
     expect(log).toEqual(["cleanup 1.1.0", "activate 1.2.0"]);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1", "v2"] });
   });
 
   it("refuse a rollback once one has run; the upgraded version stays active", async () => {
@@ -102,7 +103,7 @@ describe("migrations", () => {
   it("keep their record when the fragment is removed with its data kept, and drop it with the data", async () => {
     const { kernel, profile } = await setup({ removeData: () => {} });
     await kernel.remove(A);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1"] });
     await kernel.install([serverArchive("1.0.0", [V1])]);
     await kernel.remove(A, { withData: true });
     expect(await profile.get(appliedMigrationsKey(A))).toBeUndefined();
@@ -134,7 +135,7 @@ describe("migrations", () => {
     // Confirmed, it runs.
     await kernel.upgrade(A, v3, { confirmDeletedClasses: true });
     expect(log).toEqual(["cleanup 1.1.0", "migrate v3 on 1.2.0", "activate 1.2.0"]);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2", "v3"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1", "v2", "v3"] });
   });
 
   it("refuse, at install and at upgrade, a wrangler.jsonc whose migrations lack a tag or repeat one", async () => {
@@ -170,13 +171,16 @@ describe("migrations", () => {
     expect(log).toEqual(["cleanup 1.0.0", "migrate v2", "migrate v4"]);
     expect(slots.get(installedFragmentsSlot, A)?.manifest.version).toBe("1.1.0");
     expect(slots.getSnapshot(activeFragmentsSlot("client")).has(A)).toBe(false);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({
+      applied: ["v1", "v2"],
+      failed: "v4",
+    });
     // v2 ran: no rollback.
     await expect(kernel.rollback(A)).rejects.toBeInstanceOf(FragmentRollbackError);
   });
 
-  it("that fails before any ran leaves the upgrade free to roll back", async () => {
-    const { kernel, slots } = await setup({
+  it("that fails, even first, refuses a rollback: it may have changed the data", async () => {
+    const { kernel, slots, profile } = await setup({
       migrate: () => {
         throw new Error("no");
       },
@@ -184,10 +188,11 @@ describe("migrations", () => {
     await expect(kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]))).rejects.toBeInstanceOf(
       FragmentMigrationError,
     );
-    await kernel.rollback(A);
-    expect(slots.get(installedFragmentsSlot, A)?.manifest.version).toBe("1.0.0");
-    await kernel.activate("client", A);
-    expect(slots.get(activeFragmentsSlot("client"), A)?.manifest.version).toBe("1.0.0");
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1"], failed: "v2" });
+    const error = await kernel.rollback(A).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FragmentRollbackError);
+    expect((error as FragmentRollbackError).migrations).toEqual(["v2"]);
+    expect(slots.get(installedFragmentsSlot, A)?.manifest.version).toBe("1.1.0");
   });
 
   it("refuse a reinstall over kept data that would need migrations; the removed version reinstalls", async () => {
@@ -197,11 +202,11 @@ describe("migrations", () => {
     expect((error as FragmentInstallError).refusals).toEqual([
       expect.objectContaining({ id: A, code: "pending-migrations" }),
     ]);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1"] });
     await kernel.install([serverArchive("1.0.0", [V1])]);
     await kernel.enable(A);
     await kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]));
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1", "v2"] });
   });
 
   it("keep their record when removing with data fails: the data is still there", async () => {
@@ -211,7 +216,7 @@ describe("migrations", () => {
       },
     });
     await expect(kernel.remove(A, { withData: true })).rejects.toThrow(/storage down/);
-    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual({ applied: ["v1"] });
   });
 
   it("refuse an install or an upgrade whose archive lacks a tag the data has had", async () => {
@@ -225,9 +230,49 @@ describe("migrations", () => {
     expect(slots.get(activeFragmentsSlot("client"), A)?.manifest.version).toBe("1.1.0");
     // Removed with its data kept, the older version cannot come back over migrated data.
     await kernel.remove(A);
-    expect(await refusal(kernel.install([serverArchive("1.0.0", [V1])]))).toEqual([
-      "data-too-new",
-    ]);
+    expect(await refusal(kernel.install([serverArchive("1.0.0", [V1])]))).toEqual(["data-too-new"]);
     await kernel.install([serverArchive("1.1.0", [V1, V2])]);
+  });
+
+  it("are recorded as started before they run; one whose end went unrecorded is never rerun silently", async () => {
+    const memory = createMemoryProfile();
+    let failWrites = false;
+    const seen: unknown[] = [];
+    const profile = {
+      get: memory.get,
+      delete: memory.delete,
+      set: (key: string, value: unknown) => {
+        if (failWrites && key === appliedMigrationsKey(A)) throw new Error("disk full");
+        return memory.set(key, value);
+      },
+    };
+    const ran: string[] = [];
+    const { kernel } = newKernel({
+      profile,
+      migrate: async (_f, migration) => {
+        seen.push(await memory.get(appliedMigrationsKey(A)));
+        ran.push(migration.tag);
+        failWrites = true; // the write recording its end fails (or the process dies here)
+      },
+    });
+    await kernel.install([serverArchive("1.0.0", [V1])]);
+    await kernel.enable(A);
+    await expect(kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]))).rejects.toThrow(/disk full/);
+    failWrites = false;
+    expect(seen).toEqual([{ applied: ["v1"], started: "v2" }]);
+
+    // v2 may have run: no rollback, and no upgrade reruns it until the host reconciles.
+    await expect(kernel.rollback(A)).rejects.toBeInstanceOf(FragmentRollbackError);
+    const error = await kernel
+      .upgrade(A, serverArchive("1.2.0", [V1, V2]))
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(FragmentMigrationsPendingError);
+    expect(error).toMatchObject({ id: A, unfinished: "v2" });
+    expect(ran).toEqual(["v2"]);
+
+    // The host checked the data: v2 ran. It records it, and upgrades go on.
+    await memory.set(appliedMigrationsKey(A), { applied: ["v1", "v2"] });
+    await kernel.upgrade(A, serverArchive("1.2.0", [V1, V2]));
+    expect(ran).toEqual(["v2"]);
   });
 });
