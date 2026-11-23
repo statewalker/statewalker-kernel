@@ -120,5 +120,12 @@ export function createSurfaceDock(a2ui: A2ui) {
       if (!docked) views.delete(surfaceId);
       a2ui.setDocked(surfaceId, docked);
     },
+    /** A surface the model drops leaves the dock (the workbench subscribes). */
+    onRemoved(listener: (surfaceId: string) => void) {
+      return a2ui.onRemoved((surfaceId) => {
+        views.delete(surfaceId);
+        listener(surfaceId);
+      });
+    },
   };
 }

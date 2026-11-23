@@ -95,6 +95,11 @@ export interface A2ui {
   popIn(id: string): Promise<void>;
   /** Record where a surface shows; the dock calls it when it opens or closes the surface. */
   setDocked(id: string, docked: boolean): void;
+  /**
+   * Follow the surfaces that go (deleted by their sender, removed with `delete`, or all of them
+   * when the fragment deactivates); the dock drops each. Returns a disposer.
+   */
+  onRemoved(listener: (surfaceId: string) => void): () => void;
   /** Called at once, then after every change to the components or the surfaces. */
   observe(listener: (state: A2uiState) => void): () => void;
   /** What became of each component event. */
@@ -171,6 +176,7 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
   });
   const entries = new Map<string, SurfaceEntry>();
   const listeners = new Set<(state: A2uiState) => void>();
+  const removedListeners = new Set<(surfaceId: string) => void>();
   let pending: Promise<void> = Promise.resolve();
   let generation = 0;
 
@@ -261,11 +267,23 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
     setCatalog(next, refusals);
   }
 
+  /** Tell the followers a surface went, so the dock drops it. */
+  function removed(id: string) {
+    for (const listener of [...removedListeners]) {
+      try {
+        listener(id);
+      } catch (error) {
+        console.error("[system.a2ui] a removal listener threw:", error);
+      }
+    }
+  }
+
   function remove(id: string) {
     const entry = entries.get(id);
     if (!entry) return;
     entries.delete(id);
     entry.processor.dispose();
+    removed(id);
     notify();
   }
 
@@ -337,6 +355,7 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
       if (!existing.processor.getSurface(surfaceId)) {
         entries.delete(surfaceId); // deleteSurface
         existing.processor.dispose();
+        removed(surfaceId);
         changed = true;
       }
     }
@@ -369,6 +388,13 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
       if (!entry || entry.placement === placement) return;
       entry.placement = placement;
       notify();
+    },
+    onRemoved(listener) {
+      const own = (id: string) => listener(id);
+      removedListeners.add(own);
+      return () => {
+        removedListeners.delete(own);
+      };
     },
     observe(listener) {
       const own = (s: A2uiState) => listener(s);

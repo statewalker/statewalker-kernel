@@ -163,6 +163,28 @@ describe("A2UI surfaces in apps/notes", () => {
     }
   });
 
+  it("a docked surface its sender deletes leaves the dock", async () => {
+    const { page, errors } = await open();
+    try {
+      await inline(page).getByRole("button", { name: "Pop out" }).click();
+      await docked(page).locator(".cm-content").waitFor();
+      const result = await page.evaluate(
+        (id) =>
+          window.platform.a2ui.process(
+            { version: "1.0", deleteSurface: { surfaceId: id } },
+            { origin: "agent" },
+          ),
+        SURFACE,
+      );
+      expect(result.errors).toEqual([]);
+      await expect.poll(() => page.locator(".dv-tab", { hasText: TITLE }).count()).toBe(0);
+      expect(await page.evaluate(() => window.platform.workbench.docked().length)).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
   it("an agent's surface placing an unknown component or raw HTML is refused", async () => {
     const { page, errors } = await open();
     try {

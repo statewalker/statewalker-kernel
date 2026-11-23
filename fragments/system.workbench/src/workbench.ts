@@ -30,6 +30,11 @@ export interface SurfaceSource {
   component(surfaceId: string): unknown;
   /** Told when the surface enters (`true`) and leaves (`false`) the dock. */
   docked(surfaceId: string, docked: boolean): void;
+  /**
+   * Follow the surfaces the source drops (deleted by their sender, removed by the host): each
+   * leaves the dock. Returns a disposer; the workbench subscribes while the source is set.
+   */
+  onRemoved?(listener: (surfaceId: string) => void): () => void;
 }
 
 /** A surface popped out into the dock. */
@@ -127,6 +132,7 @@ export function createSystemWorkbench(): SystemWorkbench {
   let opened: readonly string[] = [];
   let docked: readonly DockedSurface[] = [];
   let source: SurfaceSource | undefined;
+  let unfollow: (() => void) | undefined;
   const listeners = new Set<(state: WorkbenchState) => void>();
   const state = (): WorkbenchState => ({ views, opened, docked });
   function notify() {
@@ -186,13 +192,19 @@ export function createSystemWorkbench(): SystemWorkbench {
     },
     setSurfaceSource(next) {
       if (source === next) return;
+      unfollow?.();
+      unfollow = undefined;
       undockAll();
       source = next;
+      unfollow = next?.onRemoved?.((surfaceId) => workbench.closeSurface(surfaceId));
     },
     openSurface(surfaceId, options = {}) {
       const title = source?.title(surfaceId);
       if (!source || title === undefined) throw new WorkbenchError("unknown-surface", surfaceId);
-      if (docked.some((d) => d.surfaceId === surfaceId)) return;
+      if (docked.some((d) => d.surfaceId === surfaceId)) {
+        tell(surfaceId, true); // keep the source's placement in step with the dock
+        return;
+      }
       const from = source;
       docked = [
         ...docked,

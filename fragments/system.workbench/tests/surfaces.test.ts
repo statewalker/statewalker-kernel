@@ -75,6 +75,7 @@ describe("the dock", () => {
     expect(workbench.docked()).toEqual([]);
     expect(docked).toEqual([
       ["s", true],
+      ["s", true],
       ["s", false],
     ]);
   });
@@ -118,5 +119,37 @@ describe("the dock", () => {
     await kernel.deactivate("client", SYSTEM_WORKBENCH_ID);
     expect(workbench.docked()).toEqual([]);
     expect(docked.at(-1)).toEqual(["s", false]);
+  });
+
+  it("re-asserts a surface already docked to its source when asked to dock it again", async () => {
+    const { workbench } = await platform();
+    const { surfaces, docked } = source(["s"]);
+    workbench.setSurfaceSource(surfaces);
+    workbench.openSurface("s");
+    workbench.openSurface("s");
+    expect(docked).toEqual([
+      ["s", true],
+      ["s", true],
+    ]);
+    expect(workbench.docked()).toHaveLength(1);
+  });
+
+  it("drops a surface from the dock when its source says it is gone", async () => {
+    const { workbench } = await platform();
+    const gone = new Set<(id: string) => void>();
+    const { surfaces, docked } = source(["s"]);
+    workbench.setSurfaceSource({
+      ...surfaces,
+      onRemoved: (listener) => {
+        gone.add(listener);
+        return () => gone.delete(listener);
+      },
+    });
+    workbench.openSurface("s");
+    for (const listener of gone) listener("s");
+    expect(workbench.docked()).toEqual([]);
+    expect(docked.at(-1)).toEqual(["s", false]);
+    workbench.setSurfaceSource(undefined);
+    expect(gone.size).toBe(0);
   });
 });

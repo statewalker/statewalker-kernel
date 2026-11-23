@@ -57,8 +57,17 @@ async function platform() {
     },
     { origin: "agent", title: "Greeting" },
   );
-  return { bus: commands.bus, workbench: workbench.workbench, a2ui: system.a2ui };
+  return { kernel, bus: commands.bus, workbench: workbench.workbench, a2ui: system.a2ui };
 }
+
+const createS = (text: string) => ({
+  version: "1.0",
+  createSurface: {
+    surfaceId: "s",
+    catalogId: PLATFORM_CATALOG_ID,
+    components: [{ id: "root", component: "Text", text }],
+  },
+});
 
 const placement = (a2ui: Awaited<ReturnType<typeof platform>>["a2ui"]) =>
   a2ui.surfaces().find((s) => s.id === "s")?.placement;
@@ -88,6 +97,35 @@ describe("surfaces and the workbench's dock", () => {
     await expect(
       bus.call("system.workbench/open-surface", { surfaceId: "nope" }),
     ).rejects.toThrow();
+    expect(workbench.docked()).toEqual([]);
+  });
+
+  it("a docked surface deleted by its sender leaves the dock; one re-created under its id starts inline and pops out", async () => {
+    const { workbench, a2ui } = await platform();
+    await a2ui.popOut("s");
+    await a2ui.process({ version: "1.0", deleteSurface: { surfaceId: "s" } }, { origin: "agent" });
+    expect(a2ui.surface("s")).toBeUndefined();
+    expect(workbench.docked()).toEqual([]);
+
+    const { errors } = await a2ui.process(createS("again"), { origin: "agent", title: "Again" });
+    expect(errors).toEqual([]);
+    expect(placement(a2ui)).toBe("inline");
+    await a2ui.popOut("s");
+    expect(workbench.docked().map((d) => [d.surfaceId, d.title])).toEqual([["s", "Again"]]);
+    expect(placement(a2ui)).toBe("docked");
+  });
+
+  it("a docked surface removed by the host leaves the dock", async () => {
+    const { workbench, a2ui } = await platform();
+    await a2ui.popOut("s");
+    a2ui.delete("s");
+    expect(workbench.docked()).toEqual([]);
+  });
+
+  it("deactivating system.a2ui empties the dock of its surfaces", async () => {
+    const { kernel, workbench, a2ui } = await platform();
+    await a2ui.popOut("s");
+    await kernel.deactivate("client", SYSTEM_A2UI_ID);
     expect(workbench.docked()).toEqual([]);
   });
 });
