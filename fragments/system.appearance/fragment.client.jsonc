@@ -7,11 +7,7 @@
       "description": "Brands: a name, a logo and the shadcn tokens in light and dark. One is active.",
       "schema": {
         "type": "object",
-        "required": [
-          "id",
-          "name",
-          "tokens"
-        ],
+        "required": ["id", "name", "tokens"],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -33,10 +29,7 @@
           },
           "tokens": {
             "type": "object",
-            "required": [
-              "light",
-              "dark"
-            ],
+            "required": ["light", "dark"],
             "additionalProperties": false,
             "properties": {
               "light": {
@@ -76,11 +69,7 @@
       "description": "Themes: shadcn tokens in light and dark, laid over the active brand's.",
       "schema": {
         "type": "object",
-        "required": [
-          "id",
-          "title",
-          "tokens"
-        ],
+        "required": ["id", "title", "tokens"],
         "additionalProperties": false,
         "properties": {
           "id": {
@@ -96,10 +85,7 @@
           },
           "tokens": {
             "type": "object",
-            "required": [
-              "light",
-              "dark"
-            ],
+            "required": ["light", "dark"],
             "additionalProperties": false,
             "properties": {
               "light": {

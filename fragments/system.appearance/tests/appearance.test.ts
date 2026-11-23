@@ -111,7 +111,11 @@ describe("the system.appearance fragment", () => {
 describe("the application's brand", () => {
   it("is active from the start, its tokens following the light or dark mode", async () => {
     const { appearance } = await platform([]);
-    expect(appearance.brand()).toMatchObject({ id: "notes", name: "Notes", logo: NOTES_BRAND.logo });
+    expect(appearance.brand()).toMatchObject({
+      id: "notes",
+      name: "Notes",
+      logo: NOTES_BRAND.logo,
+    });
     expect(appearance.colorMode()).toBe("light");
     expect(appearance.tokens()).toEqual({
       primary: "oklch(0.55 0.16 49)",
@@ -198,7 +202,12 @@ describe("the themes point", () => {
 
 describe("tokensCss", () => {
   it("writes the light tokens for the page without .dark and the dark ones under it", () => {
-    expect(tokensCss({ light: { primary: "red", "card-foreground": "#000" }, dark: { primary: "blue" } })).toBe(
+    expect(
+      tokensCss({
+        light: { primary: "red", "card-foreground": "#000" },
+        dark: { primary: "blue" },
+      }),
+    ).toBe(
       ":root:not(.dark) {\n  --primary: red;\n  --card-foreground: #000;\n}\n:root.dark {\n  --primary: blue;\n}\n",
     );
   });

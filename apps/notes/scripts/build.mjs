@@ -25,6 +25,7 @@ const DIST = join(ROOT, "dist");
 const SHIMS = join(ROOT, "node_modules", ".shared-modules");
 const require = createRequire(join(ROOT, "package.json"));
 const platform = JSON.parse(readFileSync(join(ROOT, "platform.json"), "utf8"));
+const application = JSON.parse(readFileSync(join(ROOT, "application.json"), "utf8"));
 const SHARED = Object.keys(platform.shared);
 
 /** The file a shared module is served from, under dist/shared/. */
@@ -181,7 +182,7 @@ function writeIndex(fragments) {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Notes</title>
+    <title>${application.brand.name}</title>
     <meta name="platform-version" content="${platform.version}" />
     <script type="importmap">
 ${JSON.stringify({ imports }, null, 2)}

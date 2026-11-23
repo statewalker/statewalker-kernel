@@ -137,9 +137,7 @@ describe("baseline fragments", () => {
   it("refuses to remove a baseline fragment, changing nothing", async () => {
     const { kernel, slots, log } = await setup({ baseline: ["org.example.d"] });
     await expect(kernel.remove("org.example.d")).rejects.toThrow(FragmentLifecycleError);
-    await expect(kernel.remove("org.example.d", { cascade: true })).rejects.toThrow(
-      /baseline/,
-    );
+    await expect(kernel.remove("org.example.d", { cascade: true })).rejects.toThrow(/baseline/);
     expect(log).toEqual([]);
     expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([
       "org.example.a",

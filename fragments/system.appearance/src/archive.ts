@@ -32,7 +32,12 @@ const tokenSetSchema = {
   type: "object",
   maxProperties: 64,
   propertyNames: { pattern: NAME_PATTERN, maxLength: 64 },
-  additionalProperties: { type: "string", minLength: 1, maxLength: 256, pattern: TOKEN_VALUE_PATTERN },
+  additionalProperties: {
+    type: "string",
+    minLength: 1,
+    maxLength: 256,
+    pattern: TOKEN_VALUE_PATTERN,
+  },
 } as const;
 
 /** The tokens for the light mode and for the dark one. */
@@ -53,7 +58,12 @@ export const brandSchema = {
   additionalProperties: false,
   properties: {
     id: { type: "string", pattern: NAME_PATTERN, maxLength: 64 },
-    name: { description: "The application's name, as the page shows it.", type: "string", minLength: 1, maxLength: 64 },
+    name: {
+      description: "The application's name, as the page shows it.",
+      type: "string",
+      minLength: 1,
+      maxLength: 64,
+    },
     logo: {
       description: "The logo's URL: an image data URL, https, or a path on the page's site.",
       type: "string",
@@ -74,7 +84,12 @@ export const themeSchema = {
   additionalProperties: false,
   properties: {
     id: { type: "string", pattern: NAME_PATTERN, maxLength: 64 },
-    title: { description: "The theme's name, as a picker shows it.", type: "string", minLength: 1, maxLength: 64 },
+    title: {
+      description: "The theme's name, as a picker shows it.",
+      type: "string",
+      minLength: 1,
+      maxLength: 64,
+    },
     tokens: paletteSchema,
   },
 } as const;

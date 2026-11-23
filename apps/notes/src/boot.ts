@@ -1,12 +1,19 @@
 // The shell's boot: the kernel with its core fragments (system.commands, system.workbench, its
 // chrome running commands on system.commands' bus, system.a2ui), the client API (commands,
 // dialogs, notifications) and the A2UI model installed, and the app's fragments fetched,
-// installed, enabled and activated. React-free; main.tsx renders the result.
+// installed, enabled and activated. The application definition (application.json) gives
+// system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
+// restored from the profile afterwards. React-free; main.tsx renders the result.
 import { installClient } from "@statewalker/client.core";
 import {
   createKernel,
+  enabledFragmentsSlot,
   type FragmentFiles,
+  type FragmentRecord,
+  fragmentRecordKey,
   type InstalledFragment,
+  installedFragmentsSlot,
+  isSystemId,
   type Kernel,
   parseJsonc,
   resolvedFragmentsSlot,
@@ -19,6 +26,13 @@ import {
   systemA2uiArchive,
 } from "@statewalker/system.a2ui";
 import {
+  type Appearance,
+  type BrandData,
+  createSystemAppearance,
+  SYSTEM_APPEARANCE_ID,
+  systemAppearanceArchive,
+} from "@statewalker/system.appearance";
+import {
   type CommandBus,
   createSystemCommands,
   SYSTEM_COMMANDS_ID,
@@ -30,7 +44,9 @@ import {
   systemWorkbenchArchive,
   type Workbench,
 } from "@statewalker/system.workbench";
+import application from "../application.json" with { type: "json" };
 import platform from "../platform.json" with { type: "json" };
+import { createStorageProfile, type ListableProfile } from "./profile.js";
 
 /** What the shell runs: also `window.platform`, for tests and the console. */
 export interface Platform {
@@ -38,7 +54,36 @@ export interface Platform {
   readonly commands: CommandBus;
   readonly workbench: Workbench;
   readonly a2ui: A2ui;
+  readonly appearance: Appearance;
+  /** The application definition this shell runs (application.json). */
+  readonly application: ApplicationDefinition;
+  /** Whether this run started from a fresh profile (and installed the baseline). */
+  readonly firstRun: boolean;
+  /** The kernel's lifecycle slots, for tests and the console. */
+  readonly slots: {
+    readonly installed: typeof installedFragmentsSlot;
+    readonly enabled: typeof enabledFragmentsSlot;
+  };
 }
+
+/**
+ * An application: its brand (as system.appearance's `branding` point takes it), its baseline
+ * fragments (installed on first run; disableable, not removable) and its default layout.
+ */
+export interface ApplicationDefinition {
+  readonly id: string;
+  readonly brand: BrandData;
+  readonly baseline: readonly string[];
+  readonly layout: { readonly open: readonly string[] };
+}
+
+/** What the profile records of the application: its first run happened. */
+export interface ApplicationRecord {
+  readonly baseline: readonly string[];
+}
+
+/** The profile key of the application's record: `applications/<id>`. */
+export const applicationRecordKey = (id: string) => `applications/${id}`;
 
 declare global {
   interface Window {
@@ -51,6 +96,8 @@ export interface BootOptions {
   readonly base: URL;
   /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
   readonly locale?: string;
+  /** The user's profile; localStorage under `<application id>:` by default. */
+  readonly profile?: ListableProfile;
 }
 
 /** The folder of a fragment's aspect, relative to the page. */
@@ -121,7 +168,48 @@ function activateWhenResolved(kernel: Kernel): () => void {
   });
 }
 
-export async function boot({ base, locale }: BootOptions): Promise<Platform> {
+/**
+ * Install the application's fragments. A fresh profile (no application record) gets the
+ * baseline, enabled. Otherwise the fragments the profile records are installed again, enabled
+ * as recorded, with any baseline fragment it lacks (one an update of the application added).
+ * Returns whether this was the first run.
+ */
+async function installFragments(
+  kernel: Kernel,
+  profile: ListableProfile,
+  base: URL,
+  definition: ApplicationDefinition,
+): Promise<boolean> {
+  const key = applicationRecordKey(definition.id);
+  const firstRun = (await profile.get(key)) === undefined;
+  const recorded = firstRun
+    ? []
+    : profile
+        .keys()
+        .filter((k) => k.startsWith(fragmentRecordKey("")))
+        .map((k) => k.slice(fragmentRecordKey("").length))
+        // The core fragments ship with the shell; `start` installed them.
+        .filter((id) => !isSystemId(id));
+  const ids = [...new Set([...recorded, ...definition.baseline])];
+  // The records before the installs rewrite them (installed, not enabled).
+  const records = new Map<string, FragmentRecord | undefined>();
+  for (const id of ids) {
+    records.set(id, (await profile.get(fragmentRecordKey(id))) as FragmentRecord | undefined);
+  }
+  const archives = await Promise.all(ids.map((id) => fetchArchive(base, id)));
+  for (const fragment of await kernel.install(archives)) {
+    if (records.get(fragment.id)?.enabled !== false) await kernel.enable(fragment.id);
+  }
+  if (firstRun) {
+    await profile.set(key, { baseline: definition.baseline } satisfies ApplicationRecord);
+  }
+  return firstRun;
+}
+
+export async function boot({ base, locale, profile }: BootOptions): Promise<Platform> {
+  const definition: ApplicationDefinition = application;
+  const userProfile = profile ?? createStorageProfile(localStorage, `${definition.id}:`);
+  const appearance = createSystemAppearance({ brand: definition.brand });
   const commands = createSystemCommands();
   const workbench = createSystemWorkbench({ commands: commands.bus, locale });
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
@@ -133,7 +221,14 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
   };
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
-    core: [systemCommandsArchive, systemWorkbenchArchive, systemA2uiArchive],
+    core: [
+      systemCommandsArchive,
+      systemWorkbenchArchive,
+      systemA2uiArchive,
+      systemAppearanceArchive,
+    ],
+    profile: userProfile,
+    baseline: definition.baseline,
     onError: (id, aspect, error) => console.error(`[kernel] ${id} (${aspect}):`, error),
     resolvers: {
       // A client module export, from the fragment's client folder.
@@ -151,6 +246,7 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
         if (fragment.id === SYSTEM_COMMANDS_ID) return commands.activate(context);
         if (fragment.id === SYSTEM_WORKBENCH_ID) return workbench.activate(context);
         if (fragment.id === SYSTEM_A2UI_ID) return a2ui.activate(context);
+        if (fragment.id === SYSTEM_APPEARANCE_ID) return appearance.activate(context);
         return activateClient(base, fragment);
       },
     },
@@ -163,12 +259,17 @@ export async function boot({ base, locale }: BootOptions): Promise<Platform> {
   installA2ui(a2ui.a2ui);
   await kernel.start();
 
-  const index = JSON.parse(await text(new URL("fragments/index.json", base))) as {
-    fragments: string[];
-  };
-  const archives = await Promise.all(index.fragments.map((id) => fetchArchive(base, id)));
-  for (const fragment of await kernel.install(archives)) await kernel.enable(fragment.id);
+  const firstRun = await installFragments(kernel, userProfile, base, definition);
   await kernel.activate("client");
   activateWhenResolved(kernel);
-  return { kernel, commands: commands.bus, workbench: workbench.workbench, a2ui: a2ui.a2ui };
+  return {
+    kernel,
+    commands: commands.bus,
+    workbench: workbench.workbench,
+    a2ui: a2ui.a2ui,
+    appearance: appearance.appearance,
+    application: definition,
+    firstRun,
+    slots: { installed: installedFragmentsSlot, enabled: enabledFragmentsSlot },
+  };
 }

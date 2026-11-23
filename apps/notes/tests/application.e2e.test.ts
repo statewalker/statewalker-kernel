@@ -85,9 +85,9 @@ describe("the brand", () => {
       await expect(button.evaluate((el) => getComputedStyle(el).backgroundColor)).resolves.toBe(
         await resolved(page, "primary"),
       );
-      await expect(page.evaluate(() => getComputedStyle(document.body).backgroundColor)).resolves.toBe(
-        await resolved(page, "background"),
-      );
+      await expect(
+        page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+      ).resolves.toBe(await resolved(page, "background"));
       expect(errors).toEqual([]);
     } finally {
       await close();
@@ -133,7 +133,9 @@ describe("the baseline and the default layout", () => {
       const state = await page.evaluate(() => ({
         firstRun: window.platform.firstRun,
         opened: window.platform.workbench.opened(),
-        enabled: [...window.platform.kernel.slots.getSnapshot(window.platform.slots.enabled).keys()],
+        enabled: [
+          ...window.platform.kernel.slots.getSnapshot(window.platform.slots.enabled).keys(),
+        ],
       }));
       expect(state.firstRun).toBe(true);
       expect(state.opened).toEqual(application.layout.open);
@@ -175,7 +177,9 @@ describe("the baseline and the default layout", () => {
         installed: [
           ...window.platform.kernel.slots.getSnapshot(window.platform.slots.installed).keys(),
         ],
-        enabled: [...window.platform.kernel.slots.getSnapshot(window.platform.slots.enabled).keys()],
+        enabled: [
+          ...window.platform.kernel.slots.getSnapshot(window.platform.slots.enabled).keys(),
+        ],
       }));
       expect(after.installed).toEqual(expect.arrayContaining([NOTES, SURFACES]));
       expect(after.enabled).not.toContain(NOTES);
