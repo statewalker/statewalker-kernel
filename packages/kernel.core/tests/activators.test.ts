@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { type AspectActivator, activeFragmentsSlot } from "../src/index.js";
+import { type AspectActivator, activeFragmentsSlot, FragmentLifecycleError } from "../src/index.js";
 import { archive, fragment, ids, newKernel } from "./helpers.js";
 
 /** b requires a, c requires b, d stands alone; all enabled. */
@@ -89,5 +89,79 @@ describe("aspect activators", () => {
     release();
     await Promise.all([activating, deactivating]);
     expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([]);
+  });
+});
+
+/** a requires b, b requires c; b has only an agent aspect, a and c have a client aspect. */
+async function throughAgentOnly(client: AspectActivator, onError = vi.fn()) {
+  const { kernel, slots } = newKernel({ activators: { client }, onError });
+  await kernel.install([
+    archive(fragment("org.example.c")),
+    archive(
+      fragment("org.example.b", {
+        aspects: { agent: {} },
+        requires: { "org.example.c": "^1.0.0" },
+      }),
+    ),
+    archive(fragment("org.example.a", { requires: { "org.example.b": "^1.0.0" } })),
+  ]);
+  for (const id of ["org.example.c", "org.example.b", "org.example.a"]) await kernel.enable(id);
+  return { kernel, slots, onError };
+}
+
+describe("requirements through a fragment without the aspect", () => {
+  it("deactivates a fragment that requires another through one lacking the aspect", async () => {
+    const { kernel, slots } = await throughAgentOnly(() => {});
+    await kernel.activate("client", "org.example.a");
+    expect(ids(slots.getSnapshot(activeFragmentsSlot("client"))).sort()).toEqual([
+      "org.example.a",
+      "org.example.c",
+    ]);
+    await kernel.deactivate("client", "org.example.c");
+    expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([]);
+  });
+
+  it("does not activate a fragment whose indirect requirement failed to activate", async () => {
+    const { kernel, slots } = await throughAgentOnly((f) => {
+      if (f.id === "org.example.c") throw new Error("boom");
+    });
+    await kernel.activate("client");
+    expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([]);
+  });
+});
+
+describe("kernel operations from inside an activator", () => {
+  it("are refused at once instead of waiting forever on the running operation", async () => {
+    let inner: Promise<unknown> | undefined;
+    const onError = vi.fn();
+    const { kernel, slots } = newKernel({
+      activators: {
+        client: async () => {
+          inner = kernel.enable("org.example.other");
+          await inner;
+        },
+      },
+      onError,
+    });
+    await kernel.install([
+      archive(fragment("org.example.x")),
+      archive(fragment("org.example.other")),
+    ]);
+    await kernel.enable("org.example.x");
+    const outcome = await Promise.race([
+      kernel.activate("client", "org.example.x").then(() => "settled"),
+      new Promise((r) => setTimeout(() => r("hung"), 500)),
+    ]);
+    expect(outcome).toBe("settled");
+    await expect(inner).rejects.toBeInstanceOf(FragmentLifecycleError);
+    expect(onError).toHaveBeenCalledWith(
+      "org.example.x",
+      "client",
+      expect.any(FragmentLifecycleError),
+    );
+    expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([]);
+    // The kernel still works afterwards.
+    await kernel.enable("org.example.other");
+    await kernel.stop();
   });
 });

@@ -87,11 +87,11 @@ An install is a list of archives, accepted or refused as a whole. A `FragmentIns
 Each state is a keyed slot, and a fragment is in every slot whose state it has reached: an active fragment is also installed, enabled and resolved. Every slot holds the same frozen `InstalledFragment`, so a state change is one register or dispose and nothing briefly disappears.
 
 - **Resolved**: enabled, and every required fragment resolved in a version inside its range. A cycle never resolves.
-- **Active**: per aspect. `activate(aspect, id?)` runs the host's activator for the aspect, requirements first (a stable topological sort carried over from sandclaw's `kernel.core`); the fragment joins the slot once the activator has finished. A fragment whose activator throws stays inactive and is reported to `onError`; the fragments requiring it are not activated, every other fragment is (carried over from `backbone.core`).
-- **Deactivation** runs in reverse activation order: `deactivate(aspect, id)` first deactivates the fragments requiring `id`, `stop()` deactivates everything. Cleanups that throw are reported and the rest goes on.
+- **Active**: per aspect. `activate(aspect, id?)` runs the host's activator for the aspect, requirements first (a stable topological sort carried over from sandclaw's `kernel.core`); the fragment joins the slot once the activator has finished. A fragment whose activator throws stays inactive and is reported to `onError`; the fragments requiring it, directly or through fragments that lack the aspect, are not activated, every other fragment is (carried over from `backbone.core`).
+- **Deactivation** runs in reverse activation order: `deactivate(aspect, id)` first deactivates the fragments requiring `id` (again also through fragments that lack the aspect), `stop()` deactivates everything. Cleanups that throw are reported and the rest goes on.
 - **Disable** refuses when resolved fragments require the fragment, unless `{ cascade: true }` confirms it; they are then deactivated first and become unresolved, staying enabled.
 
-Operations run one after another, in the order they were called.
+Operations run one after another, in the order they were called. An operation called while an activator or a cleanup runs is rejected at once with a `FragmentLifecycleError`: an activator that awaited the kernel would otherwise wait for its own operation forever. This also refuses a call from elsewhere that lands while a hook runs; call again once the running operation has settled.
 
 ### Dependencies
 

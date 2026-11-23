@@ -88,6 +88,11 @@ export interface Kernel {
   stop(): Promise<void>;
 }
 
+// Every operation runs after the ones called before it. One called while an activator or a
+// cleanup runs (from inside it, or from anywhere else at that moment) is rejected at once
+// with a FragmentLifecycleError instead of waiting: an activator awaiting the kernel would
+// otherwise wait for itself.
+
 const RANGE_OPTIONS = { includePrerelease: true };
 
 export function createKernel(options: KernelOptions): Kernel {
@@ -185,12 +190,15 @@ export function createKernel(options: KernelOptions): Kernel {
   async function activateOne(aspect: Aspect, f: InstalledFragment): Promise<void> {
     const slot = activeFragmentsSlot(aspect);
     if (has(slot, f.id)) return;
-    const blocked = requiresOf(f).some(
-      (dep) => installed(dep)?.manifest.aspects[aspect] !== undefined && !has(slot, dep),
+    // Every requirement, direct or through fragments lacking the aspect, that has the
+    // aspect must be active first.
+    const blocked = [...withRequirements(resolvedFragmentsSlot, f.id)].some(
+      (dep) =>
+        dep !== f.id && installed(dep)?.manifest.aspects[aspect] !== undefined && !has(slot, dep),
     );
     if (blocked) return;
     try {
-      const cleanup = await options.activators?.[aspect]?.(f);
+      const cleanup = await hook(() => options.activators?.[aspect]?.(f));
       if (typeof cleanup === "function") cleanups.set(`${aspect}\u0000${f.id}`, cleanup);
     } catch (error) {
       onError(f.id, aspect, error);
@@ -209,7 +217,7 @@ export function createKernel(options: KernelOptions): Kernel {
       const cleanup = cleanups.get(key);
       cleanups.delete(key);
       try {
-        await cleanup?.();
+        await hook(() => cleanup?.());
       } catch (error) {
         onError(id, aspect, error);
       }
@@ -341,10 +349,32 @@ export function createKernel(options: KernelOptions): Kernel {
     resolve();
   }
 
+  /** Activators and cleanups running now; while any runs, operations are refused. */
+  let hooks = 0;
+  async function hook<R>(run: () => R | Promise<R>): Promise<R> {
+    hooks++;
+    try {
+      return await run();
+    } finally {
+      hooks--;
+    }
+  }
+
   let tail: Promise<unknown> = Promise.resolve();
-  /** Run `op` after every operation called before it, whatever their outcome. */
+  /**
+   * Run `op` after every operation called before it, whatever their outcome. An operation
+   * called while an activator or a cleanup runs is refused: it would wait for the running
+   * operation, which may be waiting for it (an activator awaiting the kernel).
+   */
   function serial<A extends unknown[], R>(op: (...args: A) => Promise<R>) {
     return (...args: A): Promise<R> => {
+      if (hooks > 0) {
+        return Promise.reject(
+          new FragmentLifecycleError(
+            "Kernel operations cannot be called while an activator or a cleanup runs",
+          ),
+        );
+      }
       const result = tail.then(() => op(...args));
       tail = result.catch(() => {});
       return result;
@@ -384,7 +414,9 @@ export function createKernel(options: KernelOptions): Kernel {
       }
     }),
     deactivate: serial(async (aspect: Aspect, id?: string) => {
-      const ids = id === undefined ? undefined : withDependents(activeFragmentsSlot(aspect), [id]);
+      // Dependents through the resolved set, so a chain through a fragment lacking the
+      // aspect still counts; deactivateAll keeps only those active in the aspect.
+      const ids = id === undefined ? undefined : withDependents(resolvedFragmentsSlot, [id]);
       await deactivateAll(aspect, ids);
     }),
     stop: serial(async () => {
