@@ -92,6 +92,39 @@ describe("settings values", () => {
     expect(notes.values()).toEqual({ sort: "added", copyButtons: true, max: 20 });
   });
 
+  it("refuses a number that is not finite (JSON would store it as null), keeping the value set before", async () => {
+    const page = {
+      title: "Numbers",
+      schema: {
+        type: "object",
+        properties: {
+          ratio: { type: "number", default: 1 },
+          limit: { type: "integer", maximum: 10, default: 1 },
+        },
+      },
+    };
+    const { settings } = await platform([fragment(NOTES, page)]);
+    const notes = settings.of(NOTES);
+    notes.set("ratio", 0.5);
+    notes.set("limit", 7);
+    const attempts: [string, number][] = [
+      ["ratio", Number.POSITIVE_INFINITY],
+      ["ratio", Number.NEGATIVE_INFINITY],
+      ["ratio", Number.NaN],
+      ["limit", Number.NEGATIVE_INFINITY],
+    ];
+    for (const [key, value] of attempts) {
+      let kind: unknown = "stored";
+      try {
+        notes.set(key, value);
+      } catch (error) {
+        kind = error instanceof SettingsError ? [error.kind, error.key] : error;
+      }
+      expect(kind).toEqual(["invalid-value", key]);
+    }
+    expect(notes.values()).toEqual({ ratio: 0.5, limit: 7 });
+  });
+
   it("keeps the values over a reload (a new platform over the same storage)", async () => {
     const first = await platform([fragment(NOTES, notesPage)]);
     first.settings.of(NOTES).set("sort", "alphabetical");

@@ -219,6 +219,9 @@ function validatorOf(schema: SettingSchema): Validator | undefined {
 
 function problemOf(validator: Validator | undefined, value: unknown): string | undefined {
   if (!validator) return "the setting's schema cannot be compiled";
+  // JSON Schema validators accept Infinity and NaN as numbers, but the profile stores JSON,
+  // where they become null: refuse them before they replace a stored value.
+  if (typeof value === "number" && !Number.isFinite(value)) return "the number is not finite";
   let result: ReturnType<Validator["validate"]>;
   try {
     result = validator.validate(value);
