@@ -1,5 +1,5 @@
 import type { ActivationContext, Extension } from "@statewalker/kernel.core";
-import { type CommandBus, type CommandEntry, labelsOf } from "@statewalker/system.commands";
+import type { CommandBus, CommandEntry } from "@statewalker/system.commands";
 import {
   ACTIVITYBAR_POINT,
   COMMAND_FAILED_NOTIFICATION,
@@ -7,6 +7,7 @@ import {
   MENUS_POINT,
   NOTIFICATIONS_POINT,
   STATUSBAR_POINT,
+  SYSTEM_WORKBENCH_ID,
   VIEWS_POINT,
 } from "./archive.js";
 import { type ActivityItem, buildActivitybar, buildStatusbar, type StatusItem } from "./bars.js";
@@ -17,6 +18,7 @@ import {
   normalizeChord,
   type WorkbenchKeybinding,
 } from "./keybindings.js";
+import { commandLabels, type TextOf, textOf, type WorkbenchL10n } from "./l10n.js";
 import { buildMenu, type MenuNode } from "./menus.js";
 import {
   createRequests,
@@ -137,6 +139,13 @@ export interface Workbench {
    * docked already stays. Throws `WorkbenchError` (`unknown-surface`).
    */
   openSurface(surfaceId: string, options?: { title?: string }): void;
+  /**
+   * A text of the chrome itself (the palette's placeholder, "Loading…") in the interface
+   * language: system.workbench's key `key`, `fallback` without a translation.
+   */
+  text(key: string, fallback: string, params?: Readonly<Record<string, unknown>>): string;
+  /** The interface language (system.l10n's when wired, else the locale given), if any. */
+  locale(): string | undefined;
   /** Take the surface out of the dock (`system.workbench/close-surface`), when docked. */
   closeSurface(surfaceId: string): void;
   /** The docked surfaces, in the order docked. */
@@ -163,8 +172,14 @@ export interface PaletteEntry {
 export interface SystemWorkbenchOptions {
   /** system.commands' bus. Without one, menus list no commands and `run` fails. */
   readonly commands?: CommandBus;
-  /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
+  /** The locale commands are titled in (`fr-FR`) without l10n; their default labels otherwise. */
   readonly locale?: string;
+  /**
+   * system.l10n's model: every label (views, menus, commands, the bars, dialogs, notifications,
+   * the chrome's own) is read through it in the interface language, switched live, the
+   * contributions' inline texts as the fallback. `locale` is ignored when given.
+   */
+  readonly l10n?: WorkbenchL10n;
 }
 
 /** The handlers of the fragment's commands, as its extensions' references name them. */
@@ -191,14 +206,14 @@ interface ViewData {
   readonly title: string;
 }
 
-function entryOf(extension: Extension): ViewEntry {
+function entryOf(extension: Extension, text: TextOf): ViewEntry {
   const data = extension.data as ViewData;
   const id = `${extension.contributor}/${data.id}`;
   return {
     id,
     viewId: data.id,
     fragment: extension.contributor,
-    title: data.title,
+    title: text(extension.contributor, `views.${data.id}.title`, data.title),
     extension,
     async component<T>() {
       if (!extension.reference) throw new WorkbenchError("no-component", id);
@@ -224,13 +239,17 @@ export function needsInput(entry: CommandEntry): boolean {
 export const SURFACE_PANEL_PREFIX = "surface:";
 
 export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): SystemWorkbench {
-  const { commands, locale } = options;
+  const { commands, l10n } = options;
+  const text = textOf(l10n);
+  const locale = () => (l10n ? l10n.locale() : options.locale);
   /** A live command the chrome can run: on the bus, needing no input. */
   const runnable = (id: string): CommandEntry | undefined => {
     const entry = commands?.get(id);
     return entry && !needsInput(entry) ? entry : undefined;
   };
   let views: readonly ViewEntry[] = [];
+  /** The `views` point's live extensions, to title the views again when the language changes. */
+  let viewExtensions: readonly Extension[] = [];
   /** The live extensions of the chrome's points (every point but `views`), by point. */
   const points = new Map<string, readonly Extension[]>();
   const read = (point: string) => points.get(point) ?? [];
@@ -262,12 +281,14 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
     () => read(DIALOGS_POINT),
     dialogRequest,
     () => notify(),
+    text,
   );
   const notifications = createRequests(
     "unknown-notification",
     () => read(NOTIFICATIONS_POINT),
     notificationRequest,
     () => notify(),
+    text,
   );
 
   /** Dismiss the requests of fragments no longer contributing to their point. */
@@ -298,9 +319,10 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
 
   /** The live views are those of `extensions`, the first per identity winning. */
   function sync(extensions: readonly Extension[]) {
+    viewExtensions = extensions;
     const next = new Map<string, ViewEntry>();
     for (const extension of extensions) {
-      const entry = entryOf(extension);
+      const entry = entryOf(extension, text);
       if (!next.has(entry.id)) next.set(entry.id, entry);
     }
     views = [...next.values()];
@@ -334,7 +356,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
         .list()
         .filter((entry) => !needsInput(entry))
         .map((entry): PaletteEntry => {
-          const { title, description } = labelsOf(entry, locale);
+          const { title, description } = commandLabels(entry, l10n, locale());
           const keybinding = bound.find((k) => k.command === entry.id)?.key;
           return {
             command: entry.id,
@@ -344,16 +366,18 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
             fragment: entry.fragment,
           };
         })
-        .sort((a, b) => a.title.localeCompare(b.title, locale));
+        .sort((a, b) => a.title.localeCompare(b.title, locale()));
     },
     keyCommand: (event, context) => commandForKey(keybindings(), event, context),
     statusbar: (context = {}) =>
-      buildStatusbar(read(STATUSBAR_POINT), (id) => runnable(id) !== undefined, context),
+      buildStatusbar(read(STATUSBAR_POINT), (id) => runnable(id) !== undefined, context, text),
     activitybar: () =>
       buildActivitybar(
         read(ACTIVITYBAR_POINT),
         (id) => workbench.view(id) !== undefined,
         (id) => runnable(id) !== undefined,
+        text,
+        locale(),
       ),
     dialogs,
     notifications,
@@ -410,6 +434,8 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
       notify();
     },
     docked: () => docked,
+    text: (key, fallback, params) => text(SYSTEM_WORKBENCH_ID, key, fallback, params),
+    locale,
     observe(listener) {
       const own = (s: WorkbenchState) => listener(s);
       listeners.add(own);
@@ -436,7 +462,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
   /** A live command's title in the locale. */
   function titleOf(id: string): string | undefined {
     const entry = commands?.get(id);
-    return entry ? labelsOf(entry, locale).title : undefined;
+    return entry ? commandLabels(entry, l10n, locale()).title : undefined;
   }
 
   const menuCommands = {
@@ -444,6 +470,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
     keybinding(command: string) {
       return keybindings().find((k) => k.command === command)?.key;
     },
+    text: (namespace: string, key: string, fallback: string) => text(namespace, key, fallback),
   };
 
   const module: WorkbenchModule = {
@@ -480,6 +507,20 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
             if (!first) notify();
           }),
         );
+      }
+      // Every label follows the interface language: views, pending requests and the chrome.
+      if (l10n) {
+        let initial = true;
+        stops.push(
+          l10n.observe(() => {
+            if (initial) return;
+            sync(viewExtensions);
+            dialogs.retranslate();
+            notifications.retranslate();
+            notify();
+          }),
+        );
+        initial = false;
       }
       first = false;
       return () => {

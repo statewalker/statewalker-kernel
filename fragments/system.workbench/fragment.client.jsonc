@@ -1,6 +1,6 @@
 // The client aspect of system.workbench: the `views`, `menus`, `notifications`, `dialogs`,
 // `statusbar` and `activitybar` extension points, the workbench's own notification, and the
-// commands that dock surfaces.
+// commands that dock surfaces, and the chrome's texts in French (system.l10n's `l10n` point).
 // Kept equal to src/archive.ts by tests/views.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
@@ -390,6 +390,25 @@
       "reference": {
         "module": "./index.js",
         "export": "closeSurface"
+      }
+    },
+    {
+      "point": "l10n",
+      "data": {
+        "locale": "fr",
+        "messages": {
+          "actions.ok": "OK",
+          "activitybar.label": "Barre d'activité",
+          "commands.open-surface.title": "Détacher une surface dans le dock",
+          "commands.close-surface.title": "Retirer une surface du dock",
+          "notifications.command-failed.title": "Échec de {command}",
+          "palette.placeholder": "Saisir une commande…",
+          "palette.empty": "Aucune commande trouvée.",
+          "notification.dismiss": "Fermer",
+          "view.actions": "Actions de la vue",
+          "view.loading": "Chargement…",
+          "view.failed": "La vue {view} a échoué : {error}"
+        }
       }
     }
   ]

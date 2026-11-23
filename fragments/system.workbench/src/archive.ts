@@ -313,6 +313,26 @@ export const clientAspect = {
     },
     command("open-surface", "Pop a surface out into the workbench's dock", true, "openSurface"),
     command("close-surface", "Take a surface out of the dock", false, "closeSurface"),
+    {
+      // The chrome's own texts in French, on system.l10n's `l10n` point (English is inline).
+      point: "l10n",
+      data: {
+        locale: "fr",
+        messages: {
+          "actions.ok": "OK",
+          "activitybar.label": "Barre d'activité",
+          "commands.open-surface.title": "Détacher une surface dans le dock",
+          "commands.close-surface.title": "Retirer une surface du dock",
+          "notifications.command-failed.title": "Échec de {command}",
+          "palette.placeholder": "Saisir une commande…",
+          "palette.empty": "Aucune commande trouvée.",
+          "notification.dismiss": "Fermer",
+          "view.actions": "Actions de la vue",
+          "view.loading": "Chargement…",
+          "view.failed": "La vue {view} a échoué : {error}",
+        },
+      },
+    },
   ],
 };
 
