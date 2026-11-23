@@ -1,0 +1,23 @@
+// The client aspect of system.a2ui: the `catalog` extension point.
+// Kept equal to src/archive.ts by tests/fragment.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "catalog": {
+      "description": "Catalog components surfaces may place, each a defineComponent definition (the lazy reference).",
+      "schema": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "The component's name in A2UI surfaces (`component`), equal to its definition's name.",
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9]*$",
+            "maxLength": 64
+          }
+        }
+      }
+    }
+  }
+}

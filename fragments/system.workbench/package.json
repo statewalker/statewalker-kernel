@@ -61,6 +61,7 @@
   },
   "devDependencies": {
     "@statewalker/shared-slots": "catalog:",
+    "@statewalker/system.commands": "workspace:^",
     "@tailwindcss/cli": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",

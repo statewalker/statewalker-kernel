@@ -1,0 +1,14 @@
+/*
+ * system.a2ui's prebuilt CSS (`dist/client.css`): the utilities its renderer and surface views
+ * use, against the shared shadcn tokens, and no preflight.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "@statewalker/system.workbench/tokens.css";
+
+@source "./";
+
+.a2ui-refused {
+  color: var(--destructive);
+  font-size: 0.875rem;
+}

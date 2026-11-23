@@ -1,0 +1,16 @@
+// The surfaces demo of apps/notes: client-only. It contributes a catalog component (NoteEditor,
+// a CodeMirror editor) to system.a2ui's `catalog` point and a view placing a surface with it, to
+// system.workbench's `views` point, without requiring either.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "org.statewalker.surfaces",
+  "version": "0.1.0",
+  "name": "Surfaces demo",
+  "description": "An A2UI surface with an editable component, shown inline and in the dock.",
+  "engines": {
+    "platform": "^0.1.0"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

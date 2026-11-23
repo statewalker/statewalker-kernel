@@ -74,12 +74,14 @@ async function open(): Promise<Loaded> {
   return { page, scripts, errors };
 }
 
-/** The fragments whose stylesheet the shell has linked. */
-function stylesheets(page: Page): Promise<string[]> {
-  return page.evaluate(() =>
-    [...document.querySelectorAll<HTMLLinkElement>("link[data-fragment]")].map(
-      (link) => link.dataset.fragment ?? "",
-    ),
+/** Whether the shell has linked the notes fragment's stylesheet (other fragments' are ignored). */
+function notesStylesheets(page: Page): Promise<string[]> {
+  return page.evaluate(
+    (id) =>
+      [...document.querySelectorAll<HTMLLinkElement>("link[data-fragment]")]
+        .map((link) => link.dataset.fragment ?? "")
+        .filter((fragment) => fragment === id),
+    NOTES,
   );
 }
 
@@ -94,7 +96,7 @@ describe("apps/notes in the browser", () => {
     try {
       const view = page.getByTestId("notes-view");
       await view.waitFor();
-      await expect(stylesheets(page)).resolves.toEqual([NOTES]);
+      await expect(notesStylesheets(page)).resolves.toEqual([NOTES]);
       await expect(margin(page)).resolves.toBe("16px");
       // The view sits in a dockview panel whose tab carries the view's title.
       await expect(page.locator(".dv-tab", { hasText: "Notes" }).count()).resolves.toBe(1);
@@ -211,7 +213,7 @@ describe("apps/notes in the browser", () => {
       expect(failure).toBe("unknown-command");
       // The workbench is still there, empty, and the fragment's stylesheet is gone.
       await page.getByTestId("workbench").waitFor();
-      await expect(stylesheets(page)).resolves.toEqual([]);
+      await expect(notesStylesheets(page)).resolves.toEqual([]);
       expect(errors).toEqual([]);
     } finally {
       await page.close();
@@ -231,7 +233,7 @@ describe("apps/notes in the browser", () => {
       await page.getByTestId("notes-view").waitFor();
 
       // Its client aspect is active again: its prebuilt CSS is linked and applies to the view.
-      await expect(stylesheets(page)).resolves.toEqual([NOTES]);
+      await expect(notesStylesheets(page)).resolves.toEqual([NOTES]);
       await expect(margin(page)).resolves.toBe("16px");
       await expect(
         page.evaluate((id) => window.platform.commands.call(id, { text: "Back" }), ADD_NOTE),
