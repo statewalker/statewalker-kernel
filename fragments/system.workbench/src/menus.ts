@@ -69,8 +69,10 @@ export function buildMenu(
     const group = data.group ?? "";
     const order = data.order ?? 0;
     if (data.command !== undefined) {
-      const title = data.title ?? commands.title(data.command);
-      if (title === undefined) continue;
+      // Shown only while the command is on the bus, whatever title the entry carries.
+      const commandTitle = commands.title(data.command);
+      if (commandTitle === undefined) continue;
+      const title = data.title ?? commandTitle;
       const keybinding = commands.keybinding(data.command);
       entries.push({
         group,

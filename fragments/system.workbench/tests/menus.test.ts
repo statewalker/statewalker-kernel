@@ -79,6 +79,20 @@ describe("the menus point", () => {
     expect(workbench.menu("menubar")).toEqual([]);
   });
 
+  it("hides a titled entry too while its command is not on the bus", async () => {
+    const { kernel, workbench } = await platform([
+      fragment(NOTES, [command("go")]),
+      fragment(TODO, [
+        ext("menus", { menu: "menubar", submenu: "todo", title: "To do" }),
+        ext("menus", { menu: "todo", command: `${NOTES}/go`, title: "Go!" }),
+        ext("menus", { menu: "todo", command: "org.example.none/missing", title: "Ghost" }),
+      ]),
+    ]);
+    expect(titles(workbench.menu("menubar"))).toEqual([{ "To do": ["Go!"] }]);
+    await kernel.disable(NOTES);
+    expect(workbench.menu("menubar")).toEqual([]);
+  });
+
   it("filters entries by their `when` against the context", async () => {
     const { workbench } = await platform([
       notesFragment([
