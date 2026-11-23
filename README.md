@@ -26,7 +26,7 @@ fragments/
   system.commands                                            the command bus, commands and keybindings points (private for now)
   system.security                                            capabilities, grants, the Allow/Ask/Block policy (private for now)
   system.workbench                                           the views and layouts points, the workbench model, its zones and device modes (private for now)
-  system.profile                                             the user's profile on the device: layouts, kernel records (private for now)
+  system.profile                                             the user's profile on the device: layouts, kernel records, the secrets vault (private for now)
 apps/
   notes                                                      the notes demo: the shell tracer, in the browser (private)
 scripts/                                                     maintenance scripts (see Reference)
@@ -45,7 +45,7 @@ kernel.core                                              (shared-slots only)
 system.commands ─> kernel.core                           (and shared-commands)
 system.security ─> system.commands, kernel.core          (and webrun-biscuit, shared-slots)
 system.workbench ─> kernel.core                          (client half: dockview-react, React)
-system.profile ─> kernel.core
+system.profile ─> kernel.core, ui.view.shadcn (client)
 client.core                                              (no dependencies)
 apps/notes ─> system.workbench, system.commands, system.profile, client.core, ui.view.shadcn
 fragment-build.node ─> fragment-build.core ─> kernel.core  (zod, peer; tsx for the config)
@@ -76,7 +76,7 @@ inline.view.react ─┼─> inline.core, mime.core
 | [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots, and routes extensions (static and runtime, dormant until their owner arrives, validated against the point's schema, with lazy references) to the extension points' owners. | not published yet |
 | [system.commands](fragments/system.commands) | The first core fragment: declares the `commands` and `keybindings` points; calls commands declared as OpenAPI operations on the bus (input and output checked against their schemas, typed errors), and projects the opt-in `agent` and `mcp` exposures to harness tool documents and MCP tools. | not published yet |
 | [system.workbench](fragments/system.workbench) | The core fragment owning the workbench: declares the `views` and `layouts` points, keeps which views exist and where the open ones are (left, right, bottom and centre zones, a layout per device mode saved in the profile; a view closes, and leaves saved layouts, when its fragment leaves), and renders them by the window's width: a dockview on a desktop, drawers on a tablet, one panel with a bottom tab bar on a phone, with the shadcn tokens; prebuilt CSS without preflight, and the tokens for fragments' CSS. | not published yet |
-| [system.profile](fragments/system.profile) | The core fragment keeping the user's profile on the device: a key-value store of JSON values over Web Storage or memory (a `KernelProfile`), holding the workbench's layouts per device mode. | not published yet |
+| [system.profile](fragments/system.profile) | The core fragment keeping the user's profile on the device: a key-value store of JSON values over Web Storage or memory (a `KernelProfile`), holding the workbench's layouts per device mode, and the encrypted secrets vault with its view. | not published yet |
 | [client.core](packages/client.core) | The client API a fragment's client half imports by bare specifier (shared through the shell's import map): the command bus, installed by the shell at boot. | not published yet |
 | [fragment-build.core](packages/fragment-build.core), [fragment-build.node](packages/fragment-build.node) | Fragment authoring: `defineFragment` for `fragment.config.ts`, generating `fragment.jsonc`, the aspect files, a standard `wrangler.jsonc` and the `openapi.json` command catalogue (commands' schemas from Zod, the operations `system.commands` calls); packs the built folder into a content-hashed archive the kernel installs with no build; the `fragment-build` command. | not published yet |
 | [system.security](fragments/system.security) | The core fragment that issues capabilities: declares the `capabilities` point (standing grants, system code only), issues Biscuit capabilities to agents, peers and sandboxes, and gates their command calls on the bus by deny-by-default grants and the user's Allow/Ask/Block policy, Ask suspending the call until the user answers. The user's own calls are not restricted. | not published yet |

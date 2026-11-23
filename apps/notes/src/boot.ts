@@ -3,7 +3,9 @@
 // bus and keeping its layouts per device mode in the profile; system.a2ui; system.appearance;
 // system.host with the browser's host services as defaults; system.settings, every fragment's
 // settings in one view, the values in the profile), the client API (commands, dialogs,
-// notifications, host services, settings) and the A2UI model installed, and the app's fragments fetched,
+// notifications, host services, settings) and the A2UI model installed, the vault (system.profile:
+// secrets encrypted in the profile, a remembered key in IndexedDB, passkeys through WebAuthn PRF)
+// loaded, and the app's fragments fetched,
 // installed, enabled and activated. The application definition (application.json) gives
 // system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
 // restored from the profile afterwards; its default layout is the workbench's default layout for
@@ -57,10 +59,13 @@ import {
   systemL10nArchive,
 } from "@statewalker/system.l10n";
 import {
+  createIndexedDbKeyStore,
   createSystemProfile,
+  createWebAuthnPasskeys,
   type ProfileStore,
   SYSTEM_PROFILE_ID,
   systemProfileArchive,
+  type Vault,
 } from "@statewalker/system.profile";
 import {
   createSystemSettings,
@@ -87,6 +92,12 @@ export interface Platform {
   readonly a2ui: A2ui;
   /** The user's profile on this device (system.profile): kernel records, layouts per mode. */
   readonly profile: ProfileStore;
+  /**
+   * The secrets vault (system.profile): its state is public, its secrets need an unlock. On
+   * `window.platform` like the rest, for tests and the console: page code has the origin's
+   * authority anyway (statewalker-root ADR 2026-11-19-code-kinds-and-trust).
+   */
+  readonly vault: Vault;
   readonly appearance: Appearance;
   /** system.settings: every enabled fragment's settings page, the values in the profile. */
   readonly settings: Settings;
@@ -279,9 +290,17 @@ export function applicationLayouts(definition: ApplicationDefinition): LayoutCon
 
 export async function boot({ base, locale, profile }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
-  const system = createSystemProfile(
-    profile ? {} : { storage: localStorage, prefix: `${definition.id}:` },
-  );
+  const system = createSystemProfile({
+    ...(profile ? {} : { storage: localStorage, prefix: `${definition.id}:` }),
+    vault: {
+      // A key remembered on this device: non-extractable, in IndexedDB, per application.
+      keys: createIndexedDbKeyStore(`${definition.id}:vault`),
+      authenticator: createWebAuthnPasskeys({ rpName: definition.brand.name }),
+      passkeyName: `${definition.brand.name} vault`,
+    },
+  });
+  // Locked, unlocked by a key remembered on this device, absent, or unreadable (and left alone).
+  await system.vault.load();
   const userProfile = profile ?? system.store;
   const appearance = createSystemAppearance({ brand: definition.brand });
   const commands = createSystemCommands();
@@ -308,6 +327,11 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
   /** Core fragments' client modules: what their own references (`./index.js`) resolve to. */
   const coreModules: Record<string, () => Promise<Record<string, unknown>>> = {
     [SYSTEM_WORKBENCH_ID]: async () => workbench.module,
+    // The vault view is React: its module loads with the view, bound to the vault.
+    [SYSTEM_PROFILE_ID]: once(async () => {
+      const client = await import("@statewalker/system.profile/client");
+      return client.vaultModule(system.vault);
+    }),
     // The settings view is React: its module loads with the view, bound to the model.
     [SYSTEM_SETTINGS_ID]: once(async () => {
       const client = await import("@statewalker/system.settings/client");
@@ -377,6 +401,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     workbench: workbench.workbench,
     a2ui: a2ui.a2ui,
     profile: userProfile,
+    vault: system.vault,
     host: { services: host.services, provider: host.provider },
     appearance: appearance.appearance,
     settings: settings.settings,
