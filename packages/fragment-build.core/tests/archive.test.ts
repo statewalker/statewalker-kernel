@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { archiveHash } from "@statewalker/kernel.core";
 import {
-  archiveHash,
   defineFragment,
   generateFragmentFiles,
   packArchive,
@@ -31,7 +31,7 @@ const sources = {
   "client/commands.js": "export const greet = ({ name }) => ({ text: 'hi ' + name });\n",
 };
 
-describe("archiveHash", () => {
+describe("archiveHash (kernel.core) over packed files", () => {
   it("is SHA-256 over the files sorted by path, as JSON [[path, text], ...]", async () => {
     const files = { "b.txt": "B", "a/x.js": "x", "fragment.jsonc": "{}" };
     const expected = createHash("sha256")

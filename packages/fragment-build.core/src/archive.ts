@@ -1,8 +1,8 @@
-import type { FragmentFiles } from "@statewalker/kernel.core";
+import { archiveHash, type FragmentFiles } from "@statewalker/kernel.core";
 
 /**
  * A packed fragment: its built folder's files by relative path, as text, and their content
- * hash. `files` is the kernel's install input as it is (`kernel.install([archive.files])`):
+ * hash (kernel.core's `archiveHash`, the key of the host's archive store). `files` is the kernel's install input as it is (`kernel.install([archive.files])`):
  * the kernel reads the root files and keeps the rest for the host.
  */
 export interface FragmentArchive {
@@ -15,23 +15,8 @@ export const DEFAULT_ARCHIVE_SCHEMA =
 
 const ARCHIVE_SCHEMA_PATTERN = /(?:^|\/)fragment-archive\.v(\d+)\.schema\.json$/;
 
-const encoder = new TextEncoder();
-
 function sortedPaths(files: FragmentFiles): string[] {
   return Object.keys(files).sort();
-}
-
-/**
- * An archive's content hash: `sha256:` and the lowercase hex SHA-256 (Web Crypto) of the UTF-8
- * JSON text of `[[path, text], ...]`, sorted by path in JavaScript string order. The same
- * definition as kernel.core's archive store (statewalker-root#249), so a hash names the same
- * files in both.
- */
-export async function archiveHash(files: FragmentFiles): Promise<string> {
-  const entries = sortedPaths(files).map((path) => [path, files[path]]);
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(JSON.stringify(entries)));
-  const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-  return `sha256:${hex}`;
 }
 
 /** Whether `path` is a relative POSIX path that stays inside the fragment's folder. */
