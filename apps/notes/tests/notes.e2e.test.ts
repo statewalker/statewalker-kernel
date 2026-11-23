@@ -74,12 +74,28 @@ async function open(): Promise<Loaded> {
   return { page, scripts, errors };
 }
 
+/** The fragments whose stylesheet the shell has linked. */
+function stylesheets(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll<HTMLLinkElement>("link[data-fragment]")].map(
+      (link) => link.dataset.fragment ?? "",
+    ),
+  );
+}
+
+/** The notes view's top margin: `m-4` (16px) exists only in the notes fragment's own CSS. */
+function margin(page: Page): Promise<string> {
+  return page.getByTestId("notes-view").evaluate((view) => getComputedStyle(view).marginTop);
+}
+
 describe("apps/notes in the browser", () => {
   it("opens the notes view in the workbench and runs its command", async () => {
     const { page, errors } = await open();
     try {
       const view = page.getByTestId("notes-view");
       await view.waitFor();
+      await expect(stylesheets(page)).resolves.toEqual([NOTES]);
+      await expect(margin(page)).resolves.toBe("16px");
       // The view sits in a dockview panel whose tab carries the view's title.
       await expect(page.locator(".dv-tab", { hasText: "Notes" }).count()).resolves.toBe(1);
       await expect(view.getByRole("listitem").count()).resolves.toBe(0);
@@ -193,8 +209,33 @@ describe("apps/notes in the browser", () => {
         ADD_NOTE,
       );
       expect(failure).toBe("unknown-command");
-      // The workbench is still there, empty.
+      // The workbench is still there, empty, and the fragment's stylesheet is gone.
       await page.getByTestId("workbench").waitFor();
+      await expect(stylesheets(page)).resolves.toEqual([]);
+      expect(errors).toEqual([]);
+    } finally {
+      await page.close();
+    }
+  });
+
+  it("re-enabling notes brings back its command and its view, styled", async () => {
+    const { page, errors } = await open();
+    try {
+      await page.getByTestId("notes-view").waitFor();
+      await page.evaluate((id) => window.platform.kernel.disable(id), NOTES);
+      await page.getByTestId("notes-view").waitFor({ state: "detached" });
+
+      await page.evaluate((id) => window.platform.kernel.enable(id), NOTES);
+      await page.waitForFunction((id) => window.platform.commands.get(id) !== undefined, ADD_NOTE);
+      await page.evaluate((id) => window.platform.workbench.open(`${id}/notes`), NOTES);
+      await page.getByTestId("notes-view").waitFor();
+
+      // Its client aspect is active again: its prebuilt CSS is linked and applies to the view.
+      await expect(stylesheets(page)).resolves.toEqual([NOTES]);
+      await expect(margin(page)).resolves.toBe("16px");
+      await expect(
+        page.evaluate((id) => window.platform.commands.call(id, { text: "Back" }), ADD_NOTE),
+      ).resolves.toMatchObject({ count: expect.any(Number) });
       expect(errors).toEqual([]);
     } finally {
       await page.close();

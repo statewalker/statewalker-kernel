@@ -8,6 +8,7 @@ import {
   type InstalledFragment,
   type Kernel,
   parseJsonc,
+  resolvedFragmentsSlot,
 } from "@statewalker/kernel.core";
 import {
   type CommandBus,
@@ -88,6 +89,27 @@ async function activateClient(base: URL, fragment: InstalledFragment): Promise<(
   return () => link.remove();
 }
 
+/**
+ * Activate the client aspect of every fragment that resolves after boot: one enabled again after
+ * a disable, or installed and enabled later. Its extensions come back on resolve; activation links
+ * its stylesheet. Returns the disposer.
+ */
+function activateWhenResolved(kernel: Kernel): () => void {
+  let known = new Set(kernel.slots.getSnapshot(resolvedFragmentsSlot).keys());
+  return kernel.slots.observe(resolvedFragmentsSlot, (resolved) => {
+    const fresh = [...resolved.values()].filter(
+      (f) => !known.has(f.id) && f.manifest.aspects.client,
+    );
+    known = new Set(resolved.keys());
+    for (const fragment of fresh) {
+      // Queued after the operation that resolved it; a fragment gone by then is refused, harmlessly.
+      kernel.activate("client", fragment.id).catch((error: unknown) => {
+        console.warn(`[shell] ${fragment.id} (client) not activated:`, error);
+      });
+    }
+  });
+}
+
 export async function boot({ base }: BootOptions): Promise<Platform> {
   const commands = createSystemCommands();
   const workbench = createSystemWorkbench();
@@ -121,5 +143,6 @@ export async function boot({ base }: BootOptions): Promise<Platform> {
   const archives = await Promise.all(index.fragments.map((id) => fetchArchive(base, id)));
   for (const fragment of await kernel.install(archives)) await kernel.enable(fragment.id);
   await kernel.activate("client");
+  activateWhenResolved(kernel);
   return { kernel, commands: commands.bus, workbench: workbench.workbench };
 }
