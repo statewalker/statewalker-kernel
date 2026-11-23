@@ -1,4 +1,17 @@
 export * from "./errors.js";
+export {
+  type Extension,
+  type ExtensionChange,
+  type ExtensionListener,
+  type ExtensionRegistryOptions,
+  extensionPointId,
+  type LazyReference,
+  type OwnedExtensionPoints,
+  type ReferenceContext,
+  type ReferenceResolver,
+  type ReferenceResolvers,
+  referenceKind,
+} from "./extensions.js";
 export * from "./ids.js";
 export * from "./kernel.js";
 export * from "./manifest.js";

@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's kernel: it reads a fragment's `fragment.jsonc`, refuses what cannot run on this host, and takes fragments through their lifecycle (installed, enabled, resolved, active per aspect). The lifecycle state is membership in keyed slots of `@statewalker/shared-slots`, so the fragment manager, the extension registry and the workbench observe it like any other slot. No React, no DOM, no Node built-ins.
+The platform's kernel: it reads a fragment's `fragment.jsonc`, refuses what cannot run on this host, takes fragments through their lifecycle (installed, enabled, resolved, active per aspect), and routes extensions to the owners of extension points. The lifecycle state is membership in keyed slots of `@statewalker/shared-slots`, so the fragment manager and the workbench observe it like any other slot. No React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -16,7 +16,10 @@ pnpm add @statewalker/kernel.core
 
 | Import | Provides |
 | --- | --- |
-| `createKernel`, `Kernel`, `KernelOptions`, `PlatformInfo`, `AspectActivator` | The kernel: `start`, `install`, `enable`, `disable`, `activate`, `deactivate`, `stop`. |
+| `createKernel`, `Kernel`, `KernelOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `activate`, `deactivate`, `stop`. |
+| `OwnedExtensionPoints`, `Extension`, `ExtensionChange`, `ExtensionListener`, `extensionPointId` | What a point's owner reads: its points, their extensions, the changes. |
+| `LazyReference`, `ReferenceResolvers`, `ReferenceResolver`, `ReferenceContext`, `referenceKind`, `ExtensionUnavailable` | Lazy references to a contributor's code, the host's resolvers, and the error once the contributor is gone. |
+| `extensionContributionsSlot(aspect)`, `ExtensionContribution`, `extensionRefusalsSlot(aspect)`, `ExtensionRefusal` | Runtime extensions (`system:extensions:contributed:<aspect>`) and refused extensions with their reasons (`system:extensions:refused:<aspect>`). |
 | `installedFragmentsSlot`, `enabledFragmentsSlot`, `resolvedFragmentsSlot`, `activeFragmentsSlot(aspect)` | The keyed slots `system:fragments:installed`, `:enabled`, `:resolved`, `:active:<aspect>`. |
 | `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError` | Why an install or a lifecycle step was refused. |
 | `fragmentManifestSchemaV1`, `FragmentManifest`, `ASPECTS`, `MANIFEST_FILE`, `parseJsonc` | The manifest, its schema and its parser. |
@@ -64,6 +67,69 @@ await kernel.activate("client", "org.statewalker.fragment-notes"); // files firs
 kernel.slots.observe(activeFragmentsSlot("client"), (active) => console.log([...active.keys()]));
 ```
 
+An owner opens an extension point, another fragment extends it. In the owner's `fragment.jsonc`:
+
+```jsonc
+"aspects": {
+  "client": {
+    "extensionPoints": {
+      "exporters": {
+        "description": "Ways to export a note",
+        "schema": { "type": "object", "required": ["label"], "properties": { "label": { "type": "string" } } }
+      }
+    }
+  }
+}
+```
+
+In the contributor's, with no `requires` on the owner:
+
+```jsonc
+"aspects": {
+  "client": {
+    "extensions": [
+      {
+        "point": "org.statewalker.fragment-notes/exporters",
+        "data": { "label": "Markdown" },
+        "reference": { "module": "./export-markdown.js", "export": "exportMarkdown" }
+      }
+    ]
+  }
+}
+```
+
+The owner reads its points from its activation context; the host resolves references:
+
+```ts
+const kernel = createKernel({
+  platform,
+  resolvers: {
+    module: (ref, { contributor }) => importExport(contributor, ref.module, ref.export ?? "default"),
+    entrypoint: (ref, { contributor }) => bindService(contributor, ref.entrypoint, ref.method),
+    command: (ref) => (input: unknown) => commands.call(ref.command, input),
+  },
+  activators: {
+    client: (fragment, { extensions }) => {
+      if (fragment.id !== "org.statewalker.fragment-notes") return;
+      return extensions.observe("exporters", (all, { added, removed }) => {
+        menu.set(all.map((e) => ({ label: (e.data as { label: string }).label, run: () => e.reference?.call(note) })));
+      });
+    },
+  },
+});
+```
+
+Code adds runtime extensions through a slot, keyed under its fragment's id:
+
+```ts
+const withdraw = kernel.slots.register(extensionContributionsSlot("client"), "org.example.fragment-pdf/pdf", {
+  contributor: "org.example.fragment-pdf",
+  point: "org.statewalker.fragment-notes/exporters",
+  data: { label: "PDF" },
+  reference: { command: "org.example.fragment-pdf/export" },
+});
+```
+
 ## Internals
 
 ### The manifest
@@ -92,6 +158,18 @@ Each state is a keyed slot, and a fragment is in every slot whose state it has r
 - **Disable** refuses when resolved fragments require the fragment, unless `{ cascade: true }` confirms it; they are then deactivated first and become unresolved, staying enabled.
 
 Operations run one after another, in the order they were called. An operation called while an activator or a cleanup runs is rejected at once with a `FragmentLifecycleError`: an activator that awaited the kernel would otherwise wait for its own operation forever. This also refuses a call from elsewhere that lands while a hook runs; call again once the running operation has settled.
+
+### Extensions
+
+A fragment opens **extension points** in one aspect, under `aspects.<aspect>.extensionPoints` of `fragment.jsonc`: a name (`a-z`, `0-9`, inner `-`) and a JSON Schema (2020-12). A point's id is `<fragment-id>/<name>`; a core fragment's point is known by its short name alone (`menus`), and two core fragments cannot open the same one (`extension-point-conflict`). A name is opened in one aspect only, since the id carries no aspect.
+
+A fragment contributes **extensions** to points of the same aspect, under `aspects.<aspect>.extensions`, or at runtime by registering an `ExtensionContribution` in `extensionContributionsSlot(aspect)` under the key `<contributor>/<name>`. An extension is `data` plus an optional `reference`: a client module export (`{ module, export? }`), a server entrypoint method reached through a service binding (`{ entrypoint, method }`), or a command (`{ command }`). Contributing needs no `requires`.
+
+The registry is computed from public state: an extension is **live** while its contributor and the point's owner are resolved (and, for a runtime one, while it stays registered). An extension whose point is not open is **dormant**: nothing is reported, and it is checked once the owner resolves. A live extension's data must match the point's schema; one that does not, one in the wrong aspect and a malformed runtime contribution are **refused**, published in `extensionRefusalsSlot(aspect)` with a code and a message while the contributor and point are there. Extensions read in a stable order: static ones in resolution order, then runtime ones in registration order.
+
+The owner gets its points from the context its activator receives (`context.extensions`), only for the aspect being activated, and nobody else gets them. `read(name)` is synchronous and `observe(name, listener)` calls the listener at once, then with `added` and `removed` on every change; both work while the activator runs, when every kernel operation is refused, because they read state and change nothing. A listener that throws is reported to `onError`. When the aspect is deactivated (or its activator throws) the handle closes: reads are empty and listeners stop.
+
+A **reference** is handed only to the owner, as `extension.reference`. The kernel loads no code: `resolve()` goes through the host's resolver for the kind (`KernelOptions.resolvers`), and `call(...args)` resolves a function and calls it. A reference is usable while its extension is live and the owner's handle is open. Otherwise `ExtensionUnavailable` is raised: on `resolve` and `call`, on a function resolved earlier, for a kind the host does not resolve, and for a resolution or a call still pending when the extension goes, so nothing waits on a fragment that has left.
 
 ### Dependencies
 

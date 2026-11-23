@@ -2,8 +2,9 @@ import { Validator } from "@cfworker/json-schema";
 import { type ParseError, parse, printParseErrorCode } from "jsonc-parser";
 import semver from "semver";
 import type { Refusal } from "./errors.js";
-import type { FragmentFiles, FragmentManifest } from "./manifest.js";
+import { ASPECTS, type FragmentFiles, type FragmentManifest } from "./manifest.js";
 import { fragmentManifestSchemaV1 } from "./schema.js";
+import { describeErrors } from "./validation.js";
 
 export const MANIFEST_FILE = "fragment.jsonc";
 
@@ -49,10 +50,10 @@ export function readManifest(
 
   const result = validator.validate(raw);
   if (!result.valid) {
-    const details = result.errors
-      .filter((e) => e.keyword !== "properties" && e.keyword !== "$ref")
-      .map((e) => `${e.instanceLocation || "#"}: ${e.error}`);
-    return invalid(`${MANIFEST_FILE} does not match its schema: ${details.join("; ")}`, id);
+    return invalid(
+      `${MANIFEST_FILE} does not match its schema: ${describeErrors(result.errors)}`,
+      id,
+    );
   }
   const manifest = raw as unknown as FragmentManifest;
   if (!semver.valid(manifest.version)) {
@@ -64,6 +65,20 @@ export function readManifest(
   for (const [dep, range] of Object.entries(manifest.requires ?? {})) {
     if (!semver.validRange(range)) {
       return invalid(`requires["${dep}"] "${range}" is not a semver range`, id);
+    }
+  }
+  // A point's id carries no aspect, so a name is opened in one aspect only.
+  const opened = new Map<string, string>();
+  for (const aspect of ASPECTS) {
+    for (const name of Object.keys(manifest.aspects[aspect]?.extensionPoints ?? {})) {
+      const other = opened.get(name);
+      if (other) {
+        return invalid(
+          `the extension point "${name}" is opened in both the ${other} and the ${aspect} aspect`,
+          id,
+        );
+      }
+      opened.set(name, aspect);
     }
   }
   return { manifest };

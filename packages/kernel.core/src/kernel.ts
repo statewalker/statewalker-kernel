@@ -1,6 +1,11 @@
 import { Slots } from "@statewalker/shared-slots";
 import semver from "semver";
 import { FragmentInstallError, FragmentLifecycleError, type Refusal } from "./errors.js";
+import {
+  createExtensionRegistry,
+  type ExtensionRegistryOptions,
+  type OwnedExtensionPoints,
+} from "./extensions.js";
 import { isFragmentId, isSystemId, MAX_WORKER_NAME_LENGTH, workerNameOf } from "./ids.js";
 import {
   ASPECTS,
@@ -36,10 +41,21 @@ export type AspectCleanup = () => void | Promise<void>;
  */
 export type AspectActivator = (
   fragment: InstalledFragment,
+  context: ActivationContext,
   // biome-ignore lint/suspicious/noConfusingVoidType: lets activators without a `return` type-check.
 ) => AspectCleanup | undefined | void | Promise<AspectCleanup | undefined | void>;
 
-export interface KernelOptions {
+/** What an activator receives beside the fragment. */
+export interface ActivationContext {
+  readonly aspect: Aspect;
+  /**
+   * The extension points the fragment opens in this aspect, with their extensions. Only
+   * the owner gets them. Reading is synchronous and allowed while the activator runs.
+   */
+  readonly extensions: OwnedExtensionPoints;
+}
+
+export interface KernelOptions extends ExtensionRegistryOptions {
   readonly platform: PlatformInfo;
   /** The slot bus the lifecycle state is published on; a new one by default. */
   readonly slots?: Slots;
@@ -100,10 +116,19 @@ export function createKernel(options: KernelOptions): Kernel {
   const memberships = new Map<string, () => void>();
 
   const cleanups = new Map<string, AspectCleanup>();
+  /** The extension points handed to each active (or activating) aspect of a fragment. */
+  const handles = new Map<string, { close(): void }>();
+  function closeHandle(aspect: Aspect, id: string) {
+    const key = `${aspect}\u0000${id}`;
+    handles.get(key)?.close();
+    handles.delete(key);
+  }
   const onError =
     options.onError ??
     ((id: string, aspect: Aspect, error: unknown) =>
       console.error(`[kernel] "${id}" (${aspect}):`, error));
+
+  const registry = createExtensionRegistry(slots, options, onError);
 
   /** Ids active per aspect, in activation order. */
   const activeOrder = new Map<Aspect, string[]>(ASPECTS.map((a) => [a, []]));
@@ -198,9 +223,13 @@ export function createKernel(options: KernelOptions): Kernel {
     );
     if (blocked) return;
     try {
-      const cleanup = await hook(() => options.activators?.[aspect]?.(f));
+      const activator = options.activators?.[aspect];
+      const owned = registry.ownedBy(f, aspect);
+      handles.set(`${aspect}\u0000${f.id}`, owned);
+      const cleanup = await hook(() => activator?.(f, { aspect, extensions: owned.points }));
       if (typeof cleanup === "function") cleanups.set(`${aspect}\u0000${f.id}`, cleanup);
     } catch (error) {
+      closeHandle(aspect, f.id);
       onError(f.id, aspect, error);
       return;
     }
@@ -222,6 +251,7 @@ export function createKernel(options: KernelOptions): Kernel {
         onError(id, aspect, error);
       }
       leave(activeFragmentsSlot(aspect), id);
+      closeHandle(aspect, id);
     }
   }
 
@@ -285,6 +315,29 @@ export function createKernel(options: KernelOptions): Kernel {
           );
         } else {
           workerNames.set(expected, m.id);
+        }
+      }
+    }
+    // Core points are known by their short name, so two core fragments cannot share one.
+    const shortPoints = new Map<string, string>();
+    const corePoints = (m: FragmentManifest) =>
+      isSystemId(m.id)
+        ? ASPECTS.flatMap((a) => Object.keys(m.aspects[a]?.extensionPoints ?? {}))
+        : [];
+    for (const f of slots.getSnapshot(installedFragmentsSlot).values()) {
+      for (const name of corePoints(f.manifest)) shortPoints.set(name, f.id);
+    }
+    for (const m of batch.values()) {
+      for (const name of corePoints(m)) {
+        const other = shortPoints.get(name);
+        if (other) {
+          refusals.push({
+            id: m.id,
+            code: "extension-point-conflict",
+            message: `"${m.id}" opens the extension point "${name}", which "${other}" opens`,
+          });
+        } else {
+          shortPoints.set(name, m.id);
         }
       }
     }

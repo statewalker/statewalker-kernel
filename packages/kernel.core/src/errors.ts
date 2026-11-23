@@ -15,7 +15,9 @@ export type RefusalCode =
   /** A required fragment is absent, or present in a version outside the range. */
   | "unmet-requirement"
   /** A fragment of this id is already installed (one version per host). */
-  | "already-installed";
+  | "already-installed"
+  /** A core fragment opens a short extension point another core fragment opens too. */
+  | "extension-point-conflict";
 
 export interface Refusal {
   /** The fragment refused (as far as it could be read). */
@@ -39,5 +41,23 @@ export class FragmentLifecycleError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "FragmentLifecycleError";
+  }
+}
+
+/**
+ * An extension's reference cannot be used: its contributor is no longer resolved, the
+ * extension was withdrawn or refused, the owner's aspect was deactivated, or the host has
+ * no resolver for the reference's kind. Raised instead of waiting, also for a resolution or
+ * a call that was pending when the extension went.
+ */
+export class ExtensionUnavailable extends Error {
+  /** The extension's id. */
+  readonly extension: string;
+  readonly contributor: string;
+  constructor(extension: string, contributor: string, reason: string) {
+    super(`Extension "${extension}" of "${contributor}" is unavailable: ${reason}`);
+    this.name = "ExtensionUnavailable";
+    this.extension = extension;
+    this.contributor = contributor;
   }
 }

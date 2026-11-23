@@ -73,7 +73,95 @@ export const fragmentManifestSchemaV1 = {
           type: "string",
           minLength: 1,
         },
+        extensionPoints: {
+          description:
+            "The extension points this fragment opens in the aspect, by name. A point's id is <fragment-id>/<name>; a core fragment's point is known by its short name alone.",
+          type: "object",
+          propertyNames: { $ref: "#/$defs/pointName" },
+          additionalProperties: { $ref: "#/$defs/extensionPoint" },
+        },
+        extensions: {
+          description: "This fragment's extensions to points of the same aspect.",
+          type: "array",
+          items: { $ref: "#/$defs/extension" },
+        },
       },
+    },
+    pointName: {
+      description: "An extension point's name: lowercase letters, digits and inner hyphens.",
+      type: "string",
+      pattern: "^[a-z](?:[a-z0-9-]*[a-z0-9])?$",
+    },
+    pointId: {
+      description:
+        "An extension point's id: <fragment-id>/<name>, or a core point's short name alone.",
+      type: "string",
+      pattern:
+        "^(?:[a-z](?:[a-z0-9-]*[a-z0-9])?(?:\\.[a-z](?:[a-z0-9-]*[a-z0-9])?)+/)?[a-z](?:[a-z0-9-]*[a-z0-9])?$",
+    },
+    extensionPoint: {
+      type: "object",
+      required: ["schema"],
+      additionalProperties: false,
+      properties: {
+        description: { type: "string" },
+        schema: {
+          description: "The JSON Schema (2020-12) every extension's data must match.",
+          type: ["object", "boolean"],
+        },
+      },
+    },
+    extension: {
+      type: "object",
+      required: ["point", "data"],
+      additionalProperties: false,
+      properties: {
+        point: { $ref: "#/$defs/pointId" },
+        data: { description: "The extension's data, checked against the point's schema." },
+        reference: { $ref: "#/$defs/reference" },
+      },
+    },
+    reference: {
+      description:
+        "A lazy reference to the contributor's code, handed only to the point's owner: a client module export, a server entrypoint method, or a command.",
+      oneOf: [
+        {
+          type: "object",
+          required: ["module"],
+          additionalProperties: false,
+          properties: {
+            module: {
+              description: "A module of the contributor's aspect folder.",
+              type: "string",
+              minLength: 1,
+            },
+            export: {
+              description: "The export's name; default when absent.",
+              type: "string",
+              minLength: 1,
+            },
+          },
+        },
+        {
+          type: "object",
+          required: ["entrypoint", "method"],
+          additionalProperties: false,
+          properties: {
+            entrypoint: {
+              description: "The server half's entrypoint, reached through a service binding.",
+              type: "string",
+              minLength: 1,
+            },
+            method: { type: "string", minLength: 1 },
+          },
+        },
+        {
+          type: "object",
+          required: ["command"],
+          additionalProperties: false,
+          properties: { command: { type: "string", minLength: 1 } },
+        },
+      ],
     },
   },
 } as const;

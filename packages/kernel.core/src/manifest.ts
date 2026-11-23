@@ -2,10 +2,52 @@
 export const ASPECTS = ["server", "client", "agent"] as const;
 export type Aspect = (typeof ASPECTS)[number];
 
+/** A lazy reference to a client module's export (`default` when `export` is absent). */
+export interface ModuleReference {
+  readonly module: string;
+  readonly export?: string;
+}
+
+/** A lazy reference to a method of the server half's entrypoint, through a service binding. */
+export interface EntrypointReference {
+  readonly entrypoint: string;
+  readonly method: string;
+}
+
+/** A lazy reference to a command. */
+export interface CommandReference {
+  readonly command: string;
+}
+
+/** A lazy reference to the contributor's code: what an extension may carry beside its data. */
+export type ExtensionReference = ModuleReference | EntrypointReference | CommandReference;
+
+/** The kinds of lazy reference, each resolved by a host-supplied resolver. */
+export type ReferenceKind = "module" | "entrypoint" | "command";
+
+/** An extension point a fragment opens in one aspect. */
+export interface ExtensionPointDeclaration {
+  readonly description?: string;
+  /** The JSON Schema (2020-12) every extension's data must match. */
+  readonly schema: Readonly<Record<string, unknown>> | boolean;
+}
+
+/** One extension declared in a fragment's aspect. */
+export interface ExtensionDeclaration {
+  /** The point's id: `<fragment-id>/<name>`, or a core point's short name. */
+  readonly point: string;
+  readonly data: unknown;
+  readonly reference?: ExtensionReference;
+}
+
 /** One aspect's entry in `fragment.jsonc`. */
 export interface AspectEntry {
   /** The aspect's folder, when not the default (`server/`, `client/`, `agent/`). */
   readonly dir?: string;
+  /** The extension points the fragment opens in this aspect, by name. */
+  readonly extensionPoints?: Readonly<Record<string, ExtensionPointDeclaration>>;
+  /** The fragment's extensions to points of this aspect. */
+  readonly extensions?: readonly ExtensionDeclaration[];
 }
 
 /** The content of a `fragment.jsonc`, version 1. */
