@@ -49,7 +49,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/**"],
+      "includes": ["packages/**", "fragments/*/src/**"],
       "linter": {
         "rules": {
           "style": {
@@ -57,13 +57,13 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "react": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories).",
-                  "react-dom": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
+                  "react": "packages/ and a fragment's src/ hold UI-free, isomorphic code: React belongs in packages-react/ or a fragment's client/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories).",
+                  "react-dom": "packages/ and a fragment's src/ hold UI-free, isomorphic code: React belongs in packages-react/ or a fragment's client/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
                 },
                 "patterns": [
                   {
                     "group": ["react/**", "react-dom/**"],
-                    "message": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
+                    "message": "packages/ and a fragment's src/ hold UI-free, isomorphic code: React belongs in packages-react/ or a fragment's client/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
                   }
                 ]
               }

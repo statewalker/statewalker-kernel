@@ -2,7 +2,7 @@
 
 ## What it is
 
-The core fragment that owns the workbench. It opens the `views` extension point in its client aspect, keeps the workbench model (which views fragments contribute, which are open), and its client half renders that model as one dockview (`dockview-react`) styled with the shadcn tokens. It is a private workspace package, `@statewalker/system.workbench`, in two halves: `src/` (React-free, tested in Node at seam 1) and `client/` (React, the fragment's default client folder).
+The core fragment that owns the workbench. It opens the `views` extension point in its client aspect, keeps the workbench model (which views fragments contribute, which are open), and its client half renders that model as one dockview (`dockview-react`) styled with the shadcn tokens. It is a private workspace package, `@statewalker/system.workbench`, in two halves: `src/` (React-free, tested in Node at seam 1; `lint:check` fails a React import or a `.tsx` file there) and `client/` (React, the fragment's default client folder).
 
 So far it opens only `views`. The other points ADR `2026-11-20-kernel-and-core-fragments` gives it (`menus`, `notifications`, `dialogs`, `statusbar`, `activitybar`, layouts per device mode) come with their tickets (statewalker/statewalker-root#253, #254).
 

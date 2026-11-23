@@ -25,7 +25,9 @@ From the repository root, after `pnpm install`:
 | `window.platform.commands.call("org.statewalker.notes/add-note", ...)` lists the note and returns `{ count: 2 }` | The same command on the bus, with its input and output checked against the OpenAPI schemas |
 | The import map lists React, react-dom, dockview, shadcn and the client API; each is fetched once; one react-dom renderer registers | The shared modules: one copy each for the shell and every fragment |
 | Every bare import of the notes bundle is a key of the import map | Fragment client bundles leave the shared modules external |
-| `kernel.disable("org.statewalker.notes")` removes the panel and the command (`unknown-command` afterwards), leaving the workbench | Removal repair: a disabled fragment's view closes and its command leaves the bus; nothing else changes |
+| `kernel.disable("org.statewalker.notes")` removes the panel, the command (`unknown-command` afterwards) and the fragment's stylesheet, leaving the workbench | Removal repair: a disabled fragment's view closes, its command leaves the bus and its client aspect deactivates; nothing else changes |
+| `kernel.enable("org.statewalker.notes")`, then opening its view: the command is back, the stylesheet linked, the view styled (`m-4`, from the fragment's own CSS) | A fragment resolved after boot gets its client aspect activated by the shell |
+| The notes view's margin is 16px from the first load | Prebuilt CSS per fragment, linked while its client aspect is active |
 
 ## Internals
 
@@ -54,7 +56,7 @@ Every bundle (the shell, the shared modules, the fragments) leaves the shared mo
 
 ### The shell
 
-`boot()` creates the kernel with `platform.json`'s version and the two core fragments, installs the client API's bindings, fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect. A module reference resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates.
+`boot()` creates the kernel with `platform.json`'s version and the two core fragments, installs the client API's bindings, fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect. A module reference resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
 
 ## License
 
