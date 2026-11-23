@@ -247,7 +247,7 @@ describe("layouts are remembered per device mode", () => {
     });
   });
 
-  it("a saved layout drops the views of a removed fragment", async () => {
+  it("a saved layout drops the views of a fragment that leaves (disabled; a baseline fragment cannot be removed)", async () => {
     await withApp(DESKTOP, async ({ page }) => {
       await notesView(page).waitFor();
       await openView(page, SURFACES_VIEW);
@@ -255,18 +255,25 @@ describe("layouts are remembered per device mode", () => {
       await expect(savedLayout(page, "desktop")).resolves.toMatchObject({
         zones: { center: [NOTES_VIEW], right: [SURFACES_VIEW] },
       });
-      await page.evaluate((id) => window.platform.kernel.remove(id), NOTES);
+      await page.evaluate((id) => window.platform.kernel.disable(id), NOTES);
       await expect.poll(() => dockTab(page, "Notes").count()).toBe(0);
       await expect(savedLayout(page, "desktop")).resolves.toMatchObject({
         zones: { center: [], right: [SURFACES_VIEW] },
       });
-      // The app installs notes again on boot; its view is no longer in the saved layout.
+      // Notes stays disabled across the reload; enabled again, its view is no longer in the
+      // saved layout, so it does not reopen.
       await reload(page);
       await surfacesView(page).waitFor();
-      await expect(
-        page.evaluate((id) => window.platform.workbench.view(id) !== undefined, NOTES_VIEW),
-      ).resolves.toBe(true);
+      await page.evaluate((id) => window.platform.kernel.enable(id), NOTES);
+      await expect
+        .poll(() =>
+          page.evaluate((id) => window.platform.workbench.view(id) !== undefined, NOTES_VIEW),
+        )
+        .toBe(true);
       await expect(dockTab(page, "Notes").count()).resolves.toBe(0);
+      await expect(savedLayout(page, "desktop")).resolves.toMatchObject({
+        zones: { center: [], right: [SURFACES_VIEW] },
+      });
     });
   });
 });

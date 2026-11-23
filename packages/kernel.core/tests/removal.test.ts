@@ -132,3 +132,33 @@ describe("removal", () => {
     expect(slots.getSnapshot(installedFragmentsSlot).has("org.example.d")).toBe(false);
   });
 });
+
+describe("baseline fragments", () => {
+  it("refuses to remove a baseline fragment, changing nothing", async () => {
+    const { kernel, slots, log } = await setup({ baseline: ["org.example.d"] });
+    await expect(kernel.remove("org.example.d")).rejects.toThrow(FragmentLifecycleError);
+    await expect(kernel.remove("org.example.d", { cascade: true })).rejects.toThrow(/baseline/);
+    expect(log).toEqual([]);
+    expect(ids(slots.getSnapshot(activeFragmentsSlot("client")))).toEqual([
+      "org.example.a",
+      "org.example.b",
+      "org.example.d",
+    ]);
+  });
+
+  it("disables and enables a baseline fragment", async () => {
+    const { kernel, slots, log } = await setup({ baseline: ["org.example.d"] });
+    await kernel.disable("org.example.d");
+    expect(log).toEqual(["cleanup org.example.d"]);
+    expect(slots.getSnapshot(enabledFragmentsSlot).has("org.example.d")).toBe(false);
+    expect(slots.getSnapshot(installedFragmentsSlot).has("org.example.d")).toBe(true);
+    await kernel.enable("org.example.d");
+    expect(slots.getSnapshot(resolvedFragmentsSlot).has("org.example.d")).toBe(true);
+  });
+
+  it("still removes the fragments outside the baseline", async () => {
+    const { kernel, slots } = await setup({ baseline: ["org.example.d"] });
+    await kernel.remove("org.example.b");
+    expect(slots.getSnapshot(installedFragmentsSlot).has("org.example.b")).toBe(false);
+  });
+});

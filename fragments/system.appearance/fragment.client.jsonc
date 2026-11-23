@@ -1,0 +1,125 @@
+// The client aspect of system.appearance: the `branding` and `themes` extension points.
+// Kept equal to src/archive.ts by tests/appearance.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "branding": {
+      "description": "Brands: a name, a logo and the shadcn tokens in light and dark. One is active.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "name", "tokens"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "name": {
+            "description": "The application's name, as the page shows it.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "logo": {
+            "description": "The logo's URL: an image data URL, https, or a path on the page's site.",
+            "type": "string",
+            "maxLength": 100000,
+            "pattern": "^(data:image/(svg\\+xml|png|jpeg|gif|webp)[;,]|https://|\\./|/)"
+          },
+          "tokens": {
+            "type": "object",
+            "required": ["light", "dark"],
+            "additionalProperties": false,
+            "properties": {
+              "light": {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^(?:[^;{}<>\\\\\"'\\n\\r\\u2028\\u2029/*]|/(?!\\*)|\\*(?!/))*$"
+                }
+              },
+              "dark": {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^(?:[^;{}<>\\\\\"'\\n\\r\\u2028\\u2029/*]|/(?!\\*)|\\*(?!/))*$"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "themes": {
+      "description": "Themes: shadcn tokens in light and dark, laid over the active brand's.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "title", "tokens"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "title": {
+            "description": "The theme's name, as a picker shows it.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "tokens": {
+            "type": "object",
+            "required": ["light", "dark"],
+            "additionalProperties": false,
+            "properties": {
+              "light": {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^(?:[^;{}<>\\\\\"'\\n\\r\\u2028\\u2029/*]|/(?!\\*)|\\*(?!/))*$"
+                }
+              },
+              "dark": {
+                "type": "object",
+                "maxProperties": 64,
+                "propertyNames": {
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256,
+                  "pattern": "^(?:[^;{}<>\\\\\"'\\n\\r\\u2028\\u2029/*]|/(?!\\*)|\\*(?!/))*$"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
