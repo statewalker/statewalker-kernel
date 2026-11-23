@@ -154,11 +154,15 @@ jobs:
         run: pnpm run --if-present build
 
       # `pnpm pack` writes the published manifest: workspace: and catalog: become version ranges.
+      # Public packages live in packages/, packages-react/ and fragments/ (apps/ are private);
+      # tests/release-coverage.test.ts checks this loop covers every public package. A glob that
+      # matches nothing stays literal, hence the package.json test.
       - name: Pack what npm lacks
         id: pack
         run: |
           mkdir -p "$RUNNER_TEMP/out"
-          for dir in packages/*/; do
+          for dir in packages/*/ packages-react/*/ fragments/*/; do
+            [ -f "${dir}package.json" ] || continue
             read -r name version private < <(node -p "const p=require('./${dir}package.json');[p.name,p.version,!!p.private].join(' ')")
             [ "$private" = true ] && continue
             npm view "$name@$version" version >/dev/null 2>&1 && continue

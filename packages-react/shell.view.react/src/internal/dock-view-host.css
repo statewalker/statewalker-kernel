@@ -1,0 +1,47 @@
+/*
+ * Neutralize DockView's `dockview-theme-light` tab chrome so the
+ * shadcn-style <LineTab> component owns the visual: transparent
+ * tab backgrounds with foreground text inheritance. The active
+ * tab's accent fill comes from the LineTab component's classes.
+ *
+ * Color tokens come from chat-mini's index.css (oklch values bound
+ * to `--background` / `--foreground` / `--muted-foreground`) — no
+ * extra hsl() wrapping needed because the values are already full
+ * color expressions.
+ *
+ * Apply this theme by adding `dockview-theme-line` to the
+ * <DockviewReact> root className.
+ */
+
+.dockview-theme-line {
+  /* `dockview-theme-light` hard-codes `--dv-group-view-background-color: white`,
+     which forces a white panel surface that clashes with the shadcn dark
+     theme. Bind it to `--background` so panel content sits on the same
+     surface as the rest of the app and follows `.dark` mode. */
+  --dv-group-view-background-color: var(--background);
+  /* Shadcn `TabsList` look: muted track behind the pills. */
+  --dv-tabs-and-actions-container-background-color: var(--muted);
+  /* Both active and inactive tabs use a transparent background;
+     LineTab paints the active "pill" (`bg-background shadow-sm
+     rounded-md` with a small margin) so the muted track shows
+     around it. */
+  --dv-activegroup-visiblepanel-tab-background-color: transparent;
+  --dv-activegroup-hiddenpanel-tab-background-color: transparent;
+  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: transparent;
+  /* Tab text color falls back to LineTab's own text classes. */
+  --dv-activegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-activegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--foreground);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--muted-foreground);
+  /* No vertical divider between tabs — the active pill is enough
+     visual separation. */
+  --dv-tab-divider-color: transparent;
+}
+
+/* Breathing room between the tab strip and the panel content
+   beneath it — without this the strip's bottom edge sits flush
+   against the panel, which feels cramped. */
+.dockview-theme-line .dv-tabs-and-actions-container {
+  margin-bottom: 8px;
+}
