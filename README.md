@@ -8,6 +8,7 @@ The headless kernel of a StateWalker application: the packages that start an app
 
 ```
 packages/
+  kernel.core                                                fragment manifests and the fragment lifecycle (private for now)
   backbone.core      backbone.browser   backbone.node       start an app from an AppManifest
   workspace.core     workspace.browser                       Workspace, files, adapters
   workspace-vcs.core                                         git as an opt-in project nature
@@ -30,6 +31,8 @@ Main runtime dependencies between the packages (arrows point at the dependency; 
 backbone.browser ─┐
 backbone.node ────┴─> backbone.core                      (no other dependencies)
 
+kernel.core                                              (shared-slots only)
+
 platform.browser ─┐
 platform.node ────┴─> platform.core ─────────────┐
 workspace.browser ───────────────────────────────┤
@@ -42,6 +45,7 @@ inline.core                                              (shared-* only)
 
 | Package | What it does | npm |
 | --- | --- | --- |
+| [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots. | not published yet |
 | [backbone.core](packages/backbone.core) | `AppManifest`, module resolution and the fragment activation loop. No dependencies. | [@statewalker/backbone.core](https://www.npmjs.com/package/@statewalker/backbone.core) |
 | [backbone.browser](packages/backbone.browser) | Browser bootstrap: bundler mode or runtime import maps with es-module-shims. | [@statewalker/backbone.browser](https://www.npmjs.com/package/@statewalker/backbone.browser) |
 | [backbone.node](packages/backbone.node) | Node bootstrap and the `backbone-start` / `backbone-watch` scripts. | [@statewalker/backbone.node](https://www.npmjs.com/package/@statewalker/backbone.node) |
@@ -60,11 +64,11 @@ inline.core                                              (shared-* only)
 | [webapp.core](packages/webapp.core) | Web-app projects: convention detection, config, module-server cache. | [@statewalker/webapp.core](https://www.npmjs.com/package/@statewalker/webapp.core) |
 | [webapp.browser](packages/webapp.browser) | Serves a web-app project from a ServiceWorker with cross-origin isolation headers. | [@statewalker/webapp.browser](https://www.npmjs.com/package/@statewalker/webapp.browser) |
 
-Every package is public; there are no private packages or apps in this repository yet.
+Every package is public except `kernel.core`, which stays private until its name is confirmed and its first version published; there are no apps in this repository yet.
 
 This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`.
 
-Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
+Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`); `semver`, `jsonc-parser` and `@cfworker/json-schema` (used by `kernel.core`).
 
 ## How to run it
 
