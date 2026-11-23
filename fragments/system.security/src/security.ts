@@ -241,7 +241,7 @@ export function createSystemSecurity(options: SystemSecurityOptions = {}): Syste
     revoke(capability) {
       let ids: readonly string[];
       try {
-        ids = issuer.verify(capability).claims.revocationIds;
+        ids = issuer.revocationIds(capability);
       } catch {
         return false;
       }

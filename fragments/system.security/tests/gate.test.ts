@@ -135,3 +135,18 @@ describe("revoking an issued capability", () => {
     ).rejects.toMatchObject({ kind: "forbidden" });
   });
 });
+
+describe("revoking a token whose holder's Datalog exceeds the evaluation limits", () => {
+  it("still revokes it: revocation reads only the signed blocks", async () => {
+    const { Biscuit } = await import("@statewalker/webrun-biscuit");
+    const { security } = await platform([notes()], handlers);
+    const issued = security.issue(agent, { permissions: [`tools.use:${NOTES}/read-note`] });
+    // 100 facts and a rule deriving 10 000 more: past the fact limit, whatever the machine.
+    const facts = Array.from({ length: 100 }, (_, n) => `filler(${n});`).join("\n");
+    const heavy = Biscuit.fromBase64(issued)
+      .attenuate(`${facts}\npair($x, $y) <- filler($x), filler($y);`)
+      .toBase64();
+    expect(security.revoke(heavy)).toBe(true);
+    expect(security.revoke("not a token")).toBe(false);
+  });
+});

@@ -45,6 +45,11 @@ const KINDS: readonly PrincipalKind[] = ["agent", "peer", "sandbox"];
 /** The issuer: the root key, signing and verifying. */
 export interface Issuer {
   issue(principal: Principal, grant?: Grant): string;
+  /**
+   * The revocation ids of a token this issuer signed, from its signature chain alone (no Datalog
+   * is evaluated, so no holder-written block can make it fail); throws for any other token.
+   */
+  revocationIds(token: string): readonly string[];
   /** The verified token and its claims; throws for a token this issuer did not sign. */
   verify(token: string): { token: VerifiedBiscuit; claims: CapabilityClaims };
 }
@@ -74,6 +79,9 @@ export function createIssuer(keys: Keypair = generateKeypair()): Issuer {
       });
       if (grant.unattended) lines.push("unattended(true);");
       return Biscuit.build(keys.secretKey, lines.join("\n"), { params }).toBase64();
+    },
+    revocationIds(text) {
+      return Biscuit.fromBase64(text).verify(keys.publicKey).revocationIds;
     },
     verify(text) {
       const token = Biscuit.fromBase64(text).verify(keys.publicKey);
