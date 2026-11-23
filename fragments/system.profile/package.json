@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The system.profile core fragment: the user's profile on this device, a small key-value store of JSON values (the workbench's layouts per device mode, the kernel's fragment records) over Web Storage or memory.",
+  "description": "The system.profile core fragment: the user's profile on this device, a small key-value store of JSON values (the workbench's layouts per device mode, settings values, the kernel's fragment records) over Web Storage or memory, and the encrypted secrets vault (password and passkey unlock, a key remembered on this device).",
   "bugs": {
     "url": "https://github.com/statewalker/statewalker-kernel/issues"
   },
@@ -24,16 +24,24 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./client": {
+      "source": "./client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client.css": "./dist/client.css"
   },
   "files": [
     "dist",
     "src",
+    "client",
     "fragment.jsonc",
     "fragment.client.jsonc"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && tailwindcss -i client/styles.css -o dist/client.css --minify",
     "dev": "tsdown --watch",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -43,14 +51,27 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@statewalker/kernel.core": "workspace:^"
+    "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/ui.view.shadcn": "workspace:^"
   },
   "devDependencies": {
+    "@statewalker/system.workbench": "workspace:^",
+    "@tailwindcss/cli": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "sideEffects": false
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "peerDependencies": {
+    "react": "catalog:peers"
+  }
 }

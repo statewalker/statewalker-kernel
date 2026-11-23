@@ -5,6 +5,7 @@ import "@statewalker/system.workbench/client.css";
 import "@statewalker/system.a2ui/client.css";
 import "@statewalker/system.appearance/client.css";
 import "@statewalker/system.settings/client.css";
+import "@statewalker/system.profile/client.css";
 import "@statewalker/system.l10n/client.css";
 import "./app.css";
 import { createSurfaceDock } from "@statewalker/system.a2ui/client";

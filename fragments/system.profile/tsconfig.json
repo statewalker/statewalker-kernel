@@ -4,7 +4,8 @@
     "target": "ES2022",
     "module": "Preserve",
     "moduleResolution": "Bundler",
-    "lib": ["ESNext", "DOM"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
     "types": ["node"],
     "strict": true,
     "skipLibCheck": true,
@@ -25,6 +26,6 @@
     "noEmit": true,
     "customConditions": ["source"]
   },
-  "include": ["./src", "./tests"],
+  "include": ["./src", "./client", "./tests"],
   "exclude": ["node_modules", "dist"]
 }
