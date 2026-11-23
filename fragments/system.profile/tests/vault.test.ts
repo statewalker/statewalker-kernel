@@ -52,6 +52,19 @@ async function deviceWithVault() {
   return { storage, keys };
 }
 
+/** `keys` whose listed operations fail, as IndexedDB does when unavailable or full. */
+function failingKeys(keys: Keys, fail: readonly ("get" | "set" | "delete")[]): Keys {
+  const refuse = (op: string) => () => Promise.reject(new Error(`key store: ${op} refused`));
+  return {
+    get size() {
+      return keys.size;
+    },
+    get: fail.includes("get") ? refuse("get") : keys.get,
+    set: fail.includes("set") ? refuse("set") : keys.set,
+    delete: fail.includes("delete") ? refuse("delete") : keys.delete,
+  };
+}
+
 const record = (storage: Storage) => JSON.parse(storage.getItem("app:vault") ?? "null");
 
 describe("the vault", () => {
@@ -217,6 +230,48 @@ describe("the vault", () => {
     later.lock();
     await expect(later.unlockWithPasskey()).rejects.toBeInstanceOf(PasskeyProblem);
     expect(later.state().status).toBe("locked");
+  });
+
+  it("unlocks without remembering when the key store refuses the key, and says so", async () => {
+    const storage = createMemoryStorage();
+    const keys = failingKeys(createMemoryKeyStore(), ["set"]);
+    const vault = start(storage, keys);
+    await vault.load();
+    // Created: unlocked (not "absent"), the secrets readable, nothing remembered, the reason told.
+    await vault.create("correct horse", { remember: true });
+    expect(vault.state()).toMatchObject({ status: "unlocked", remembered: false });
+    expect(vault.state().notice).toMatch(/could not be remembered/);
+    await vault.secrets("org.example.mail").put("token", "s3cr3t-value");
+
+    vault.lock();
+    expect(vault.state().notice).toBeUndefined();
+    await expect(vault.unlock("correct horse", { remember: true })).resolves.toBe(true);
+    // The status says what holds: unlocked, and the secrets read.
+    expect(vault.state()).toMatchObject({ status: "unlocked", remembered: false });
+    await expect(vault.secrets("org.example.mail").get("token")).resolves.toBe("s3cr3t-value");
+  });
+
+  it("loads with a key store that cannot be read (no IndexedDB): locked, the password still opens", async () => {
+    const { storage } = await deviceWithVault();
+    const keys = failingKeys(createMemoryKeyStore(), ["get", "set", "delete"]);
+    const vault = start(storage, keys);
+    await expect(vault.load()).resolves.toMatchObject({ status: "locked", remembered: false });
+    await expect(vault.unlock("correct horse")).resolves.toBe(true);
+    await expect(vault.secrets("org.example.mail").get("token")).resolves.toBe("s3cr3t-value");
+
+    const fresh = start(createMemoryStorage(), keys);
+    await expect(fresh.load()).resolves.toMatchObject({ status: "absent", remembered: false });
+  });
+
+  it("loads locked when a remembered key that no longer opens the vault cannot be deleted", async () => {
+    const a = await deviceWithVault();
+    const other = createMemoryKeyStore();
+    const b = start(createMemoryStorage(), other);
+    await b.load();
+    await b.create("correct horse", { remember: true }); // a key of another vault
+    const vault = start(a.storage, failingKeys(other, ["delete"]));
+    await expect(vault.load()).resolves.toMatchObject({ status: "locked" });
+    await expect(vault.secrets("org.example.mail").get("token")).rejects.toThrow(/locked/i);
   });
 
   it("refuses names outside a fragment's namespace", () => {

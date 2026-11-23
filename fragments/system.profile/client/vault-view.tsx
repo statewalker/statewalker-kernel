@@ -136,6 +136,15 @@ export function VaultView({ vault }: { vault: Vault }) {
               </Button>
             </div>
           )}
+          {state.notice && (
+            <p
+              data-testid="vault-notice"
+              role="status"
+              className="m-0 text-sm text-muted-foreground"
+            >
+              {state.notice}
+            </p>
+          )}
           {problem && (
             <p data-testid="vault-problem" role="alert" className="m-0 text-sm text-destructive">
               {problem}

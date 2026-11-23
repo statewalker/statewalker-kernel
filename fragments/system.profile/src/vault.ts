@@ -51,6 +51,8 @@ export interface VaultState {
   readonly reason?: VaultProblem;
   /** Whether a data key is remembered on this device (a silent unlock at the next start). */
   readonly remembered: boolean;
+  /** Something the last change could not do, for the person (never a secret). */
+  readonly notice?: string;
   /** The passkeys that unlock it (readable while locked). */
   readonly passkeys: readonly { readonly credentialId: string; readonly createdAt: string }[];
 }
@@ -126,6 +128,8 @@ export const DEFAULT_ITERATIONS = 600_000;
 /** A new password must be at least this long. */
 export const MIN_PASSWORD_LENGTH = 8;
 const REMEMBERED = "remembered";
+const NOT_REMEMBERED =
+  "The vault's key could not be remembered on this device (its key store is unavailable); it is unlocked for this session only.";
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_VALUE_LENGTH = 64 * 1024;
 
@@ -141,8 +145,10 @@ export function createVault(options: VaultOptions): Vault {
   const listeners = new Set<(state: VaultState) => void>();
 
   function setState(next: Partial<VaultState>): VaultState {
-    const merged = { ...state, ...next };
-    if (merged.status !== "corrupt") delete (merged as { reason?: VaultProblem }).reason;
+    const merged: { -readonly [K in keyof VaultState]: VaultState[K] } = { ...state, ...next };
+    if (merged.status !== "corrupt") delete merged.reason;
+    // A notice holds for the change that set it only.
+    if (next.notice === undefined) delete merged.notice;
     state = merged;
     for (const listener of [...listeners]) listener(state);
     return state;
@@ -201,16 +207,39 @@ export function createVault(options: VaultOptions): Vault {
     }
   }
 
+  /**
+   * Hold `key` and say so in one step. Remembering comes first: when the key store refuses it,
+   * the vault unlocks for this session only and the state's `notice` says why (never the key).
+   */
   async function unlocked(key: CryptoKey, record: VaultRecord, remember: boolean) {
     await open(key, record);
+    let remembered = state.remembered;
+    let notice: string | undefined;
+    if (remember) {
+      try {
+        await keys.set(REMEMBERED, key);
+        remembered = true;
+      } catch {
+        notice = NOT_REMEMBERED;
+      }
+    }
     dataKey = key;
     unlockedId = record.id;
-    if (remember) await keys.set(REMEMBERED, key);
     setState({
       status: "unlocked",
       passkeys: passkeysOf(record),
-      remembered: remember || state.remembered,
+      remembered,
+      ...(notice ? { notice } : {}),
     });
+  }
+
+  /** The remembered key, `undefined` when none or when the key store cannot be read. */
+  async function rememberedKey(): Promise<CryptoKey | undefined> {
+    try {
+      return await keys.get(REMEMBERED);
+    } catch {
+      return undefined;
+    }
   }
 
   const lockName = options.lockName;
@@ -255,7 +284,8 @@ export function createVault(options: VaultOptions): Vault {
       } catch {
         return state; // corrupt: reported, nothing touched
       }
-      const remembered = await keys.get(REMEMBERED);
+      // A key store that cannot be read (no IndexedDB) remembers nothing: the password still opens.
+      const remembered = await rememberedKey();
       if (!record) return setState({ remembered: remembered !== undefined });
       if (remembered) {
         try {
@@ -266,7 +296,7 @@ export function createVault(options: VaultOptions): Vault {
         } catch {
           // A key remembered for another vault, or that no longer opens this one: the password
           // still does (and reports a vault whose data was damaged).
-          await keys.delete(REMEMBERED);
+          await keys.delete(REMEMBERED).catch(() => undefined);
         }
       }
       return setState({ status: "locked", remembered: false, passkeys: passkeysOf(record) });

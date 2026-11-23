@@ -240,6 +240,39 @@ describe("the vault", () => {
     });
   });
 
+  it("boots and opens with the password where IndexedDB is unavailable, remembering nothing", async () => {
+    const context = await browser.newContext();
+    // As in a browser that refuses IndexedDB (some private modes, a disabled site storage).
+    await context.addInitScript(() => {
+      Object.defineProperty(window, "indexedDB", {
+        get() {
+          throw new DOMException("IndexedDB is unavailable", "InvalidStateError");
+        },
+      });
+    });
+    const page = await context.newPage();
+    page.setDefaultTimeout(15_000);
+    try {
+      await page.goto(url);
+      await page.getByTestId("workbench").waitFor();
+      await createVault(page, { remember: true });
+      await expect(vaultView(page).getByTestId("vault-notice").innerText()).resolves.toMatch(
+        /could not be remembered/,
+      );
+      await putSecret(page);
+      await expect(getSecret(page)).resolves.toBe(SECRET);
+
+      await reload(page);
+      await waitForStatus(page, "locked");
+      await vaultView(page).getByLabel("Password", { exact: true }).fill(PASSWORD);
+      await vaultView(page).getByRole("button", { name: "Unlock" }).click();
+      await waitForStatus(page, "unlocked");
+      await expect(getSecret(page)).resolves.toBe(SECRET);
+    } finally {
+      await context.close();
+    }
+  });
+
   it.each([
     ["an unreadable record", "unreadable", "corrupt", /not readable/],
     ["a record of an unknown version", "newer", "unknown-version", /version 2/],
