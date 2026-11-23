@@ -2,7 +2,10 @@
 
 ## What it is
 
-The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. So far it is the shell tracer (statewalker/statewalker-root#252): the thinnest real path through the shell. In the browser, the kernel loads the core fragments `system.commands`, `system.workbench` and `system.a2ui`, then fetches, installs, enables and activates the app's client-only fragments: `notes` contributes a view to the `views` point and a command to the `commands` point, and the view opens in the workbench; `surfaces` (statewalker/statewalker-root#267) contributes a catalog component, `NoteEditor` (CodeMirror), to the `catalog` point and a view placing an A2UI surface with it.
+The notes demo of the platform (spec statewalker/statewalker-root#215, user story 63), private. It started as the shell tracer (statewalker/statewalker-root#252) and now shows the workbench chrome (statewalker/statewalker-root#254) and A2UI surfaces (statewalker/statewalker-root#267). In the browser, the kernel loads the core fragments `system.commands`, `system.workbench` and `system.a2ui`, then fetches, installs, enables and activates the app's client-only fragments:
+
+- `notes` contributes a view to the `views` point, two commands (`add-note`, `new-note`) to the `commands` point, and, all statically, a menu bar menu, a context menu and a tab menu entry for its view, a keybinding (`Ctrl+Alt+N`), two status bar items (one shown while its view is active), an activity bar entry, a dialog and a notification. `new-note` asks for the note's text in that dialog, adds it, and reports it in that notification, whose Undo takes it back.
+- `surfaces` contributes a catalog component, `NoteEditor` (CodeMirror), to the `catalog` point and a view placing an A2UI surface with it.
 
 ## How to run it
 
@@ -28,6 +31,22 @@ From the repository root, after `pnpm install`:
 | `kernel.disable("org.statewalker.notes")` removes the panel, the command (`unknown-command` afterwards) and the fragment's stylesheet, leaving the workbench | Removal repair: a disabled fragment's view closes, its command leaves the bus and its client aspect deactivates; nothing else changes |
 | `kernel.enable("org.statewalker.notes")`, then opening its view: the command is back, the stylesheet linked, the view styled (`m-4`, from the fragment's own CSS) | A fragment resolved after boot gets its client aspect activated by the shell |
 | The notes view's margin is 16px from the first load | Prebuilt CSS per fragment, linked while its client aspect is active |
+
+`tests/chrome.e2e.test.ts` (seam 2) drives the chrome:
+
+| Test step | Feature |
+| --- | --- |
+| Notes → New note… in the menu bar opens the "New note" dialog; answering adds the note | The menu bar (shadcn `Menubar`) from the `menus` point; the command runs through the bus |
+| Right-click on the notes view → New note…; the tab bar's "View actions" → New note… | A view's context menu (`ContextMenu`) and tab menu (`DropdownMenu`), entries filtered by `when: view == org.statewalker.notes/notes` |
+| Ctrl+Shift+P lists "New note… Ctrl+Alt+N" but not "Add a note"; typing "new" and Enter runs it | The command palette (shadcn `Command`): every command the chrome can run (no input needed) by its l10n label, with its keybinding |
+| Ctrl+Alt+N opens the dialog | Keyboard shortcuts: system.workbench's keybinding registry over system.commands' `keybindings` point |
+| Ctrl+Alt+N typed in the notes field keeps the text and opens nothing; an AltGr+N keydown (ctrl, alt and the AltGraph state, a Polish ń) runs nothing, the same keydown without AltGraph opens the dialog | A text field keeps the chords that may type text, unless the binding's `when` asks; AltGr keys are never chords |
+| The "Notes view" status item shows while the notes view is active, leaves when it closes, returns when the activity bar reopens it | The chrome's context (`activeView`, `inputFocus`) reaches the status bar's and menus' `when` |
+| The status bar's "New note" runs it; the activity bar's "Notes" reopens the closed view | The `statusbar` and `activitybar` points |
+| Cancel, then Escape, add nothing; Enter adds "Water the plants" and a "Note added" notification shows it; its Undo removes the note | Dialogs and notifications declared on the `dialogs` and `notifications` points, raised through the client API (`dialogs.show`, `notifications.show`); the user's answer reaches the fragment |
+| `workbench.execute("org.statewalker.notes/add-note")` (no text, as the chrome runs commands) raises "Add a note failed" (`data-severity="error"`, from `system.workbench`) | A failing command run from the chrome raises the workbench's own notification, rendered by the same component as every fragment's |
+| With the notes bundle held back, the Notes menu (with Ctrl+Alt+N), the status bar item, the activity bar entry and the keybinding are there while the view still loads; Ctrl+Alt+N then opens the dialog once the bundle arrives | Static contributions come from the registry, before the contributor's code loads |
+| After `kernel.disable("org.statewalker.notes")`, no Notes menu, status bar item, activity bar entry, keybinding or palette entry is left, and Ctrl+Alt+N does nothing | Contributions leave with their fragment |
 
 `tests/surfaces.e2e.test.ts` (seam 2) opens the surfaces demo's view in Chromium:
 
@@ -69,7 +88,7 @@ Every bundle (the shell, the shared modules, the fragments) leaves the shared mo
 
 ### The shell
 
-`boot()` creates the kernel with `platform.json`'s version and the three core fragments, installs the client API's bindings and the A2UI model (`installA2ui`; agents' surface events are denied until system.security supplies a policy), fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect. A core fragment's module reference resolves to its in-process module (system.workbench's commands); an app fragment's resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
+`boot()` creates the kernel with `platform.json`'s version and the three core fragments (the workbench wired to the command bus and the browser's locale), installs the client API's bindings (the bus, the workbench's dialogs and notifications) and the A2UI model (`installA2ui`; agents' surface events are denied until system.security supplies a policy), fetches each app fragment's `fragment.jsonc` and the aspect files it lists, installs and enables them, and activates the client aspect. A core fragment's module reference resolves to its in-process module (system.workbench's commands); an app fragment's resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
 
 ## License
 

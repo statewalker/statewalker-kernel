@@ -4,9 +4,11 @@ import {
   ClientApiError,
   type ClientCommands,
   commands,
+  dialogs,
   type HostServices,
   host,
   installClient,
+  notifications,
   type UrlState,
 } from "../src/index.js";
 
@@ -124,6 +126,51 @@ describe("host services through the client API", () => {
     expect(services.log).toEqual([
       ["writeText", "Buy milk"],
       ["pickFile", { accept: [".md"] }],
+    ]);
+  });
+});
+
+describe("dialogs and notifications", () => {
+  it("are refused before the install, and when the host installed no workbench", async () => {
+    await expect(dialogs.show("org.example.notes/new-note")).rejects.toMatchObject({
+      kind: "not-installed",
+    });
+    uninstall = installClient({ commands: fakeBus() });
+    await expect(dialogs.show("org.example.notes/new-note")).rejects.toMatchObject({
+      kind: "not-installed",
+    });
+    await expect(notifications.show("org.example.notes/saved")).rejects.toBeInstanceOf(
+      ClientApiError,
+    );
+  });
+
+  it("reach the host's workbench and return the user's answer", async () => {
+    const raised: unknown[][] = [];
+    uninstall = installClient({
+      commands: fakeBus(),
+      dialogs: {
+        async show(id, params) {
+          raised.push(["dialog", id, params]);
+          return { action: "add", value: "Milk" };
+        },
+      },
+      notifications: {
+        async show(id, params) {
+          raised.push(["notification", id, params]);
+          return { action: "undo" };
+        },
+      },
+    });
+    await expect(dialogs.show("org.example.notes/new-note", { who: "you" })).resolves.toEqual({
+      action: "add",
+      value: "Milk",
+    });
+    await expect(notifications.show("org.example.notes/saved")).resolves.toEqual({
+      action: "undo",
+    });
+    expect(raised).toEqual([
+      ["dialog", "org.example.notes/new-note", { who: "you" }],
+      ["notification", "org.example.notes/saved", undefined],
     ]);
   });
 });

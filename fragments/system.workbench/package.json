@@ -53,6 +53,8 @@
   },
   "dependencies": {
     "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/system.commands": "workspace:^",
+    "@statewalker/ui.view.shadcn": "workspace:^",
     "dockview-react": "catalog:"
   },
   "peerDependencies": {

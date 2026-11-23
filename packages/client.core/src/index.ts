@@ -66,11 +66,36 @@ export interface HostServices {
   readonly urlState: UrlStateService;
 }
 
+/** What the user answered: the action picked (none when dismissed), and a dialog's typed text. */
+export interface ClientAnswer {
+  readonly action?: string;
+  readonly value?: string;
+}
+
+/** Values a dialog's or notification's declared texts are filled from (`{name}`). */
+export type ClientParams = Readonly<Record<string, unknown>>;
+
+/**
+ * Raising a dialog or a notification declared on system.workbench's `dialogs` or
+ * `notifications` point, by identity (`<fragment-id>/<id>`).
+ */
+export interface ClientRequests {
+  /**
+   * Show it, its texts filled from `params`; resolves with the user's answer (`{}` when
+   * dismissed), rejects when nobody declares `id`.
+   */
+  show(id: string, params?: ClientParams): Promise<ClientAnswer>;
+}
+
 /** What the host installs. */
 export interface ClientApi {
   readonly commands: ClientCommands;
   /** system.host's services; a host without them refuses `host`'s calls (`not-installed`). */
   readonly host?: HostServices;
+  /** The workbench's dialogs; a host without a workbench leaves it out. */
+  readonly dialogs?: ClientRequests;
+  /** The workbench's notifications; a host without a workbench leaves it out. */
+  readonly notifications?: ClientRequests;
 }
 
 /** Why the client API refused: no host installed it, or a second host tried to. */
@@ -79,7 +104,7 @@ export class ClientApiError extends Error {
   constructor(readonly kind: "not-installed" | "already-installed") {
     super(
       kind === "not-installed"
-        ? "the platform's client API is not installed: the shell installs it at boot"
+        ? "the platform's client API (or the part asked for) is not installed: the shell installs it at boot"
         : "the platform's client API is already installed: one host at a time",
     );
   }
@@ -90,6 +115,12 @@ let installed: ClientApi | undefined;
 function current(): ClientApi {
   if (!installed) throw new ClientApiError("not-installed");
   return installed;
+}
+
+function requests(which: "dialogs" | "notifications"): ClientRequests {
+  const found = current()[which];
+  if (!found) throw new ClientApiError("not-installed");
+  return found;
 }
 
 /**
@@ -136,5 +167,19 @@ export const host: HostServices = {
     read: async () => currentHost().urlState.read(),
     write: async (state, options) => currentHost().urlState.write(state, options),
     observe: (listener) => currentHost().urlState.observe(listener),
+  },
+};
+
+/** The workbench's dialogs: `show` rejects a `ClientApiError` before the install. */
+export const dialogs: ClientRequests = {
+  async show(id, params) {
+    return requests("dialogs").show(id, params);
+  },
+};
+
+/** The workbench's notifications: `show` rejects a `ClientApiError` before the install. */
+export const notifications: ClientRequests = {
+  async show(id, params) {
+    return requests("notifications").show(id, params);
   },
 };

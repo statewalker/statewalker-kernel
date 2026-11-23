@@ -11,7 +11,7 @@ import { boot } from "./boot.js";
 /** The views the app opens at start, once they are contributed. */
 const DEFAULT_LAYOUT = ["org.statewalker.notes/notes"];
 
-const platform = await boot({ base: new URL(".", document.baseURI) });
+const platform = await boot({ base: new URL(".", document.baseURI), locale: navigator.language });
 window.platform = platform;
 // Surfaces popped out (by the user, or by system.workbench/open-surface) show in the dock.
 platform.workbench.setSurfaceSource(createSurfaceDock(platform.a2ui));

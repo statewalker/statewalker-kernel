@@ -1,5 +1,7 @@
-// The client aspect of system.workbench: the `views` extension point, and the commands that dock
-// surfaces. Kept equal to src/archive.ts by tests/views.test.ts.
+// The client aspect of system.workbench: the `views`, `menus`, `notifications`, `dialogs`,
+// `statusbar` and `activitybar` extension points, the workbench's own notification, and the
+// commands that dock surfaces.
+// Kept equal to src/archive.ts by tests/views.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
   "extensionPoints": {
@@ -23,9 +25,280 @@
           }
         }
       }
+    },
+    "menus": {
+      "description": "Entries of the menu bar, context menus and submenus, each a command or a submenu.",
+      "schema": {
+        "type": "object",
+        "required": ["menu"],
+        "additionalProperties": false,
+        "properties": {
+          "menu": {
+            "description": "The menu the entry is in: `menubar` (its entries are submenus), `view/context` (a view's context menu), `view/title` (a view's tab menu), or a submenu's id.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*(/[a-z][a-z0-9.-]*)*$",
+            "maxLength": 128
+          },
+          "command": {
+            "description": "The command the entry runs, `<fragment-id>/<command-id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9-]*$"
+          },
+          "submenu": {
+            "description": "The id of the menu the entry opens; with `title`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*(/[a-z][a-z0-9.-]*)*$",
+            "maxLength": 128
+          },
+          "title": {
+            "description": "The entry's title; a command's label by default.",
+            "type": "string",
+            "minLength": 1
+          },
+          "group": {
+            "description": "Entries of one group sit together, groups in name order, separated.",
+            "type": "string"
+          },
+          "order": {
+            "description": "The entry's place in its group (0 by default).",
+            "type": "number"
+          },
+          "when": {
+            "description": "A context expression; the entry shows only where it holds.",
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["command"]
+          },
+          {
+            "required": ["submenu", "title"]
+          }
+        ]
+      }
+    },
+    "notifications": {
+      "description": "Notifications fragments raise by identity; the answer is the action picked.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The notification's id within its fragment; its identity is `<fragment-id>/<id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "title": {
+            "description": "The notification's text.",
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "description": "A second line.",
+            "type": "string"
+          },
+          "severity": {
+            "enum": ["info", "success", "warning", "error"],
+            "default": "info"
+          },
+          "actions": {
+            "description": "The buttons, in order; the one picked is the answer's `action`.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "label": {
+                  "description": "The button's text.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "primary": {
+                  "description": "The default button.",
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dialogs": {
+      "description": "Dialogs fragments raise by identity; the answer is the action picked and the text typed.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The dialog's id within its fragment; its identity is `<fragment-id>/<id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "title": {
+            "description": "The dialog's title.",
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "description": "The text under the title.",
+            "type": "string"
+          },
+          "input": {
+            "description": "A text field; what the user typed is the answer's `value`.",
+            "type": "object",
+            "required": ["label"],
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "description": "The field's label.",
+                "type": "string",
+                "minLength": 1
+              },
+              "placeholder": {
+                "type": "string"
+              },
+              "value": {
+                "description": "The field's initial text.",
+                "type": "string"
+              }
+            }
+          },
+          "actions": {
+            "description": "The buttons, in order; the one picked is the answer's `action`. One OK button when absent.",
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "label"],
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+                  "maxLength": 64
+                },
+                "label": {
+                  "description": "The button's text.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "primary": {
+                  "description": "The default button.",
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "statusbar": {
+      "description": "Items of the status bar, each a text, optionally running a command.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "text"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The item's id within its fragment; its identity is `<fragment-id>/<id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "text": {
+            "description": "What the item shows.",
+            "type": "string",
+            "minLength": 1
+          },
+          "tooltip": {
+            "type": "string"
+          },
+          "alignment": {
+            "enum": ["left", "right"],
+            "default": "left"
+          },
+          "order": {
+            "description": "Its place on its side (0 by default).",
+            "type": "number"
+          },
+          "command": {
+            "description": "The command a click runs.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9-]*$"
+          },
+          "when": {
+            "description": "A context expression; the item shows only where it holds.",
+            "type": "string"
+          }
+        }
+      }
+    },
+    "activitybar": {
+      "description": "Entries of the activity bar, each opening a view or running a command.",
+      "schema": {
+        "type": "object",
+        "required": ["id", "title"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "The entry's id within its fragment; its identity is `<fragment-id>/<id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+            "maxLength": 64
+          },
+          "title": {
+            "description": "The entry's title (its tooltip and accessible name).",
+            "type": "string",
+            "minLength": 1
+          },
+          "order": {
+            "description": "Its place in the bar (0 by default).",
+            "type": "number"
+          },
+          "view": {
+            "description": "The view it opens, `<fragment-id>/<view-id>`.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9-]*$"
+          },
+          "command": {
+            "description": "The command it runs.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9.-]*/[a-z][a-z0-9-]*$"
+          }
+        },
+        "oneOf": [
+          {
+            "required": ["view"]
+          },
+          {
+            "required": ["command"]
+          }
+        ]
+      }
     }
   },
   "extensions": [
+    {
+      "point": "notifications",
+      "data": {
+        "id": "command-failed",
+        "title": "{command} failed",
+        "message": "{error}",
+        "severity": "error"
+      }
+    },
     {
       "point": "commands",
       "data": {
