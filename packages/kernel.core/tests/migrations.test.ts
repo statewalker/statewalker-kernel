@@ -203,4 +203,14 @@ describe("migrations", () => {
     await kernel.upgrade(A, serverArchive("1.1.0", [V1, V2]));
     expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1", "v2"]);
   });
+
+  it("keep their record when removing with data fails: the data is still there", async () => {
+    const { kernel, profile } = await setup({
+      removeData: () => {
+        throw new Error("storage down");
+      },
+    });
+    await expect(kernel.remove(A, { withData: true })).rejects.toThrow(/storage down/);
+    expect(await profile.get(appliedMigrationsKey(A))).toEqual(["v1"]);
+  });
 });

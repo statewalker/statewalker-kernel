@@ -787,8 +787,9 @@ export function createKernel(options: KernelOptions): Kernel {
         leave(installedFragmentsSlot, id);
         await profile.delete(fragmentRecordKey(id));
         if (withData) {
-          await profile.delete(appliedMigrationsKey(id));
           await hook(() => options.removeData?.(fragment));
+          // Only once the data is gone: kept data keeps its record.
+          await profile.delete(appliedMigrationsKey(id));
         }
       },
     ),
