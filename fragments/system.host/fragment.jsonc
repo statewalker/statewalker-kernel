@@ -1,0 +1,15 @@
+// The system.host core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/host-services.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.host",
+  "version": "0.1.0",
+  "name": "Host",
+  "description": "Host services: the clipboard, the file picker and the URL state.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

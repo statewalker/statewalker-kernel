@@ -215,6 +215,33 @@ describe("layouts are remembered per device mode", () => {
     });
   });
 
+  it("a URL naming no views shows the saved layout, one naming views wins over it", async () => {
+    await withApp(DESKTOP, async ({ page }) => {
+      await notesView(page).waitFor();
+      await openView(page, SURFACES_VIEW);
+      await dockTab(page, "Notes").locator(".dv-default-tab-action").click();
+      await expect
+        .poll(() => savedLayout(page, "desktop"))
+        .toMatchObject({ zones: { center: [], right: [SURFACES_VIEW] } });
+      // A fresh URL (no `#?views=`): the saved layout, not the application's default.
+      await page.goto(server.url);
+      await surfacesView(page).waitFor();
+      await expect(page.evaluate(() => [...window.platform.workbench.opened()])).resolves.toEqual([
+        SURFACES_VIEW,
+      ]);
+      // A URL naming views wins, and the current mode's layout saves them.
+      await page.goto(`${server.url}#?${new URLSearchParams({ views: NOTES_VIEW })}`);
+      await page.reload();
+      await notesView(page).waitFor();
+      await expect(page.evaluate(() => [...window.platform.workbench.opened()])).resolves.toEqual([
+        NOTES_VIEW,
+      ]);
+      await expect
+        .poll(() => savedLayout(page, "desktop"))
+        .toMatchObject({ zones: { center: [NOTES_VIEW], right: [] } });
+    });
+  });
+
   it("a panel dragged into another zone's group moves to that zone, and stays there", async () => {
     await withApp(DESKTOP, async ({ page }) => {
       await notesView(page).waitFor();

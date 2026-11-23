@@ -1,7 +1,7 @@
 // The client half of the notes fragment: the notes view and the handlers of its commands (add-note,
 // new-note). React, the shadcn primitives and the client API come from the shell's import map,
 // never bundled here.
-import { commands, dialogs, notifications } from "@statewalker/client.core";
+import { commands, dialogs, host, notifications } from "@statewalker/client.core";
 import {
   Button,
   Card,
@@ -65,6 +65,16 @@ export function NotesView() {
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
 
+  /** Copy a note through system.host's clipboard service (on the user's click: a user gesture). */
+  async function copy(note: string) {
+    try {
+      await host.clipboard.writeText(note);
+      setError(undefined);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    }
+  }
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     try {
@@ -99,8 +109,14 @@ export function NotesView() {
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-sm">
           {all.map((note, index) => (
             // Notes have no ids yet; their position is stable while they cannot be removed.
-            <li key={index} className="rounded-md border px-3 py-2">
-              {note}
+            <li
+              key={index}
+              className="flex items-center justify-between gap-2 rounded-md border px-3 py-2"
+            >
+              <span>{note}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => copy(note)}>
+                Copy
+              </Button>
             </li>
           ))}
         </ul>
