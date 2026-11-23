@@ -36,6 +36,7 @@ import {
   useState,
 } from "react";
 import {
+  fillText,
   SURFACE_PANEL_PREFIX,
   type Workbench,
   type WorkbenchState,
@@ -148,6 +149,9 @@ function syncDock(
         ...(position ? { position } : {}),
       }),
     );
+    // A view's title follows the interface language.
+    const panel = api.getPanel(id);
+    if (panel && panel.title !== view.title) panel.api.setTitle(view.title);
   }
   // Docked surfaces share a group of their own, at the right edge.
   for (const surface of docked) {
@@ -284,7 +288,11 @@ function ViewActions({ activePanel }: IDockviewHeaderActionsProps) {
     <div className="flex h-full items-center px-1">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon-xs" aria-label="View actions">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={workbench.text("view.actions", "View actions")}
+          >
             <span aria-hidden="true">⋯</span>
           </Button>
         </DropdownMenuTrigger>
@@ -334,8 +342,7 @@ export function ViewContent({ workbench, view }: { workbench: Workbench; view: s
 
   let content: ReactNode;
   if (loaded.error !== undefined) content = <ViewFailure view={view} error={loaded.error} />;
-  else if (!loaded.View)
-    content = <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  else if (!loaded.View) content = <Loading />;
   else
     content = (
       <ViewBoundary view={view}>
@@ -395,7 +402,7 @@ export function SurfaceContent({ workbench, surface }: { workbench: Workbench; s
 
   const name = `surface ${surface}`;
   if (loaded.error !== undefined) return <ViewFailure view={name} error={loaded.error} />;
-  if (!loaded.Surface) return <div className="p-4 text-sm text-muted-foreground">Loading…</div>;
+  if (!loaded.Surface) return <Loading />;
   return (
     <ViewBoundary view={name}>
       <div data-testid="docked-surface" data-surface={surface} className="h-full overflow-auto">
@@ -405,10 +412,23 @@ export function SurfaceContent({ workbench, surface }: { workbench: Workbench; s
   );
 }
 
+/** A view or surface still loading, in the interface language. */
+function Loading() {
+  const workbench = useContext(WorkbenchContext);
+  return (
+    <div className="p-4 text-sm text-muted-foreground">
+      {workbench?.text("view.loading", "Loading…") ?? "Loading…"}
+    </div>
+  );
+}
+
 function ViewFailure({ view, error }: { view: string; error: unknown }) {
+  const workbench = useContext(WorkbenchContext);
+  const params = { view, error: error instanceof Error ? error.message : String(error) };
+  const fallback = "The view {view} failed: {error}";
   return (
     <div role="alert" className="p-4 text-sm text-destructive">
-      The view {view} failed: {error instanceof Error ? error.message : String(error)}
+      {workbench ? workbench.text("view.failed", fallback, params) : fillText(fallback, params)}
     </div>
   );
 }

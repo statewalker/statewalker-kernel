@@ -1,5 +1,10 @@
 import type { Extension } from "@statewalker/kernel.core";
+import type { TextOf } from "./l10n.js";
+import { fillText } from "./requests.js";
 import { evaluateWhen, type WhenContext } from "./when.js";
+
+/** The inline texts alone. */
+const inlineText: TextOf = (_namespace, _key, fallback) => fillText(fallback);
 
 /** One item of the status bar. */
 export interface StatusItem {
@@ -48,6 +53,7 @@ export function buildStatusbar(
   extensions: readonly Extension[],
   hasCommand: (id: string) => boolean,
   context: WhenContext,
+  text: TextOf = inlineText,
 ): StatusItem[] {
   const items: StatusItem[] = [];
   for (const extension of extensions) {
@@ -56,8 +62,10 @@ export function buildStatusbar(
     items.push({
       id: `${extension.contributor}/${data.id}`,
       fragment: extension.contributor,
-      text: data.text,
-      ...(data.tooltip !== undefined ? { tooltip: data.tooltip } : {}),
+      text: text(extension.contributor, `statusbar.${data.id}.text`, data.text),
+      ...(data.tooltip !== undefined
+        ? { tooltip: text(extension.contributor, `statusbar.${data.id}.tooltip`, data.tooltip) }
+        : {}),
       alignment: data.alignment ?? "left",
       order: data.order ?? 0,
       ...(data.command !== undefined && hasCommand(data.command) ? { command: data.command } : {}),
@@ -72,6 +80,8 @@ export function buildActivitybar(
   extensions: readonly Extension[],
   hasView: (id: string) => boolean,
   hasCommand: (id: string) => boolean,
+  text: TextOf = inlineText,
+  locale?: string,
 ): ActivityItem[] {
   const items: ActivityItem[] = [];
   for (const extension of extensions) {
@@ -80,10 +90,10 @@ export function buildActivitybar(
     items.push({
       id: `${extension.contributor}/${data.id}`,
       fragment: extension.contributor,
-      title: data.title,
+      title: text(extension.contributor, `activitybar.${data.id}.title`, data.title),
       order: data.order ?? 0,
       ...(data.view !== undefined ? { view: data.view } : { command: data.command }),
     });
   }
-  return items.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
+  return items.sort((a, b) => a.order - b.order || a.title.localeCompare(b.title, locale));
 }

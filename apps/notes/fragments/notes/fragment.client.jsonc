@@ -1,9 +1,11 @@
 // The client aspect of notes: a view, two commands, and the chrome that reaches them (a menu bar
 // menu, the view's context and tab menus, a keybinding, a status bar item, an activity bar entry),
-// plus the dialog and the notification new-note raises. All static: the workbench shows them
-// before client/index.js loads. Its code is client/index.js, built from client/index.tsx with the
-// shared modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the
-// shell's import map; its CSS is client/index.css.
+// plus the dialog and the notification new-note raises, and its texts in English and French on
+// system.l10n's `l10n` point (the French bundle leaves `view.count` out on purpose: French shows
+// the English text, the default language's). All static: the workbench shows them before
+// client/index.js loads. Its code is client/index.js, built from client/index.tsx with the shared
+// modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the shell's
+// import map; its CSS is client/index.css.
 {
   "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
   "extensions": [
@@ -209,6 +211,43 @@
         "id": "notes",
         "title": "Notes",
         "view": "org.statewalker.notes/notes"
+      }
+    },
+    {
+      "point": "l10n",
+      "data": {
+        "locale": "en",
+        "messages": {
+          "view.count": "Notes: {count}"
+        }
+      }
+    },
+    {
+      "point": "l10n",
+      "data": {
+        "locale": "fr",
+        "messages": {
+          "views.notes.title": "Bloc-notes",
+          "menus.notes.title": "Bloc-notes",
+          "activitybar.notes.title": "Bloc-notes",
+          "view.title": "Bloc-notes",
+          "view.field": "Note",
+          "view.placeholder": "Écrire une note",
+          "view.add": "Ajouter la note",
+          "view.copy": "Copier",
+          "dialogs.new-note.title": "Nouvelle note",
+          "dialogs.new-note.message": "Que doit dire la note ?",
+          "dialogs.new-note.input.label": "Note",
+          "dialogs.new-note.input.placeholder": "Écrire une note",
+          "dialogs.new-note.actions.add": "Ajouter",
+          "dialogs.new-note.actions.cancel": "Annuler",
+          "notifications.note-added.title": "Note ajoutée",
+          "notifications.note-added.actions.undo": "Annuler",
+          "statusbar.new-note.text": "Nouvelle note",
+          "statusbar.new-note.tooltip": "Écrire une nouvelle note",
+          "statusbar.active.text": "Vue des notes",
+          "statusbar.active.tooltip": "La vue des notes est active"
+        }
       }
     }
   ]

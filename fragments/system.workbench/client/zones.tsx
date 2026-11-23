@@ -24,6 +24,15 @@ const ZONE_LABELS: Record<Zone, string> = {
   bottom: "Bottom zone",
 };
 
+/** A zone's name in the interface language: `Left zone`, and its short form `Left`. */
+const zoneLabel = (workbench: Workbench, zone: Zone) =>
+  workbench.text(`zones.${zone}`, ZONE_LABELS[zone]);
+const zoneShort = (workbench: Workbench, zone: Zone) =>
+  workbench.text(`zones.${zone}.short`, ZONE_LABELS[zone].replace(" zone", ""));
+/** "Close <title>", in the interface language. */
+const closeLabel = (workbench: Workbench, title: string) =>
+  workbench.text("view.close", "Close {title}", { title });
+
 const titleOf = (state: WorkbenchState, id: string) =>
   state.views.find((v) => v.id === id)?.title ?? id;
 
@@ -50,11 +59,11 @@ export function ZoneDrawers({ workbench, state }: { workbench: Workbench; state:
             variant={open === zone ? "secondary" : "ghost"}
             size="sm"
             className={zone === "right" ? "ml-auto h-6" : "h-6"}
-            aria-label={ZONE_LABELS[zone]}
+            aria-label={zoneLabel(workbench, zone)}
             aria-expanded={open === zone}
             onClick={() => setOpen(open === zone ? undefined : zone)}
           >
-            {ZONE_LABELS[zone].replace(" zone", "")} ({layout.zones[zone].length})
+            {zoneShort(workbench, zone)} ({layout.zones[zone].length})
           </Button>
         ))}
       </div>
@@ -106,12 +115,16 @@ function Drawer({
         onClick={onClose}
       />
       <section
-        aria-label={ZONE_LABELS[zone]}
+        aria-label={zoneLabel(workbench, zone)}
         data-zone={zone}
         className={`fixed z-50 flex flex-col bg-background text-foreground shadow-lg ${DRAWER_PLACES[zone]}`}
       >
         <header className="flex h-9 shrink-0 items-center gap-1 border-b bg-muted px-1">
-          <div role="tablist" aria-label={ZONE_LABELS[zone]} className="flex min-w-0 flex-1 gap-1">
+          <div
+            role="tablist"
+            aria-label={zoneLabel(workbench, zone)}
+            className="flex min-w-0 flex-1 gap-1"
+          >
             {ids.map((id) => (
               <span key={id} className="flex items-center">
                 <button
@@ -128,7 +141,7 @@ function Drawer({
                 </button>
                 <button
                   type="button"
-                  aria-label={`Close ${titleOf(state, id)}`}
+                  aria-label={closeLabel(workbench, titleOf(state, id))}
                   className="px-1 text-muted-foreground"
                   onClick={() => workbench.close(id)}
                 >
@@ -137,7 +150,12 @@ function Drawer({
               </span>
             ))}
           </div>
-          <Button variant="ghost" size="icon-xs" aria-label="Close drawer" onClick={onClose}>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={workbench.text("zones.close", "Close drawer")}
+            onClick={onClose}
+          >
             <span aria-hidden="true">✕</span>
           </Button>
         </header>
@@ -145,7 +163,9 @@ function Drawer({
           {shown ? (
             <ViewContent workbench={workbench} view={shown} />
           ) : (
-            <p className="p-4 text-sm text-muted-foreground">No views here.</p>
+            <p className="p-4 text-sm text-muted-foreground">
+              {workbench.text("zones.empty", "No views here.")}
+            </p>
           )}
         </div>
       </section>
@@ -206,7 +226,7 @@ export function PhoneShell({
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={`Close ${shown.title}`}
+            aria-label={closeLabel(workbench, shown.title)}
             onClick={() =>
               shown.surface ? workbench.closeSurface(shown.surface) : workbench.close(shown.id)
             }
@@ -221,11 +241,20 @@ export function PhoneShell({
         ) : shown ? (
           <ViewContent key={shown.id} workbench={workbench} view={shown.id} />
         ) : (
-          <p className="p-4 text-sm text-muted-foreground">Open a view from More.</p>
+          <p className="p-4 text-sm text-muted-foreground">
+            {workbench.text("phone.empty", "Open a view from More.")}
+          </p>
         )}
       </main>
-      <nav className="flex h-12 shrink-0 items-stretch border-t bg-muted" aria-label="Tab bar">
-        <div role="tablist" aria-label="Views" className="flex min-w-0 flex-1">
+      <nav
+        className="flex h-12 shrink-0 items-stretch border-t bg-muted"
+        aria-label={workbench.text("phone.tabbar", "Tab bar")}
+      >
+        <div
+          role="tablist"
+          aria-label={workbench.text("phone.views", "Views")}
+          className="flex min-w-0 flex-1"
+        >
           {tabs.map((entry) => (
             <button
               key={entry.id}
@@ -241,8 +270,12 @@ export function PhoneShell({
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-full rounded-none px-4" aria-label="More">
-              More
+            <Button
+              variant="ghost"
+              className="h-full rounded-none px-4"
+              aria-label={workbench.text("phone.more", "More")}
+            >
+              {workbench.text("phone.more", "More")}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" side="top">
@@ -252,7 +285,9 @@ export function PhoneShell({
               </DropdownMenuItem>
             ))}
             {overflow.length > 0 && closed.length > 0 && <DropdownMenuSeparator />}
-            {closed.length > 0 && <DropdownMenuLabel>Open</DropdownMenuLabel>}
+            {closed.length > 0 && (
+              <DropdownMenuLabel>{workbench.text("phone.open", "Open")}</DropdownMenuLabel>
+            )}
             {closed.map((view) => (
               <DropdownMenuItem
                 key={view.id}

@@ -1,0 +1,15 @@
+// The system.l10n core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/l10n.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.l10n",
+  "version": "0.1.0",
+  "name": "Localization",
+  "description": "Message bundles per locale, namespaced per fragment, and the interface language, switched live.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

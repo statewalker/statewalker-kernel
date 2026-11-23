@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, and system.host's host services (`host`: the clipboard, the file picker, the URL state). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
+The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, system.host's host services (`host`: the clipboard, the file picker, the URL state), and system.l10n's localization (`l10n`, `translator`: the interface language and each fragment's texts in it). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -30,6 +30,14 @@ const { blobs, names } = await host.files.pickFile({ accept: [".md"] });
 const { path, query } = await host.urlState.read();
 await host.urlState.write({ path, query: { ...query, note: "n1" } }, { replace: true });
 const unfollow = host.urlState.observe((state) => console.log(state.query));
+
+// system.l10n: this fragment's texts in the interface language, from its bundles on the `l10n`
+// point; the inline text is the default language's, used when no bundle has the key.
+const t = translator("org.statewalker.notes");
+t("view.add", {}, "Add note"); // "Ajouter la note" in French
+t("view.count", { count: 1200 }, "{count} notes"); // numbers formatted with Intl
+const stop = l10n.observe(({ locale }) => rerender(locale)); // follow the language
+l10n.setLocale("fr");
 ```
 
 In the shell, once, at boot:
@@ -42,6 +50,7 @@ const uninstall = installClient({
   dialogs: systemWorkbench.workbench.dialogs,
   notifications: systemWorkbench.workbench.notifications,
   host: systemHost.services,
+  l10n: systemL10n.l10n,
 });
 ```
 
@@ -50,14 +59,17 @@ const uninstall = installClient({
 | `commands` | `call(id, input)`, `list()`, `observe(listener)` on the installed command bus. |
 | `dialogs`, `notifications` | `show(id, params?)` → `Promise<{ action?, value? }>`: raise a declared dialog or notification by identity (`<fragment-id>/<id>`), its texts filled from `params` (`{name}`); `{}` when dismissed. |
 | `host` | `clipboard` (`writeText`, `readText`), `files` (`pickFile(options?)` → `{ blobs, names }`), `urlState` (`read()`, `write(state, { replace? })`, `observe(listener)`): system.host's services. |
+| `l10n` | `locale()`, `locales()`, `setLocale(locale)`, `text(namespace, key, { params?, fallback? })`, `format(text, params?)`, `observe(listener)`: system.l10n's model. |
+| `translator(namespace)` | `t(key, params?, fallback?)`: `l10n.text` in one fragment's namespace. |
 | `installClient(api)` | Install the host's bindings; returns the uninstaller. |
-| `ClientApi`, `ClientCommands`, `ClientCommand`, `ClientRequests`, `ClientAnswer`, `ClientParams` | The shapes the host installs. `dialogs` and `notifications` are optional, for a host without a workbench; `host` is optional, for a host without system.host. |
+| `ClientApi`, `ClientCommands`, `ClientCommand`, `ClientRequests`, `ClientAnswer`, `ClientParams` | The shapes the host installs. `dialogs` and `notifications` are optional, for a host without a workbench; `host` is optional, for a host without system.host, and `l10n` for a host without system.l10n. |
+| `ClientL10n`, `ClientL10nState`, `ClientMessageParams` | Localization's shapes, which system.l10n's `L10n` fits. |
 | `HostServices`, `ClipboardService`, `FilePickerService`, `UrlStateService`, `UrlState`, `PickFileOptions`, `PickedFiles` | The host services' interfaces, which a fragment contributing one to `host-services` implements. `UrlState`, `PickFileOptions` and `PickedFiles` have the shapes of platform.core's `UrlState`, `PickFilePayload` and `PickFileResult`. |
 | `ClientApiError` | `not-installed` (used before the shell installed it), `already-installed` (a second host). |
 
 ## Internals
 
-`commands`, `dialogs`, `notifications` and `host` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, and `host`'s members when it installed no host services. One host at a time: a second `installClient` throws until the first is uninstalled.
+`commands`, `dialogs`, `notifications`, `host` and `l10n` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, `host`'s members when it installed no host services, and `l10n`'s (and a translator's `t`) when it installed no l10n. One host at a time: a second `installClient` throws until the first is uninstalled.
 
 ## License
 

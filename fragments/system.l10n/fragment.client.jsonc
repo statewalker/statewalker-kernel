@@ -1,0 +1,53 @@
+// The client aspect of system.l10n: the `l10n` extension point, and the fragment's own French
+// bundle. Kept equal to src/archive.ts by tests/l10n.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "l10n": {
+      "description": "Message bundles: a locale's texts for a fragment's keys (its own, or another's in a language pack).",
+      "schema": {
+        "type": "object",
+        "required": ["locale", "messages"],
+        "additionalProperties": false,
+        "properties": {
+          "locale": {
+            "description": "The bundle's language, a BCP 47 tag (`fr`, `fr-CA`).",
+            "type": "string",
+            "pattern": "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$",
+            "maxLength": 35
+          },
+          "namespace": {
+            "description": "The fragment whose keys the bundle translates; the contributor's own by default (a language pack names another).",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "messages": {
+            "description": "The texts by key; `{name}` is filled from the caller's values.",
+            "type": "object",
+            "maxProperties": 2000,
+            "propertyNames": {
+              "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]*$",
+              "maxLength": 128
+            },
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        }
+      }
+    }
+  },
+  "extensions": [
+    {
+      "point": "l10n",
+      "data": {
+        "locale": "fr",
+        "messages": {
+          "picker.label": "Langue"
+        }
+      }
+    }
+  ]
+}
