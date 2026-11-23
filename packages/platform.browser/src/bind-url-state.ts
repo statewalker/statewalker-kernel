@@ -11,9 +11,7 @@ const KEPT = /%(21|24|26|27|28|29|2A|2B|2C|3A|3B|3D|40)/gi;
 function encodePath(path: string): string {
   return path
     .split("/")
-    .map((segment) =>
-      encodeURIComponent(segment).replace(KEPT, (escape) => decodeURIComponent(escape)),
-    )
+    .map((segment) => encodeURIComponent(segment).replace(KEPT, (kept) => decodeURIComponent(kept)))
     .join("/");
 }
 

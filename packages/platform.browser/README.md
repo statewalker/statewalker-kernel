@@ -113,11 +113,11 @@ Each `register*Browser(commands)` returns an unregister function.
 
 ### URL binding
 
-`bindUrlState(view)` writes `buildHash(view.buildState())` to `location.hash` whenever the view notifies, feeds `hashchange` events to `view.applyUrl(parseHash(location.hash))`, and applies the current hash once on bind. Hash format: `#<path>?<key>=<value>&...`.
+`bindUrlState(view)` writes `buildHash(view.buildState())` to `location.hash` whenever the view notifies, feeds `hashchange` events to `view.applyUrl(parseHash(location.hash))`, and applies the current hash once on bind. Hash format: `#<path>?<key>=<value>&...`; `buildHash` percent-encodes each `/`-separated segment of the path (a plain path such as `/docs/a.md:12` keeps its spelling) and `parseHash` decodes it, so a path with a space, a non-ASCII character, `?`, `#` or `%` round-trips, also after the browser re-escapes the hash. A segment that is not valid percent-encoding is read as it is.
 
 ### Host services
 
-`createBrowserHostServices()` registers `registerCopyToClipboardBrowser` and `registerPickFileBrowser` on a `Commands` bus of its own and calls them: `clipboard.writeText` runs `platform:copy-to-clipboard`, `files.pickFile` runs `platform:pick-file`; `clipboard.readText` is `navigator.clipboard.readText`. `urlState` is the hash in the same format as `bindUrlState`: `read` parses it, `write` pushes a history entry (or replaces it with `{ replace: true }`, and does nothing when the hash already says so), and `observe` hears each change, written here or navigated to (`hashchange`, `popstate`). The clipboard and the picker need what the handlers need (above); browsers ask for a user gesture too. It has no directory picker: system.host's client API does not offer one yet.
+`createBrowserHostServices()` registers `registerCopyToClipboardBrowser` and `registerPickFileBrowser` on a `Commands` bus of its own and calls them: `clipboard.writeText` runs `platform:copy-to-clipboard`, `files.pickFile` runs `platform:pick-file`; `clipboard.readText` is `navigator.clipboard.readText`. `urlState` is the hash in the same format as `bindUrlState`: `read` parses it, `write` pushes a history entry (or replaces it with `{ replace: true }`, and does nothing when the hash already holds that state, compared as parsed states since the browser may escape it differently), and `observe` hears each change, written here or navigated to (`hashchange`, `popstate`). The clipboard and the picker need what the handlers need (above); browsers ask for a user gesture too. It has no directory picker: system.host's client API does not offer one yet.
 
 ### Logging
 
