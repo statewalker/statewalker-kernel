@@ -47,6 +47,7 @@
   "dependencies": {
     "@statewalker/fragment-build.core": "workspace:^",
     "@statewalker/kernel.core": "workspace:^",
+    "semver": "catalog:",
     "tsx": "catalog:"
   },
   "peerDependencies": {
@@ -55,6 +56,7 @@
   "devDependencies": {
     "@statewalker/system.commands": "workspace:^",
     "@types/node": "catalog:",
+    "@types/semver": "catalog:",
     "rimraf": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",

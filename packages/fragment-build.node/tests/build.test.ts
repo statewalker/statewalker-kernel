@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readArchive } from "@statewalker/fragment-build.core";
 import { createKernel } from "@statewalker/kernel.core";
@@ -113,5 +113,23 @@ export default defineFragment({
     const fresh = await copyFixture("counter");
     await writeFile(join(fresh, "fragment.config.ts"), CLIENT_ONLY);
     expect((await buildFragment(fresh)).hash).toBe(rebuilt.hash);
+  });
+
+  it("refuses an id or version that could put the archive outside its folder", async () => {
+    const dir = await copyFixture("counter");
+    await buildFragment(dir);
+    await rm(join(dir, "fragment.config.ts"));
+    const manifest = await readFile(join(dir, "fragment.jsonc"), "utf8");
+    const outDir = join(dir, "out");
+    for (const [from, to] of [
+      ['"id": "org.example.counter"', '"id": "../../escaped"'],
+      ['"version": "1.0.0"', '"version": "1/../../../escaped"'],
+    ] as const) {
+      await writeFile(join(dir, "fragment.jsonc"), manifest.replace(from, to));
+      await expect(buildFragment(dir, { outDir })).rejects.toThrow(/not a valid fragment (id|version)/);
+    }
+    expect(existsSync(join(dir, "escaped-1.0.0.fragment.json"))).toBe(false);
+    expect(existsSync(join(dir, "..", "escaped-1.0.0.fragment.json"))).toBe(false);
+    expect(existsSync(outDir) ? await readdir(outDir) : []).toEqual([]);
   });
 });

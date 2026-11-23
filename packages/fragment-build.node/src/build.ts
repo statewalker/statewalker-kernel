@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   DEFAULT_DIRS,
@@ -14,9 +14,11 @@ import {
   ASPECTS,
   type Aspect,
   type FragmentManifest,
+  isFragmentId,
   MANIFEST_FILE,
   parseJsonc,
 } from "@statewalker/kernel.core";
+import semver from "semver";
 import { tsImport } from "tsx/esm/api";
 
 export const CONFIG_FILE = "fragment.config.ts";
@@ -140,9 +142,17 @@ export async function buildFragment(dir: string, options: BuildOptions = {}): Pr
   const archive = await packArchive(await readFragmentFolder(dir, rootFiles));
   const { value } = parseJsonc(archive.files[MANIFEST_FILE] ?? "");
   const { id, version } = value as FragmentManifest;
+  // Both name the archive file: refuse anything that is not an id or a semver version.
+  if (typeof id !== "string" || !isFragmentId(id)) {
+    throw new Error(`${MANIFEST_FILE}: "${String(id)}" is not a valid fragment id`);
+  }
+  if (typeof version !== "string" || semver.valid(version) !== version) {
+    throw new Error(`${MANIFEST_FILE}: "${String(version)}" is not a valid fragment version`);
+  }
   const outDir = resolve(options.outDir ?? join(dir, "dist"));
+  const path = resolve(outDir, `${id}-${version}.fragment.json`);
+  if (dirname(path) !== outDir) throw new Error(`The archive ${path} would leave ${outDir}`);
   await mkdir(outDir, { recursive: true });
-  const path = join(outDir, `${id}-${version}.fragment.json`);
   await writeFile(
     path,
     serializeArchive(archive, options.archiveSchema ? { schema: options.archiveSchema } : {}),

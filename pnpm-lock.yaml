@@ -748,6 +748,9 @@ importers:
       '@statewalker/kernel.core':
         specifier: workspace:^
         version: link:../kernel.core
+      semver:
+        specifier: 'catalog:'
+        version: 7.8.6
       tsx:
         specifier: 'catalog:'
         version: 4.23.15
@@ -758,6 +761,9 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
+      '@types/semver':
+        specifier: 'catalog:'
+        version: 7.8.0
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
@@ -4450,7 +4456,7 @@ snapshots:
       '@changesets/types': 7.0.0
       import-meta-resolve: 4.2.0
       jsonc-parser: 3.3.1
-      semver: 7.8.5
+      semver: 7.8.6
 
   '@changesets/assemble-release-plan@7.0.0':
     dependencies:
@@ -4458,7 +4464,7 @@ snapshots:
       '@changesets/get-dependents-graph': 3.0.0
       '@changesets/should-skip-package': 1.0.0
       '@changesets/types': 7.0.0
-      semver: 7.8.5
+      semver: 7.8.6
 
   '@changesets/changelog-git@1.0.0':
     dependencies:
@@ -4506,7 +4512,7 @@ snapshots:
   '@changesets/get-dependents-graph@3.0.0':
     dependencies:
       '@changesets/types': 7.0.0
-      semver: 7.8.5
+      semver: 7.8.6
 
   '@changesets/git@4.0.1':
     dependencies:
@@ -5887,7 +5893,7 @@ snapshots:
       lightningcss-wasm: 1.33.0
       npm-package-arg: 14.0.0
       resolve.exports: 2.0.3
-      semver: 7.8.5
+      semver: 7.8.6
       sucrase: 3.35.1
 
   '@statewalker/webrun-rpc@0.5.1':
@@ -6655,7 +6661,7 @@ snapshots:
     dependencies:
       hosted-git-info: 10.1.1
       proc-log: 7.0.0
-      semver: 7.8.5
+      semver: 7.8.6
       validate-npm-package-name: 8.0.0
 
   object-assign@4.1.1: {}
