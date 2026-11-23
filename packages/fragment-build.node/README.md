@@ -35,7 +35,7 @@ await kernel.install([archive.files]);
 
 ## Internals
 
-A folder without `fragment.config.ts` is hand-written: it is packed as it is. The archive takes the root files `fragment.jsonc`, `fragment.<aspect>.jsonc`, `wrangler.jsonc` and `openapi.json`, then every file under the folder of each aspect `fragment.jsonc` lists (its `dir`, else `server/`, `client/`, `agent/`), skipping dot entries (`.wrangler/` state) and `node_modules`. Anything else at the root (the config, `package.json`, `dist/`) stays out. A file that is not UTF-8 text is refused by name: archive format v1 carries text only. Paths are read with `/` on every platform, and file times play no part, so the same sources give the same hash on any machine.
+A folder without `fragment.config.ts` is hand-written: it is packed as it is. The archive takes the root files `fragment.jsonc`, `fragment.<aspect>.jsonc`, `wrangler.jsonc` and `openapi.json`, then every file under the folder of each aspect `fragment.jsonc` lists (its `dir`, else `server/`, `client/`, `agent/`), skipping dot entries (`.wrangler/` state) and `node_modules`. Anything else at the root (the config, `package.json`, `dist/`) stays out. With a config, the root files are exactly those it generates: a root file an older config generated (`wrangler.jsonc` after the server half was dropped, `openapi.json` after the last command went) is deleted from the folder and never packed, so the same config gives the same archive whatever the folder's history. A file that is not UTF-8 text is refused by name (archive format v1 carries text only), and so are a symbolic link or special file in an aspect folder and an aspect folder that is a link. The archive is written to `<outDir>/<id>-<version>.fragment.json` only when the id passes kernel.core's `isFragmentId` and the version is semver, so it never lands outside `outDir`. Paths are read with `/` on every platform, and file times play no part, so the same sources give the same hash on any machine.
 
 The config is loaded with `tsx`'s `tsImport`, so it may import `zod` and `@statewalker/fragment-build.core` from the fragment's own dependencies; each load is a fresh module.
 
@@ -45,6 +45,7 @@ The tests run the real kernel with `system.commands` on built archives, and `wra
 
 - `@statewalker/fragment-build.core`, `@statewalker/kernel.core`.
 - `tsx`: loads `fragment.config.ts`.
+- `semver`: checks the version that names the archive file.
 - `zod` (peer, 4), as for fragment-build.core.
 
 ## License

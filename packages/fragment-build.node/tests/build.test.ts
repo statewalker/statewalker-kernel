@@ -126,7 +126,9 @@ export default defineFragment({
       ['"version": "1.0.0"', '"version": "1/../../../escaped"'],
     ] as const) {
       await writeFile(join(dir, "fragment.jsonc"), manifest.replace(from, to));
-      await expect(buildFragment(dir, { outDir })).rejects.toThrow(/not a valid fragment (id|version)/);
+      await expect(buildFragment(dir, { outDir })).rejects.toThrow(
+        /not a valid fragment (id|version)/,
+      );
     }
     expect(existsSync(join(dir, "escaped-1.0.0.fragment.json"))).toBe(false);
     expect(existsSync(join(dir, "..", "escaped-1.0.0.fragment.json"))).toBe(false);

@@ -12,7 +12,6 @@ ADR `2026-11-18-fragment-manifest-and-extension-points` (statewalker-root) gives
 
 ```ts
 import {
-  archiveHash,
   defineFragment,
   generateFragmentFiles,
   openApiCatalogue,
@@ -29,7 +28,7 @@ import {
 | `commandOperation(id, command)`, `commandData`, `commandExtensions(config)`, `COMMANDS_POINT` | A command's OpenAPI operation, its `commands` extension data, all of a config's. |
 | `openApiCatalogue(config)`, `CATALOGUE_FILE` | The `openapi.json` catalogue (`undefined` without commands). |
 | `toJsonSchema(schema, io)` | A Zod schema (or JSON Schema, as it is) as JSON Schema 2020-12. |
-| `packArchive(files)`, `archiveHash(files)`, `serializeArchive(archive)`, `readArchive(text)`, `isArchivePath(path)`, `FragmentArchive` | The content-hashed archive. |
+| `packArchive(files)`, `serializeArchive(archive)`, `readArchive(text)`, `isArchivePath(path)`, `FragmentArchive` | The content-hashed archive (hashed with kernel.core's `archiveHash`). |
 | `aspectDir(config, aspect)`, `DEFAULT_DIRS`, `DEFAULT_KERNEL_SCHEMAS`, `DEFAULT_WRANGLER_SCHEMA`, `DEFAULT_ARCHIVE_SCHEMA`, `WRANGLER_FILE` | Folders and `$schema` defaults. |
 | `@statewalker/fragment-build.core/schemas/fragment-archive.v1.schema.json` | The archive document's schema. |
 
@@ -139,13 +138,13 @@ A command's operation has `operationId` the command id, a required JSON request 
 
 ### The archive
 
-An archive is the built folder's files by relative POSIX path, as UTF-8 text: the same map the kernel installs (`FragmentFiles`). The kernel reads the root files and keeps the rest for the host. Its hash is `sha256:` and the lowercase hex SHA-256 (Web Crypto) of the UTF-8 JSON text of `[[path, text], ...]` sorted by path in JavaScript string order: kernel.core's `archiveHash` (statewalker-root#249), so a hash names the same files in the archive store. The same files always hash the same, whatever order or file times they were read with.
+An archive is the built folder's files by relative POSIX path, as UTF-8 text: the same map the kernel installs (`FragmentFiles`). The kernel reads the root files and keeps the rest for the host. Its hash is `sha256:` and the lowercase hex SHA-256 (Web Crypto) of the UTF-8 JSON text of `[[path, text], ...]` sorted by path in JavaScript string order: kernel.core's `archiveHash` (statewalker-root#249), imported from kernel.core, so an archive's hash is its key in the host's archive store (`ArchiveStore`). The same files always hash the same, whatever order or file times they were read with.
 
 The serialized form is one JSON document (`fragment-archive.v1.schema.json`): `$schema`, `hash` and `files` sorted by path. `readArchive` refuses an unknown `$schema` version, a path that is absolute, has a backslash, an empty, `.` or `..` segment, and files whose hash differs from the document's. Version 1 carries text files only; binary assets (images, wasm) would need an encoding (base64 entries, or a zip) and a hash definition over bytes, which is left for confirmation.
 
 ### Dependencies
 
-- `@statewalker/kernel.core`: aspect names, file names, `workerNameOf`, the install input type.
+- `@statewalker/kernel.core`: aspect names, file names, `workerNameOf`, `archiveHash`, the install input type.
 - `zod` (peer, 4): `z.toJSONSchema`, JSON Schema 2020-12.
 
 ## License
