@@ -79,3 +79,5 @@ catalogs:
   peers:
     "react": ">=18"
     "react-dom": ">=18"
+    # Peer range of fragment-build.* (their configs import zod themselves).
+    zod: "^4.0.0"

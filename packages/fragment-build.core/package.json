@@ -46,7 +46,7 @@
     "@statewalker/kernel.core": "workspace:^"
   },
   "peerDependencies": {
-    "zod": "^4.0.0"
+    "zod": "catalog:peers"
   },
   "devDependencies": {
     "@statewalker/system.commands": "workspace:^",
