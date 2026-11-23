@@ -31,8 +31,8 @@ await profile.vault.load(); // locked, unlocked by a remembered key, absent, or 
 
 await profile.vault.create("a long password", { remember: false });
 const mail = profile.vault.secrets("org.example.mail");
-await mail.put("api-key", "sk-...");
-await mail.get("api-key"); // "sk-..."
+await mail.put("api-key", "a-test-value");
+await mail.get("api-key"); // "a-test-value"
 profile.vault.lock();
 await mail.get("api-key"); // throws VaultLockedError
 ```

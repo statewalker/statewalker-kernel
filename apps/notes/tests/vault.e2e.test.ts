@@ -17,7 +17,8 @@ const DIST = resolve(import.meta.dirname, "..", "dist");
 const RECORD_KEY = `${application.id}:vault`;
 const KEYS_DB = `${application.id}:vault`;
 const PASSWORD = "correct horse battery";
-const SECRET = "sk-test-0123456789abcdef";
+// A test value, not shaped like any real key (secret scanners flag those).
+const SECRET = "plain-test-value-for-the-vault";
 const MAIL = "org.example.mail";
 
 let server: StaticServer;
