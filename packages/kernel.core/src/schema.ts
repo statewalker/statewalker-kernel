@@ -1,0 +1,79 @@
+/**
+ * The JSON Schema (2020-12) of `fragment.jsonc`, version 1. The package ships the same
+ * document as `schemas/fragment.v1.schema.json` (a test keeps the two equal), so authors
+ * point `$schema` at it, from npm or from wherever a distribution serves it.
+ *
+ * The kernel reads a manifest's version from the file name its `$schema` ends with
+ * (`fragment.v<N>.schema.json`), not from a fixed URL: the URL stays neutral and each
+ * distribution may host the file where it likes.
+ */
+export const fragmentManifestSchemaV1 = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  title: "Fragment manifest (fragment.jsonc), version 1",
+  type: "object",
+  required: ["$schema", "id", "version", "engines", "aspects"],
+  additionalProperties: false,
+  properties: {
+    $schema: {
+      description: "The URL or path of this schema; its file name carries the version.",
+      type: "string",
+      pattern: "(^|/)fragment\\.v1\\.schema\\.json$",
+    },
+    id: {
+      description:
+        "Reverse-domain id, never changed (org.example.fragment-notes); system.* is reserved for the platform's core fragments.",
+      type: "string",
+      minLength: 1,
+    },
+    version: { description: "The fragment's version (semver).", type: "string", minLength: 1 },
+    name: { type: "string" },
+    description: { type: "string" },
+    requires: {
+      description: "Required fragments: fragment id to a semver range.",
+      type: "object",
+      additionalProperties: { type: "string", minLength: 1 },
+    },
+    engines: {
+      type: "object",
+      required: ["platform"],
+      additionalProperties: false,
+      properties: {
+        platform: {
+          description: "The platform versions this fragment runs on (a semver range).",
+          type: "string",
+          minLength: 1,
+        },
+      },
+    },
+    bindings: {
+      description: "Bindings the host must offer.",
+      type: "array",
+      items: { type: "string", minLength: 1 },
+      uniqueItems: true,
+    },
+    aspects: {
+      description:
+        "The aspects present. The platform fixes them: server (wrangler.jsonc), client and agent.",
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        server: { $ref: "#/$defs/aspect" },
+        client: { $ref: "#/$defs/aspect" },
+        agent: { $ref: "#/$defs/aspect" },
+      },
+    },
+  },
+  $defs: {
+    aspect: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        dir: {
+          description: "The aspect's folder, when not the default (server/, client/, agent/).",
+          type: "string",
+          minLength: 1,
+        },
+      },
+    },
+  },
+} as const;
