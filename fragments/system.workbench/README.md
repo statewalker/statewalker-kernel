@@ -29,7 +29,7 @@ import "@statewalker/system.workbench/client.css"; // the workbench's prebuilt C
 | `systemWorkbenchArchive`, `SYSTEM_WORKBENCH_ID` | The fragment's files (`fragment.jsonc`, `fragment.client.jsonc`), for `createKernel({ core })`. |
 | `createSystemWorkbench()` → `{ workbench, module, activate }` | The model, the fragment's client module (its commands' handlers, what its references resolve to), and the body of its client activator. |
 | `Workbench` | `views()`, `view(id)`, `opened()`, `open(id)`, `close(id)`, `setSurfaceSource(source)`, `openSurface(surfaceId, { title? })`, `closeSurface(surfaceId)`, `docked()`, `observe(listener)`. |
-| `SurfaceSource`, `DockedSurface`, `SURFACE_PANEL_PREFIX` | Where docked surfaces come from (`title`, `component`, `docked`); a docked surface (panel id `surface:<surfaceId>`). |
+| `SurfaceSource`, `DockedSurface`, `SURFACE_PANEL_PREFIX` | Where docked surfaces come from (`title`, `component`, `docked`, optional `onRemoved`); a docked surface (panel id `surface:<surfaceId>`). |
 | `ViewEntry`, `WorkbenchState` | A view (`id`, `viewId`, `fragment`, `title`, `extension`, `component()`); the views and the open ones. |
 | `WorkbenchError` | `unknown-view` (opening a view nobody contributes), `no-component`, `unknown-surface` (docking a surface no source holds). |
 | `viewSchema`, `VIEWS_POINT` | The point's schema (JSON Schema 2020-12) and short id. |
@@ -98,7 +98,7 @@ The model follows the `views` point through the activation context, so a view li
 
 ### The dock
 
-A surface source (system.a2ui's `createSurfaceDock`, set by the host with `setSurfaceSource`) gives the workbench surfaces without the workbench knowing how they render. `openSurface(surfaceId, { title? })` docks one the source holds (titled by the source unless a title is given) and tells the source; `closeSurface` takes it out and tells the source too; a surface docked already stays. The fragment declares two commands in its own `fragment.client.jsonc`, `open-surface` (`{ surfaceId, title? }`) and `close-surface` (`{ surfaceId }`), both answering `{}`, their handlers the exports `openSurface`/`closeSurface` of its client module (`module`), which a host resolves in process; with system.commands they are `system.workbench/open-surface` and `close-surface` on the bus. Deactivating the fragment, or changing the source, empties the dock.
+A surface source (system.a2ui's `createSurfaceDock`, set by the host with `setSurfaceSource`) gives the workbench surfaces without the workbench knowing how they render. `openSurface(surfaceId, { title? })` docks one the source holds (titled by the source unless a title is given) and tells the source; `closeSurface` takes it out and tells the source too; a surface docked already stays, and the source is told again that it is docked. While a source is set, the workbench follows its `onRemoved`: a surface the source drops leaves the dock. The fragment declares two commands in its own `fragment.client.jsonc`, `open-surface` (`{ surfaceId, title? }`) and `close-surface` (`{ surfaceId }`), both answering `{}`, their handlers the exports `openSurface`/`closeSurface` of its client module (`module`), which a host resolves in process; with system.commands they are `system.workbench/open-surface` and `close-surface` on the bus. Deactivating the fragment, or changing the source, empties the dock.
 
 ### The client half
 

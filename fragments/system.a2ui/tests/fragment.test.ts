@@ -242,6 +242,18 @@ describe("component events", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("of an agent's surface run on the bus as the agent's caller, so system.security's gate applies", async () => {
+    const t = await platform(undefined, { policy: () => "allow" });
+    t.bus.listen(SUBMIT, async () => ({}));
+    const caller = { capability: "agent-capability" };
+    await t.a2ui.process(create("s", question(), { answer: "" }), { origin: "agent", caller });
+    const surface = t.a2ui.surface("s");
+    if (!surface) throw new Error("no surface");
+    await emitComponentEvent(surface, "q", "submit", { answer: "Ada" });
+    await vi.waitFor(() => expect(t.a2ui.log.at(-1)?.outcome).toBe("ran"));
+    expect(t.bus.calls).toEqual([{ id: SUBMIT, options: { caller } }]);
+  });
+
   it("of an agent's surface pass the policy given", async () => {
     const { a2ui, handler } = await submitted("agent", { policy: () => "allow" });
     expect(a2ui.log.at(-1)).toMatchObject({ outcome: "ran" });

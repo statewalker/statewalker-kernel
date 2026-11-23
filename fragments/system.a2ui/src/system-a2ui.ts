@@ -9,6 +9,7 @@ import {
 import type { ActivationContext, Extension } from "@statewalker/kernel.core";
 import {
   type ActionRequest,
+  type CallerCapability,
   type CommandCaller,
   createActionRouter,
   type LogEntry,
@@ -50,6 +51,12 @@ export interface ProcessOptions {
   readonly origin: SurfaceOrigin;
   /** The title of the surfaces these messages create (their tab when docked). */
   readonly title?: string;
+  /**
+   * The caller the surfaces' events run as on the bus: an agent's capability, so
+   * system.security's gate checks its grants and the user's Allow/Ask/Block. Kept with each
+   * surface these messages create.
+   */
+  readonly caller?: CallerCapability;
 }
 
 export interface ProcessResult {
@@ -145,6 +152,7 @@ interface SurfaceEntry {
   readonly id: string;
   readonly origin: SurfaceOrigin;
   readonly title: string;
+  readonly caller?: CallerCapability;
   readonly processor: MessageProcessor;
   placement: SurfacePlacement;
 }
@@ -203,11 +211,14 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
 
   const router = createActionRouter({
     commands: {
-      call: (id, input) =>
-        options.commands
-          ? options.commands.call(id, input)
-          : Promise.reject(new Error(`no command bus to run ${id} on`)),
+      call: (id, input, callOptions) =>
+        !options.commands
+          ? Promise.reject(new Error(`no command bus to run ${id} on`))
+          : callOptions
+            ? options.commands.call(id, input, callOptions)
+            : options.commands.call(id, input),
     },
+    callerOf: (id) => entries.get(id)?.caller,
     components: () => definitions,
     surface: (id) => entries.get(id)?.processor.getSurface(id),
     isAgentSurface: (id) =>
@@ -289,7 +300,7 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
 
   async function process(
     messages: unknown,
-    { origin, title }: ProcessOptions,
+    { origin, title, caller }: ProcessOptions,
   ): Promise<ProcessResult> {
     await pending;
     const list = (Array.isArray(messages) ? messages : [messages]).map((m) =>
@@ -336,6 +347,7 @@ export function createSystemA2ui(options: SystemA2uiOptions = {}): SystemA2ui {
           id: surfaceId,
           origin,
           title: title ?? surfaceId,
+          ...(caller ? { caller } : {}),
           processor,
           placement: "inline",
         });

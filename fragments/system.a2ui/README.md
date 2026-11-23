@@ -27,7 +27,7 @@ import "@statewalker/system.a2ui/client.css"; // its prebuilt CSS, once per page
 | --- | --- |
 | `systemA2uiArchive`, `SYSTEM_A2UI_ID` | The fragment's files, for `createKernel({ core })`. |
 | `createSystemA2ui({ commands, policy?, approve?, legacyCatalogIds?, onLog?, onAction? })` → `{ a2ui, activate }` | The model and the body of the fragment's client activator. |
-| `A2ui` | `catalog()`, `components()`, `refusals()`, `ready()`, `process(messages, { origin, title? })`, `surface(id)`, `surfaces()`, `delete(id)`, `popOut(id)`, `popIn(id)`, `setDocked(id, docked)`, `observe(listener)`, `log`. |
+| `A2ui` | `catalog()`, `components()`, `refusals()`, `ready()`, `process(messages, { origin, title?, caller? })`, `surface(id)`, `surfaces()`, `delete(id)`, `popOut(id)`, `popIn(id)`, `setDocked(id, docked)`, `onRemoved(listener)`, `observe(listener)`, `log`. |
 | `defineComponent({ name, description?, props, events, commands?, literalOnly?, render })` | A catalog component: Zod props and events, events mapped to command ids, the view (usually `lazy`). |
 | `installA2ui(a2ui)`, `installedA2ui()` | The model the shell installs, for fragments' client halves (the module is shared through the import map). |
 | `buildCatalog`, `BASIC_COMPONENTS`, `PLATFORM_CATALOG_ID`, `createProcessor` | A catalog from web_core's basic components plus ours; web_core with strict validation. |
@@ -94,11 +94,11 @@ An extension to `catalog` carries the component's name (`^[A-Z][A-Za-z0-9]*$`); 
 
 ### Surfaces
 
-`process` takes 1.0 messages (0.9/0.9.1 ones through the shim, when their catalog id is mapped). Each surface has its own web_core `MessageProcessor` with `STRICT_VALIDATION`, built on the catalog of the moment, and keeps the origin (`agent`, `server`, `user`) and title it was created with. A creation with any error is dropped whole; a message for another origin's surface is refused. Placement is `inline` or `docked`: `popOut` runs `system.workbench/open-surface`, `popIn` `system.workbench/close-surface`, and the workbench tells the model through `createSurfaceDock` (`setDocked`), including when the user closes the dock's panel.
+`process` takes 1.0 messages (0.9/0.9.1 ones through the shim, when their catalog id is mapped). Each surface has its own web_core `MessageProcessor` with `STRICT_VALIDATION`, built on the catalog of the moment, and keeps the origin (`agent`, `server`, `user`) and title it was created with. A creation with any error is dropped whole; a message for another origin's surface is refused. Placement is `inline` or `docked`: `popOut` runs `system.workbench/open-surface`, `popIn` `system.workbench/close-surface`, and the workbench tells the model through `createSurfaceDock` (`setDocked`), including when the user closes the dock's panel. A surface that goes (its sender's `deleteSurface`, `delete`, or the fragment deactivating) is reported through `onRemoved`, which the dock source forwards, so the workbench drops its dock entry: a surface re-created under the same id starts inline.
 
 ### Events
 
-A2UI has no component events; ours enter web_core's action path (`emitComponentEvent`). The router reads the component's type from the surface model, never from the payload, maps the event to the command its definition names, and parses the payload with the event's Zod schema. An agent's surface passes `policy` (Allow/Ask/Block; `ask` by default) and `approve` (denies by default) before the command runs; a server half's or the user's surface does not. Actions no component declares (an agent-wired Button) go to `onAction`, for the surface's sender.
+A2UI has no component events; ours enter web_core's action path (`emitComponentEvent`). The router reads the component's type from the surface model, never from the payload, maps the event to the command its definition names, and parses the payload with the event's Zod schema. An agent's surface passes `policy` (Allow/Ask/Block; `ask` by default) and `approve` (denies by default) before the command runs; a server half's or the user's surface does not. A surface created with a `caller` (the agent's capability, `{ capability }`) runs its events on the bus as that caller, so system.security's gate checks the agent's grants and the user's policy too (system.commands refuses such a call when no gate is wired); a host relying on the gate alone passes `policy: () => "allow"`. Actions no component declares (an agent-wired Button) go to `onAction`, for the surface's sender.
 
 ### The renderer
 
@@ -119,6 +119,8 @@ Surfaces are untrusted input: an agent, or a server half speaking for one, write
 | A malformed event payload | Parsed against the event's Zod schema; not run | `actions.test.tsx` "an event payload that fails the component's event schema is rejected" |
 | An agent's event running a command unasked | Allow/Ask/Block, fail-closed by default (no policy: denied) | `actions.test.tsx` Allow/Ask/Block tests; `fragment.test.ts` "…are denied without a policy (fail-closed)" |
 | An agent updating a server half's surface (whose events skip the policy) | A message for another origin's surface is refused | `fragment.test.ts` "refuse an update to another origin's surface" |
+| An agent's event running beyond the agent's grants | Events of a surface created with the agent's `caller` run as that caller, through system.security's gate | `fragment.test.ts` "…run on the bus as the agent's caller, so system.security's gate applies" |
+| A deleted surface lingering in the dock, a new one taking its title and place | Removed surfaces leave the dock | `dock.test.ts` "a docked surface deleted by its sender leaves the dock…", "…removed by the host…", "deactivating system.a2ui…"; apps/notes "a docked surface its sender deletes leaves the dock" |
 | A fragment replacing a basic component or another's name | Refused contributions | `fragment.test.ts` "refuses a contribution that…" |
 | Unions slipping past web_core's unchecked `anyOf` | `defineComponent` refuses unions | `decisions.test.tsx` "defineComponent refuses unions in props" |
 

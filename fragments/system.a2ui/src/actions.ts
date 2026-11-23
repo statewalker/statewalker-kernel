@@ -4,9 +4,17 @@ import type { CatalogComponent } from "./define-component.js";
 export type PolicyDecision = "allow" | "ask" | "block";
 export type Outcome = "ran" | "failed" | "asking" | "denied" | "blocked" | "invalid" | "unrouted";
 
+/**
+ * Who a call is made as, on system.commands' bus: a principal other than the user presents the
+ * capability system code issued it, and its calls pass system.security's gate.
+ */
+export interface CallerCapability {
+  readonly capability: string;
+}
+
 /** What a command runs on: the shape of system.commands' bus. */
 export interface CommandCaller {
-  call(id: string, input?: unknown): Promise<unknown>;
+  call(id: string, input?: unknown, options?: { caller?: CallerCapability }): Promise<unknown>;
 }
 
 export interface ActionRequest {
@@ -37,6 +45,8 @@ export interface ActionRouterOptions {
   /** Allow/Ask/Block for an agent surface's action. */
   readonly policy: (req: ActionRequest) => PolicyDecision;
   readonly approve: (req: ActionRequest) => Promise<boolean>;
+  /** The caller a surface's events run as (an agent's capability); the user when none. */
+  readonly callerOf?: (surfaceId: string) => CallerCapability | undefined;
   /** The surface an action came from; set by `attach` too. */
   readonly surface?: (surfaceId: string) => SurfaceModel | undefined;
   readonly onLog?: (entry: LogEntry) => void;
@@ -119,7 +129,10 @@ export function createActionRouter(opts: ActionRouterOptions): ActionRouter {
       }
     }
     try {
-      const result = await opts.commands.call(command, parsed.data);
+      const caller = opts.callerOf?.(a.surfaceId);
+      const result = caller
+        ? await opts.commands.call(command, parsed.data, { caller })
+        : await opts.commands.call(command, parsed.data);
       record(a, "ran", command, result);
     } catch (e) {
       record(a, "failed", command, String(e));
