@@ -16,12 +16,15 @@ pnpm add @statewalker/kernel.core
 
 | Import | Provides |
 | --- | --- |
-| `createKernel`, `Kernel`, `KernelOptions`, `RemoveOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `dependentsOf`, `remove`, `activate`, `retry`, `deactivate`, `stop`. |
+| `createKernel`, `Kernel`, `KernelOptions`, `RemoveOptions`, `UpgradeOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `dependentsOf`, `remove`, `activate`, `retry`, `deactivate`, `upgrade`, `rollback`, `stop`. |
+| `ArchiveStore`, `createMemoryArchiveStore`, `archiveHash` | The host's content-addressed store of installed archives, and the hash naming each archive. |
+| `KernelProfile`, `createMemoryProfile`, `FragmentRecord`, `ArchiveRef`, `fragmentRecordKey`, `appliedMigrationsKey` | What the kernel records in the user's profile: each fragment's version, archive, enabled state and last upgrade, and the migration tags applied to its data. |
+| `ClassMigration`, `readMigrations` | The Durable Object class migrations of a server half's `wrangler.jsonc`. |
 | `OwnedExtensionPoints`, `Extension`, `ExtensionChange`, `ExtensionListener`, `extensionPointId` | What a point's owner reads: its points, their extensions, the changes. |
 | `LazyReference`, `ReferenceResolvers`, `ReferenceResolver`, `ReferenceContext`, `referenceKind`, `ExtensionUnavailable` | Lazy references to a contributor's code, the host's resolvers, and the error once the contributor is gone. |
 | `extensionContributionsSlot(aspect)`, `ExtensionContribution`, `extensionRefusalsSlot(aspect)`, `ExtensionRefusal` | Runtime extensions (`system:extensions:contributed:<aspect>`) and refused extensions with their reasons (`system:extensions:refused:<aspect>`). |
 | `installedFragmentsSlot`, `enabledFragmentsSlot`, `resolvedFragmentsSlot`, `activeFragmentsSlot(aspect)`, `failedFragmentsSlot(aspect)`, `FragmentFailure`, `waitingFragmentsSlot(aspect)`, `FragmentWaiting` | The keyed slots `system:fragments:installed`, `:enabled`, `:resolved`, `:active:<aspect>`, `:failed:<aspect>`, `:waiting:<aspect>`. |
-| `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError`, `FragmentCascadeError` | Why an install or a lifecycle step was refused; a cascade refused for want of confirmation lists the dependents. |
+| `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError`, `FragmentCascadeError`, `FragmentRollbackError`, `FragmentDeletesClassesError`, `FragmentMigrationError` | Why an install, an upgrade or a lifecycle step was refused; a cascade refused for want of confirmation lists the dependents, an upgrade deleting classes lists them, a rollback after migrations lists those. |
 | `fragmentManifestSchemaV1`, `FragmentManifest`, `ASPECTS`, `MANIFEST_FILE`, `parseJsonc` | The manifest, its schema and its parser. |
 | `fragmentAspectSchemaV1`, `AspectManifest`, `aspectFileOf` | The aspect files (`fragment.<aspect>.jsonc`) and their schema. |
 | `isFragmentId`, `isSystemId`, `workerNameOf`, `SYSTEM_PREFIX` | Fragment ids and the server half's Worker name. |
@@ -98,6 +101,30 @@ const kernel = createKernel({
 });
 await kernel.remove("org.example.fragment-pdf"); // data kept: a reinstall finds it
 await kernel.remove("org.example.fragment-pdf", { withData: true }); // after the user confirmed
+```
+
+Upgrade a fragment to a later archive, and roll back while no migration has run. The host stores archives and the profile, and runs migrations:
+
+```ts
+const kernel = createKernel({
+  platform,
+  archives: hostArchiveStore, // content-addressed; createMemoryArchiveStore() by default
+  profile: hostProfile, // system.profile's storage; createMemoryProfile() by default
+  migrate: async (fragment, migration) => {
+    // with the new archive in place and the fragment inactive
+    await fragmentHost.applyClassMigration(fragment.id, migration); // new/renamed/deleted classes
+    await fragmentHost.runDataMigration(fragment.id, migration.tag); // the fragment's own, same tag
+  },
+});
+
+try {
+  await kernel.upgrade("org.example.fragment-pdf", pdfArchiveV2);
+} catch (error) {
+  if (error instanceof FragmentDeletesClassesError && (await confirmDeletion(error.deletions))) {
+    await kernel.upgrade("org.example.fragment-pdf", pdfArchiveV2, { confirmDeletedClasses: true });
+  }
+}
+await kernel.rollback("org.example.fragment-pdf"); // FragmentRollbackError once a migration ran
 ```
 
 An owner opens an extension point in one aspect file, another fragment extends it in the same aspect. The owner's `fragment.client.jsonc` (its `fragment.jsonc` lists `"client": {}` among its aspects):
@@ -179,6 +206,8 @@ An install is a list of archives, accepted or refused as a whole. A `FragmentIns
 - `unmet-requirement`: a required fragment neither installed nor in the same install, or in a version outside the range;
 - `already-installed`: one version per fragment per host;
 - `extension-point-conflict`: a core fragment opening a short point another core fragment opens.
+- `pending-migrations`: a reinstall over data kept from an earlier install, whose archive brings migration tags that data has not had;
+- `not-an-upgrade` (upgrades only): an archive of another fragment, or of a version not later than the installed one.
 
 ### Lifecycle as slot membership
 
@@ -191,6 +220,32 @@ Each state is a keyed slot, and a fragment is in every slot whose state it has r
 - **Disable** cascades only once confirmed. `dependentsOf(id)` lists the resolved fragments requiring it, directly or not, in dependency order; without `{ cascade: true }` a disable with dependents changes nothing and rejects with a `FragmentCascadeError` carrying them. Confirmed, they are deactivated first and become unresolved, staying enabled.
 - **Remove** deactivates, disables and uninstalls a fragment, with the same confirmed cascade (its dependents stay installed and enabled, unresolved). Core fragments cannot be removed. The fragment's data and profile entries are kept by default, so a reinstall finds them: the kernel stores no data, and only `remove(id, { withData: true })` (the user's separate confirmation) calls the host's `KernelOptions.removeData` with the fragment, once it is gone. A host without `removeData` refuses `withData` before anything changes; an error from `removeData` rejects the removal, the fragment staying removed.
 - **Repair.** On disable and removal the extension registry repairs itself from the slots: the fragment's static and runtime extensions leave every point, each owner's `observe` receiving them as `removed`; their refusals go too; extensions to its points go dormant, with their refusals, and come back when it does; no other extension, point or state changes. The commands, keybindings, menus, settings pages, views, layouts and agent tools of the core fragments are extensions to their points, so they go the same way.
+
+### Archives, the profile and upgrades
+
+**Archives.** An install's input is an archive's files by name, as text. The kernel names it by `archiveHash`: `sha256:` and the hex SHA-256 (Web Crypto) of the UTF-8 JSON text of `[[name, text], ...]` sorted by name (UTF-16 code units). Every archive installed, upgraded to or rolled back to is put in the host's `ArchiveStore` under that hash, and `InstalledFragment.archive` carries it. The store is content-addressed and immutable: other files under a stored hash are refused (the in-memory store checks the hash), and the kernel deletes nothing, so the archive an upgrade replaced stays there (removal keeps archives too; collecting unused ones is the host's business).
+
+**The profile.** The kernel stays storage-free: it writes JSON values to the host's `KernelProfile` (get, set, delete by key), which `system.profile` keeps with the user's settings.
+
+- `fragments/<id>` (`fragmentRecordKey`) holds a `FragmentRecord`: `version`, `archive`, `enabled`, and after an upgrade `upgrade: { from: { version, archive }, migrations }`, the archive it replaced and the tags it ran. Written on install (enabled `false`), enable, disable, upgrade and rollback; deleted on removal.
+- `migrations/<id>` (`appliedMigrationsKey`) holds the migration tags applied to the fragment's data, in order. It describes the data, so a removal keeps it unless the data goes too (`withData`).
+
+The kernel records the profile but does not restore from it: a host reinstalls the recorded archives from its store on start.
+
+**Migrations** are the `migrations` of the server half's `wrangler.jsonc`, as on Cloudflare: entries with distinct string `tag`s and class changes (`new_classes`, `new_sqlite_classes`, `renamed_classes`, `deleted_classes`, `transferred_classes`), in order; a list that is not one, or a tag missing or repeated, is refused (`invalid-manifest`). A tag also keys the fragment's own data migrations, so a tag without class changes is a data migration alone. An install runs none: a new project's tags are recorded as applied (the runtime creates its classes as they end up). A reinstall over kept data whose archive brings tags the record lacks is refused (`pending-migrations`): reinstall the removed version, then upgrade.
+
+**Upgrade.** `upgrade(id, files, options?)` takes a later version of an installed, non-core fragment (`not-an-upgrade` otherwise). The archive passes the install checks (platform, bindings, requirements, Worker name), and every installed fragment requiring it must accept the new version (`unmet-requirement`); a refusal is a `FragmentInstallError` and nothing changes. The tags the record lacks are pending: on a host without `KernelOptions.migrate` they refuse the upgrade, and those with `deleted_classes` refuse it with a `FragmentDeletesClassesError` listing the classes unless `{ confirmDeletedClasses: true }` confirms it, again changing nothing. Then:
+
+1. the archive is stored, and the fragment and the fragments requiring it are deactivated in every aspect, dependents first;
+2. the archive is swapped: in each state slot it is in, the fragment is disposed and the new one registered (see below);
+3. each pending tag runs through `migrate`, then is recorded, both in `migrations/<id>` and in the record's `upgrade.migrations`;
+4. what was active is activated again, requirements first.
+
+A migration that throws stops the upgrade with a `FragmentMigrationError` (its `tag` and `cause`): the new archive stays installed, nothing is activated again, and the tags that ran before stay recorded.
+
+**Rollback.** `rollback(id)` goes back to the record's `upgrade.from`, read from the store, the same way (deactivate, swap, activate again), and clears `upgrade`. It is refused with a `FragmentRollbackError`, nothing changed and the upgraded version still active, when no upgrade is recorded, when the upgrade ran a migration (`migrations` lists them: Durable Object migrations do not run backwards, so the old code would meet migrated data), or when the store lacks the archive. Only the last upgrade rolls back; one that ran no migration can be rolled back even when an earlier one ran some.
+
+**An upgrade in the slots** is dispose plus register, as ADR 2026-11-20-fragment-lifecycle §6 says: keyed slots refuse a new value under an existing id and `shared-slots` has no `replace`. An observer of `installed`, `enabled` or `resolved` sees the fragment leave and come back within the upgrade, synchronously, and it moves to the end of the slot's registration order. Nothing in the kernel misreads this: the fragment and its dependents are already inactive, and an owner of a point it extends sees its extensions removed, then added in their new version, which an upgrade changes anyway. A `replace` in `shared-slots` is worth adding only if an observer turns out to treat the gap as a removal.
 
 Operations run one after another, in the order they were called. An operation called while an activator or a cleanup runs is rejected at once with a `FragmentLifecycleError`: an activator that awaited the kernel would otherwise wait for its own operation forever. This also refuses a call from elsewhere that lands while a hook runs; call again once the running operation has settled.
 

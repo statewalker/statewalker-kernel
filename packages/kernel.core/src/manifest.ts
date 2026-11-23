@@ -93,4 +93,6 @@ export interface InstalledFragment {
   readonly aspects: Readonly<Partial<Record<Aspect, AspectManifest>>>;
   /** Shipped with the platform (a core fragment). */
   readonly core: boolean;
+  /** The archive's content hash (`archiveHash`), under which the host's store keeps it. */
+  readonly archive: string;
 }

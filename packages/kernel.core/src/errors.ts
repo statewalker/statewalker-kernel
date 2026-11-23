@@ -17,7 +17,14 @@ export type RefusalCode =
   /** A fragment of this id is already installed (one version per host). */
   | "already-installed"
   /** A core fragment opens a short extension point another core fragment opens too. */
-  | "extension-point-conflict";
+  | "extension-point-conflict"
+  /** An upgrade to an archive of another fragment, or of a version not later than the installed one. */
+  | "not-an-upgrade"
+  /**
+   * A reinstall over data kept from an earlier install, bringing migrations that data has
+   * not had: an install runs none.
+   */
+  | "pending-migrations";
 
 export interface Refusal {
   /** The fragment refused (as far as it could be read). */
@@ -76,5 +83,60 @@ export class ExtensionUnavailable extends Error {
     this.name = "ExtensionUnavailable";
     this.extension = extension;
     this.contributor = contributor;
+  }
+}
+
+/**
+ * A rollback refused: nothing to roll back to, or the upgrade has run migrations (the
+ * data may no longer suit the previous version), or the previous archive is not in the
+ * store. Nothing changed: the upgraded version stays installed and active.
+ */
+export class FragmentRollbackError extends FragmentLifecycleError {
+  readonly id: string;
+  /** The migration tags the upgrade ran, when that is why the rollback was refused. */
+  readonly migrations: readonly string[];
+  constructor(id: string, message: string, migrations: readonly string[] = []) {
+    super(message);
+    this.name = "FragmentRollbackError";
+    this.id = id;
+    this.migrations = migrations;
+  }
+}
+
+/**
+ * An upgrade refused because migrations it would run delete Durable Object classes, and
+ * with them their data, without `confirmDeletedClasses`. Nothing changed; `deletions` lists
+ * them for the confirmation.
+ */
+export class FragmentDeletesClassesError extends FragmentLifecycleError {
+  readonly id: string;
+  readonly deletions: readonly { readonly tag: string; readonly classes: readonly string[] }[];
+  constructor(
+    id: string,
+    deletions: readonly { readonly tag: string; readonly classes: readonly string[] }[],
+  ) {
+    super(
+      `Upgrading "${id}" deletes the data of ${deletions.flatMap((d) => d.classes).join(", ")}; confirm it to go on`,
+    );
+    this.name = "FragmentDeletesClassesError";
+    this.id = id;
+    this.deletions = deletions;
+  }
+}
+
+/**
+ * A migration of an upgrade threw (`cause`). The upgrade stopped there: the new archive
+ * stays installed, inactive, the tags that ran before stay recorded, and a rollback is
+ * allowed only when none ran.
+ */
+export class FragmentMigrationError extends FragmentLifecycleError {
+  readonly id: string;
+  readonly tag: string;
+  constructor(id: string, tag: string, cause: unknown) {
+    super(`The migration "${tag}" of "${id}" failed: ${String(cause)}`);
+    this.name = "FragmentMigrationError";
+    this.id = id;
+    this.tag = tag;
+    this.cause = cause;
   }
 }
