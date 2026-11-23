@@ -511,9 +511,6 @@ importers:
       '@statewalker/shared-slots':
         specifier: 'catalog:'
         version: 0.2.6
-      '@statewalker/system.commands':
-        specifier: workspace:^
-        version: link:../system.commands
       '@tailwindcss/cli':
         specifier: 'catalog:'
         version: 4.3.5
