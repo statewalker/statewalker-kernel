@@ -1,0 +1,15 @@
+// The system.commands core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/points.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.commands",
+  "version": "0.1.0",
+  "name": "Commands",
+  "description": "The command bus: commands declared as OpenAPI operations, and keybindings.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "name": "@statewalker/system.commands",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The system.commands core fragment: the commands and keybindings extension points, the command bus calling commands declared as OpenAPI operations, and their projections to harness tool documents and MCP tools.",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/fragments/system.commands#readme",
+  "author": {
+    "name": "Mikhail Kotelnikov",
+    "email": "mikhail.kotelnikov@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "fragments/system.commands"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "fragment.jsonc",
+    "fragment.client.jsonc"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "lint": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "catalog:",
+    "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/shared-commands": "catalog:"
+  },
+  "devDependencies": {
+    "@statewalker/shared-slots": "catalog:",
+    "@types/node": "catalog:",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": false
+}
