@@ -1,6 +1,11 @@
 import { Slots } from "@statewalker/shared-slots";
 import semver from "semver";
-import { FragmentInstallError, FragmentLifecycleError, type Refusal } from "./errors.js";
+import {
+  FragmentCascadeError,
+  FragmentInstallError,
+  FragmentLifecycleError,
+  type Refusal,
+} from "./errors.js";
 import {
   createExtensionRegistry,
   type ExtensionRegistryOptions,
@@ -19,8 +24,10 @@ import { parseJsonc, readAspectFiles, readManifest } from "./parse-manifest.js";
 import {
   activeFragmentsSlot,
   enabledFragmentsSlot,
+  failedFragmentsSlot,
   installedFragmentsSlot,
   resolvedFragmentsSlot,
+  waitingFragmentsSlot,
 } from "./slots.js";
 
 /** What the host offers fragments. */
@@ -71,6 +78,23 @@ export interface KernelOptions extends ExtensionRegistryOptions {
    * fragments requiring it are not activated, and every other fragment carries on.
    */
   readonly onError?: (id: string, aspect: Aspect, error: unknown) => void;
+  /**
+   * The host's code that deletes a removed fragment's data (its Durable Object data and
+   * its profile entries: settings values, secrets). The kernel keeps no data itself; it
+   * calls this only for a removal with `{ withData: true }`, once the fragment is gone.
+   */
+  readonly removeData?: (fragment: InstalledFragment) => void | Promise<void>;
+}
+
+/** How to remove a fragment. */
+export interface RemoveOptions {
+  /** Confirms deactivating and unresolving the fragments requiring it (see `dependentsOf`). */
+  readonly cascade?: boolean;
+  /**
+   * Confirms "remove with data": the host's `removeData` deletes the fragment's data and
+   * profile entries. Without it they are kept, so a reinstall finds them.
+   */
+  readonly withData?: boolean;
 }
 
 export interface Kernel {
@@ -91,6 +115,19 @@ export interface Kernel {
    */
   disable(id: string, options?: { cascade?: boolean }): Promise<void>;
   /**
+   * Remove an installed fragment: deactivate it (its dependents first, with `cascade`),
+   * disable it and uninstall it. Its data is kept unless `withData` confirms deleting it.
+   * Refused, with nothing changed, for a core fragment, for one resolved fragments
+   * require without `cascade` (a `FragmentCascadeError`), and for `withData` on a host
+   * without `removeData`.
+   */
+  remove(id: string, options?: RemoveOptions): Promise<void>;
+  /**
+   * The resolved fragments requiring `id`, directly or not, in dependency order: what a
+   * disable or a removal of `id` would cascade to. Read it to list them before confirming.
+   */
+  dependentsOf(id: string): string[];
+  /**
    * Activate `aspect` of fragment `id` (and first of the fragments it requires), or of
    * every resolved fragment, in dependency order.
    */
@@ -100,6 +137,12 @@ export interface Kernel {
    * of every fragment, in reverse activation order.
    */
   deactivate(aspect: Aspect, id?: string): Promise<void>;
+  /**
+   * Activate again `aspect` of the failed fragment `id` (refused when it has not failed),
+   * or of every failed fragment, then of the fragments an activation left waiting for it.
+   * One still failing stays failed with its new error.
+   */
+  retry(aspect: Aspect, id?: string): Promise<void>;
   /** Deactivate every aspect of every fragment, in reverse activation order. */
   stop(): Promise<void>;
 }
@@ -130,6 +173,30 @@ export function createKernel(options: KernelOptions): Kernel {
 
   const registry = createExtensionRegistry(slots, options, onError);
 
+  /**
+   * The fragments an activation was asked for but skipped because a requirement was not
+   * active (failed, or waiting itself), published in `waitingFragmentsSlot`, which `retry`
+   * reads: each entry's blockers and disposer.
+   */
+  const waiting = new Map<string, { blockers: string; dispose: () => void }>();
+  function wait(aspect: Aspect, fragment: InstalledFragment, blockers: string[]) {
+    const key = `${aspect}\u0000${fragment.id}`;
+    const held = waiting.get(key);
+    if (held?.blockers === blockers.join("\u0000")) return;
+    stopWaiting(aspect, fragment.id);
+    const dispose = slots.register(waitingFragmentsSlot(aspect), fragment.id, {
+      fragment,
+      aspect,
+      blockers,
+    });
+    waiting.set(key, { blockers: blockers.join("\u0000"), dispose });
+  }
+  function stopWaiting(aspect: Aspect, id: string) {
+    const key = `${aspect}\u0000${id}`;
+    waiting.get(key)?.dispose();
+    waiting.delete(key);
+  }
+
   /** Ids active per aspect, in activation order. */
   const activeOrder = new Map<Aspect, string[]>(ASPECTS.map((a) => [a, []]));
 
@@ -142,6 +209,22 @@ export function createKernel(options: KernelOptions): Kernel {
     const key = `${decl.key}\u0000${id}`;
     memberships.get(key)?.();
     memberships.delete(key);
+  }
+  /** The failures published per aspect, each with its disposer. */
+  const failures = new Map<string, () => void>();
+  function fail(aspect: Aspect, fragment: InstalledFragment, error: unknown) {
+    clearFailure(aspect, fragment.id);
+    const dispose = slots.register(failedFragmentsSlot(aspect), fragment.id, {
+      fragment,
+      aspect,
+      error,
+    });
+    failures.set(`${aspect}\u0000${fragment.id}`, dispose);
+  }
+  function clearFailure(aspect: Aspect, id: string) {
+    const key = `${aspect}\u0000${id}`;
+    failures.get(key)?.();
+    failures.delete(key);
   }
   function has(decl: Decl, id: string): boolean {
     return slots.getSnapshot(decl).has(id);
@@ -217,11 +300,21 @@ export function createKernel(options: KernelOptions): Kernel {
     if (has(slot, f.id)) return;
     // Every requirement, direct or through fragments lacking the aspect, that has the
     // aspect must be active first.
-    const blocked = [...withRequirements(resolvedFragmentsSlot, f.id)].some(
-      (dep) =>
-        dep !== f.id && installed(dep)?.manifest.aspects[aspect] !== undefined && !has(slot, dep),
-    );
-    if (blocked) return;
+    const requirements = withRequirements(resolvedFragmentsSlot, f.id);
+    const blockers = ordered(resolvedFragmentsSlot)
+      .map((r) => r.id)
+      .filter(
+        (dep) =>
+          dep !== f.id &&
+          requirements.has(dep) &&
+          installed(dep)?.manifest.aspects[aspect] !== undefined &&
+          !has(slot, dep),
+      );
+    if (blockers.length > 0) {
+      wait(aspect, f, blockers);
+      return;
+    }
+    stopWaiting(aspect, f.id);
     try {
       const activator = options.activators?.[aspect];
       const owned = registry.ownedBy(f, aspect);
@@ -230,14 +323,23 @@ export function createKernel(options: KernelOptions): Kernel {
       if (typeof cleanup === "function") cleanups.set(`${aspect}\u0000${f.id}`, cleanup);
     } catch (error) {
       closeHandle(aspect, f.id);
+      fail(aspect, f, error);
       onError(f.id, aspect, error);
       return;
     }
+    clearFailure(aspect, f.id);
     join(slot, f);
     activeOrder.get(aspect)?.push(f.id);
   }
 
   async function deactivateAll(aspect: Aspect, ids: ReadonlySet<string> | undefined) {
+    // Failed and waiting fragments return to inactive too.
+    for (const id of slots.getSnapshot(failedFragmentsSlot(aspect)).keys()) {
+      if (!ids || ids.has(id)) clearFailure(aspect, id);
+    }
+    for (const id of slots.getSnapshot(waitingFragmentsSlot(aspect)).keys()) {
+      if (!ids || ids.has(id)) stopWaiting(aspect, id);
+    }
     const order = activeOrder.get(aspect) ?? [];
     for (const id of [...order].reverse()) {
       if (ids && !ids.has(id)) continue;
@@ -446,27 +548,54 @@ export function createKernel(options: KernelOptions): Kernel {
     };
   }
 
+  async function disable(id: string, cascade: boolean, action = "disable") {
+    if (!has(enabledFragmentsSlot, id)) return;
+    const affected = withDependents(resolvedFragmentsSlot, [id]);
+    const dependents = dependentsOf(id);
+    if (dependents.length > 0 && !cascade) {
+      throw new FragmentCascadeError(id, dependents, action);
+    }
+    for (const aspect of ASPECTS) await deactivateAll(aspect, affected);
+    leave(enabledFragmentsSlot, id);
+    resolve();
+  }
+
+  function dependentsOf(id: string): string[] {
+    const affected = withDependents(resolvedFragmentsSlot, [id]);
+    return ordered(resolvedFragmentsSlot)
+      .map((f) => f.id)
+      .filter((d) => d !== id && affected.has(d));
+  }
+
   return {
     slots,
+    dependentsOf,
     start: serial(async () => {
       const core = await install(options.core ?? [], true);
       for (const fragment of core) await enable(fragment.id);
     }),
     install: serial((archives: readonly FragmentFiles[]) => install(archives, false)),
     enable: serial(enable),
-    disable: serial(async (id: string, { cascade = false }: { cascade?: boolean } = {}) => {
-      if (!has(enabledFragmentsSlot, id)) return;
-      const affected = withDependents(resolvedFragmentsSlot, [id]);
-      const dependents = [...affected].filter((d) => d !== id);
-      if (dependents.length > 0 && !cascade) {
-        throw new FragmentLifecycleError(
-          `"${id}" is required by ${dependents.map((d) => `"${d}"`).join(", ")}; confirm the cascade to disable it`,
-        );
-      }
-      for (const aspect of ASPECTS) await deactivateAll(aspect, affected);
-      leave(enabledFragmentsSlot, id);
-      resolve();
-    }),
+    disable: serial((id: string, { cascade = false }: { cascade?: boolean } = {}) =>
+      disable(id, cascade),
+    ),
+    remove: serial(
+      async (id: string, { cascade = false, withData = false }: RemoveOptions = {}) => {
+        const fragment = installed(id);
+        if (!fragment) throw new FragmentLifecycleError(`"${id}" is not installed`);
+        if (fragment.core) {
+          throw new FragmentLifecycleError(`"${id}" ships with the platform and cannot be removed`);
+        }
+        if (withData && !options.removeData) {
+          throw new FragmentLifecycleError(
+            `"${id}" cannot be removed with its data: this host removes no fragment data`,
+          );
+        }
+        await disable(id, cascade, "remove");
+        leave(installedFragmentsSlot, id);
+        if (withData) await hook(() => options.removeData?.(fragment));
+      },
+    ),
     activate: serial(async (aspect: Aspect, id?: string) => {
       if (id !== undefined && !has(resolvedFragmentsSlot, id)) {
         throw new FragmentLifecycleError(`"${id}" is not resolved`);
@@ -483,6 +612,17 @@ export function createKernel(options: KernelOptions): Kernel {
       // aspect still counts; deactivateAll keeps only those active in the aspect.
       const ids = id === undefined ? undefined : withDependents(resolvedFragmentsSlot, [id]);
       await deactivateAll(aspect, ids);
+    }),
+    retry: serial(async (aspect: Aspect, id?: string) => {
+      const failed = slots.getSnapshot(failedFragmentsSlot(aspect));
+      if (id !== undefined && !failed.has(id)) {
+        throw new FragmentLifecycleError(`"${id}" has not failed in the ${aspect} aspect`);
+      }
+      const targets = id === undefined ? new Set(failed.keys()) : new Set([id]);
+      const queued = slots.getSnapshot(waitingFragmentsSlot(aspect));
+      for (const f of ordered(resolvedFragmentsSlot)) {
+        if (targets.has(f.id) || queued.has(f.id)) await activateOne(aspect, f);
+      }
     }),
     stop: serial(async () => {
       for (const aspect of ASPECTS) await deactivateAll(aspect, undefined);

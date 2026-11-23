@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's kernel: it reads a fragment's `fragment.jsonc`, refuses what cannot run on this host, takes fragments through their lifecycle (installed, enabled, resolved, active per aspect), and routes extensions to the owners of extension points. The lifecycle state is membership in keyed slots of `@statewalker/shared-slots`, so the fragment manager and the workbench observe it like any other slot. No React, no DOM, no Node built-ins.
+The platform's kernel: it reads a fragment's `fragment.jsonc`, refuses what cannot run on this host, takes fragments through their lifecycle (installed, enabled, resolved, active or failed per aspect, removed), and routes extensions to the owners of extension points. The lifecycle state is membership in keyed slots of `@statewalker/shared-slots`, so the fragment manager and the workbench observe it like any other slot. No React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -16,12 +16,12 @@ pnpm add @statewalker/kernel.core
 
 | Import | Provides |
 | --- | --- |
-| `createKernel`, `Kernel`, `KernelOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `activate`, `deactivate`, `stop`. |
+| `createKernel`, `Kernel`, `KernelOptions`, `RemoveOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `dependentsOf`, `remove`, `activate`, `retry`, `deactivate`, `stop`. |
 | `OwnedExtensionPoints`, `Extension`, `ExtensionChange`, `ExtensionListener`, `extensionPointId` | What a point's owner reads: its points, their extensions, the changes. |
 | `LazyReference`, `ReferenceResolvers`, `ReferenceResolver`, `ReferenceContext`, `referenceKind`, `ExtensionUnavailable` | Lazy references to a contributor's code, the host's resolvers, and the error once the contributor is gone. |
 | `extensionContributionsSlot(aspect)`, `ExtensionContribution`, `extensionRefusalsSlot(aspect)`, `ExtensionRefusal` | Runtime extensions (`system:extensions:contributed:<aspect>`) and refused extensions with their reasons (`system:extensions:refused:<aspect>`). |
-| `installedFragmentsSlot`, `enabledFragmentsSlot`, `resolvedFragmentsSlot`, `activeFragmentsSlot(aspect)` | The keyed slots `system:fragments:installed`, `:enabled`, `:resolved`, `:active:<aspect>`. |
-| `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError` | Why an install or a lifecycle step was refused. |
+| `installedFragmentsSlot`, `enabledFragmentsSlot`, `resolvedFragmentsSlot`, `activeFragmentsSlot(aspect)`, `failedFragmentsSlot(aspect)`, `FragmentFailure`, `waitingFragmentsSlot(aspect)`, `FragmentWaiting` | The keyed slots `system:fragments:installed`, `:enabled`, `:resolved`, `:active:<aspect>`, `:failed:<aspect>`, `:waiting:<aspect>`. |
+| `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError`, `FragmentCascadeError` | Why an install or a lifecycle step was refused; a cascade refused for want of confirmation lists the dependents. |
 | `fragmentManifestSchemaV1`, `FragmentManifest`, `ASPECTS`, `MANIFEST_FILE`, `parseJsonc` | The manifest, its schema and its parser. |
 | `fragmentAspectSchemaV1`, `AspectManifest`, `aspectFileOf` | The aspect files (`fragment.<aspect>.jsonc`) and their schema. |
 | `isFragmentId`, `isSystemId`, `workerNameOf`, `SYSTEM_PREFIX` | Fragment ids and the server half's Worker name. |
@@ -66,6 +66,38 @@ await kernel.enable("org.statewalker.fragment-notes");
 await kernel.activate("client", "org.statewalker.fragment-notes"); // files first, then notes
 
 kernel.slots.observe(activeFragmentsSlot("client"), (active) => console.log([...active.keys()]));
+```
+
+Disable or remove a fragment others require: list the dependents, then confirm the cascade.
+
+```ts
+const dependents = kernel.dependentsOf("org.statewalker.fragment-files"); // ["org.statewalker.fragment-notes"]
+if (await confirmCascade(dependents)) {
+  await kernel.disable("org.statewalker.fragment-files", { cascade: true });
+}
+```
+
+A failed aspect is published with its error, and retried once fixed:
+
+```ts
+kernel.slots.observe(failedFragmentsSlot("client"), (failed) => {
+  for (const { fragment, error } of failed.values()) showFailure(fragment.id, error);
+});
+await kernel.retry("client", "org.statewalker.fragment-notes");
+```
+
+Removal keeps the fragment's data unless "remove with data" was confirmed; the host deletes it:
+
+```ts
+const kernel = createKernel({
+  platform,
+  removeData: async (fragment) => {
+    await deleteDurableObjectData(fragment.id);
+    await profile.deleteEntriesOf(fragment.id); // settings values, secrets
+  },
+});
+await kernel.remove("org.example.fragment-pdf"); // data kept: a reinstall finds it
+await kernel.remove("org.example.fragment-pdf", { withData: true }); // after the user confirmed
 ```
 
 An owner opens an extension point in one aspect file, another fragment extends it in the same aspect. The owner's `fragment.client.jsonc` (its `fragment.jsonc` lists `"client": {}` among its aspects):
@@ -153,9 +185,12 @@ An install is a list of archives, accepted or refused as a whole. A `FragmentIns
 Each state is a keyed slot, and a fragment is in every slot whose state it has reached: an active fragment is also installed, enabled and resolved. Every slot holds the same frozen `InstalledFragment`, so a state change is one register or dispose and nothing briefly disappears.
 
 - **Resolved**: enabled, and every required fragment resolved in a version inside its range. A cycle never resolves.
-- **Active**: per aspect. `activate(aspect, id?)` runs the host's activator for the aspect, requirements first (a stable topological sort carried over from sandclaw's `kernel.core`); the fragment joins the slot once the activator has finished. A fragment whose activator throws stays inactive and is reported to `onError`; the fragments requiring it, directly or through fragments that lack the aspect, are not activated, every other fragment is (carried over from `backbone.core`).
+- **Active**: per aspect. `activate(aspect, id?)` runs the host's activator for the aspect, requirements first (a stable topological sort carried over from sandclaw's `kernel.core`); the fragment joins the slot once the activator has finished.
+- **Failed**: per aspect. A fragment whose activator throws stays inactive, joins `failedFragmentsSlot(aspect)` with the error (a `FragmentFailure`) and is reported to `onError`. The fragments requiring it, directly or through fragments that lack the aspect, are not activated in that aspect: those an activation was asked for join `waitingFragmentsSlot(aspect)` (a `FragmentWaiting`, whose `blockers` are the requirements with the aspect that are not active), so a fragment waiting for a failed one is told apart from one nobody asked to activate. Every other fragment is activated (carried over from `backbone.core`). Other aspects and the resolved state do not change. `retry(aspect, id?)` activates the failed fragment again (or every failed one of the aspect), then the fragments waiting for it, which leave the waiting slot as they activate; one still failing stays failed with the new error. Deactivating, disabling, removing and `stop` return a failed or waiting aspect to inactive.
 - **Deactivation** runs in reverse activation order: `deactivate(aspect, id)` first deactivates the fragments requiring `id` (again also through fragments that lack the aspect), `stop()` deactivates everything. Cleanups that throw are reported and the rest goes on.
-- **Disable** refuses when resolved fragments require the fragment, unless `{ cascade: true }` confirms it; they are then deactivated first and become unresolved, staying enabled.
+- **Disable** cascades only once confirmed. `dependentsOf(id)` lists the resolved fragments requiring it, directly or not, in dependency order; without `{ cascade: true }` a disable with dependents changes nothing and rejects with a `FragmentCascadeError` carrying them. Confirmed, they are deactivated first and become unresolved, staying enabled.
+- **Remove** deactivates, disables and uninstalls a fragment, with the same confirmed cascade (its dependents stay installed and enabled, unresolved). Core fragments cannot be removed. The fragment's data and profile entries are kept by default, so a reinstall finds them: the kernel stores no data, and only `remove(id, { withData: true })` (the user's separate confirmation) calls the host's `KernelOptions.removeData` with the fragment, once it is gone. A host without `removeData` refuses `withData` before anything changes; an error from `removeData` rejects the removal, the fragment staying removed.
+- **Repair.** On disable and removal the extension registry repairs itself from the slots: the fragment's static and runtime extensions leave every point, each owner's `observe` receiving them as `removed`; their refusals go too; extensions to its points go dormant, with their refusals, and come back when it does; no other extension, point or state changes. The commands, keybindings, menus, settings pages, views, layouts and agent tools of the core fragments are extensions to their points, so they go the same way.
 
 Operations run one after another, in the order they were called. An operation called while an activator or a cleanup runs is rejected at once with a `FragmentLifecycleError`: an activator that awaited the kernel would otherwise wait for its own operation forever. This also refuses a call from elsewhere that lands while a hook runs; call again once the running operation has settled.
 
@@ -167,7 +202,7 @@ A fragment opens **extension points** in one aspect, under `extensionPoints` of 
 
 A fragment contributes **extensions** to points of the same aspect, under `extensions` of that aspect's file, or at runtime by registering an `ExtensionContribution` in `extensionContributionsSlot(aspect)` under the key `<contributor>/<name>`. An extension is `data` plus an optional `reference`: a client module export (`{ module, export? }`), a server entrypoint method reached through a service binding (`{ entrypoint, method }`), or a command (`{ command }`). Contributing needs no `requires`.
 
-The registry is computed from public state: an extension is **live** while its contributor and the point's owner are resolved (and, for a runtime one, while it stays registered). An extension whose point is not open is **dormant**: nothing is reported, and it is checked once the owner resolves. A live extension's data must match the point's schema; one that does not, one in the wrong aspect and a malformed runtime contribution are **refused**, published in `extensionRefusalsSlot(aspect)` with a code and a message while the contributor and point are there. Extensions read in a stable order: static ones in resolution order, then runtime ones in registration order.
+The registry is computed from public state: an extension is **live** while its contributor and the point's owner are resolved (and, for a runtime one, while it stays registered). An extension whose point is not open is **dormant**: nothing is reported, and it is checked once the owner resolves. A live extension's data must match the point's schema; one that does not, one in the wrong aspect and a malformed runtime contribution are **refused**, published in `extensionRefusalsSlot(aspect)` with a code and a message while the contributor and point are there (a malformed runtime contribution, while the fragment it names or whose key it has is resolved). Extensions read in a stable order: static ones in resolution order, then runtime ones in registration order.
 
 The owner gets its points from the context its activator receives (`context.extensions`), only for the aspect being activated, and nobody else gets them. `read(name)` is synchronous and `observe(name, listener)` calls the listener at once, then with `added` and `removed` on every change; both work while the activator runs, when every kernel operation is refused, because they read state and change nothing. A listener that throws is reported to `onError`. When the aspect is deactivated (or its activator throws) the handle closes: reads are empty and listeners stop.
 
