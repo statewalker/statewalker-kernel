@@ -4,8 +4,9 @@
 
 A packaged set of [shadcn/ui](https://ui.shadcn.com/) components (Radix-based
 React primitives: Button, Dialog, AlertDialog, Card, Tabs, Select, Input,
-Textarea, Label, Separator, ScrollArea, Collapsible, Tooltip, Avatar and the
-`Resizable*` panel wrappers) plus the `cn()` class-merging helper.
+Textarea, Label, Separator, ScrollArea, Collapsible, Tooltip, Avatar, the
+`Resizable*` panel wrappers, and the workbench chrome's Menubar, DropdownMenu,
+ContextMenu, Command and Sonner's Toaster) plus the `cn()` class-merging helper.
 
 ## Why it exists
 
@@ -105,7 +106,13 @@ drops conflicting utilities so the last one wins.
 `CollapsibleContent`, `CollapsibleTrigger`; `Dialog`, `DialogClose`,
 `DialogContent`, `DialogDescription`, `DialogFooter`, `DialogHeader`,
 `DialogOverlay`, `DialogPortal`, `DialogTitle`, `DialogTrigger`; `Input`;
-`Label`; `ResizableHandle`, `ResizablePanel`, `ResizablePanelGroup`;
+`Label`; `Command`, `CommandDialog`, `CommandEmpty`, `CommandGroup`,
+`CommandInput`, `CommandItem`, `CommandList`, `CommandSeparator`,
+`CommandShortcut`; `ContextMenu`, `DropdownMenu` and `Menubar` with their
+`Content`, `Group`, `Item`, `Label`, `Portal`, `Separator`, `Shortcut`, `Sub`,
+`SubContent`, `SubTrigger` parts (plus `ContextMenuTrigger`,
+`DropdownMenuTrigger`, `MenubarMenu`, `MenubarTrigger`); `Toaster`,
+`ToasterProps`, `toast`; `ResizableHandle`, `ResizablePanel`, `ResizablePanelGroup`;
 `ScrollArea`, `ScrollBar`; `Select`, `SelectContent`, `SelectGroup`,
 `SelectItem`, `SelectLabel`, `SelectScrollDownButton`, `SelectScrollUpButton`,
 `SelectSeparator`, `SelectTrigger`, `SelectValue`; `Separator`; `Tabs`,
@@ -136,6 +143,8 @@ The components follow upstream shadcn/ui. The extra `Button` sizes `xs`,
 
 - `@radix-ui/*`, `radix-ui` — accessible behavior behind each primitive.
 - `react-resizable-panels` — the `Resizable*` wrappers.
+- `cmdk` — `Command*`; `sonner` — `Toaster` and `toast` (Sonner injects its
+  own stylesheet; `Toaster` colours it from the tokens).
 - `class-variance-authority` — `buttonVariants` and other variants.
 - `clsx`, `tailwind-merge` — `cn()`.
 - `lucide-react` — icons inside some primitives.

@@ -32,6 +32,31 @@ export {
   CollapsibleTrigger,
 } from "../internal/components/collapsible.js";
 export {
+  Command,
+  CommandDialog,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from "../internal/components/command.js";
+export {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuGroup,
+  ContextMenuItem,
+  ContextMenuLabel,
+  ContextMenuPortal,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "../internal/components/context-menu.js";
+export {
   Dialog,
   DialogClose,
   DialogContent,
@@ -43,8 +68,37 @@ export {
   DialogTitle,
   DialogTrigger,
 } from "../internal/components/dialog.js";
+export {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "../internal/components/dropdown-menu.js";
 export { Input } from "../internal/components/input.js";
 export { Label } from "../internal/components/label.js";
+export {
+  Menubar,
+  MenubarContent,
+  MenubarGroup,
+  MenubarItem,
+  MenubarLabel,
+  MenubarMenu,
+  MenubarPortal,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from "../internal/components/menubar.js";
 export {
   ResizableHandle,
   ResizablePanel,
@@ -67,6 +121,7 @@ export {
   SelectValue,
 } from "../internal/components/select.js";
 export { Separator } from "../internal/components/separator.js";
+export { Toaster, type ToasterProps, toast } from "../internal/components/sonner.js";
 export {
   Tabs,
   TabsContent,

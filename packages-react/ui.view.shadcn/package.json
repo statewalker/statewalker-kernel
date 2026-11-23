@@ -51,9 +51,11 @@
     "@statewalker/shared-registry": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
+    "cmdk": "catalog:",
     "lucide-react": "catalog:",
     "radix-ui": "catalog:",
     "react-resizable-panels": "catalog:",
+    "sonner": "catalog:",
     "tailwind-merge": "catalog:"
   },
   "peerDependencies": {

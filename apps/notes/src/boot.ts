@@ -1,5 +1,6 @@
-// The shell's boot: the kernel with its core fragments (system.commands, system.workbench,
-// system.a2ui), the client API and the A2UI model installed, and the app's fragments fetched,
+// The shell's boot: the kernel with its core fragments (system.commands, system.workbench, its
+// chrome running commands on system.commands' bus, system.a2ui), the client API (commands,
+// dialogs, notifications) and the A2UI model installed, and the app's fragments fetched,
 // installed, enabled and activated. React-free; main.tsx renders the result.
 import { installClient } from "@statewalker/client.core";
 import {
@@ -48,6 +49,8 @@ declare global {
 export interface BootOptions {
   /** Where the app's fragments are served: `<base>fragments/<id>/...`. */
   readonly base: URL;
+  /** The locale commands are titled in (`fr-FR`); their default labels otherwise. */
+  readonly locale?: string;
 }
 
 /** The folder of a fragment's aspect, relative to the page. */
@@ -118,9 +121,9 @@ function activateWhenResolved(kernel: Kernel): () => void {
   });
 }
 
-export async function boot({ base }: BootOptions): Promise<Platform> {
+export async function boot({ base, locale }: BootOptions): Promise<Platform> {
   const commands = createSystemCommands();
-  const workbench = createSystemWorkbench();
+  const workbench = createSystemWorkbench({ commands: commands.bus, locale });
   // Agents' surfaces ask before an event runs a command; until system.security answers, nothing
   // is approved (fail-closed).
   const a2ui = createSystemA2ui({ commands: commands.bus });
@@ -152,7 +155,11 @@ export async function boot({ base }: BootOptions): Promise<Platform> {
       },
     },
   });
-  installClient({ commands: commands.bus });
+  installClient({
+    commands: commands.bus,
+    dialogs: workbench.workbench.dialogs,
+    notifications: workbench.workbench.notifications,
+  });
   installA2ui(a2ui.a2ui);
   await kernel.start();
 

@@ -1,6 +1,7 @@
-// The client half of the notes fragment: the notes view and the add-note command's handler. React,
-// the shadcn primitives and the client API come from the shell's import map, never bundled here.
-import { commands } from "@statewalker/client.core";
+// The client half of the notes fragment: the notes view and the handlers of its commands (add-note,
+// new-note). React, the shadcn primitives and the client API come from the shell's import map,
+// never bundled here.
+import { commands, dialogs, notifications } from "@statewalker/client.core";
 import {
   Button,
   Card,
@@ -11,7 +12,11 @@ import {
 } from "@statewalker/ui.view.shadcn";
 import { type FormEvent, useState, useSyncExternalStore } from "react";
 
-const ADD_NOTE = "org.statewalker.notes/add-note";
+const NOTES = "org.statewalker.notes";
+const ADD_NOTE = `${NOTES}/add-note`;
+/** Declared in fragment.client.jsonc, on system.workbench's `dialogs` and `notifications` points. */
+const NEW_NOTE_DIALOG = `${NOTES}/new-note`;
+const NOTE_ADDED = `${NOTES}/note-added`;
 
 // The notes, in memory while the page lives (storage comes with system.profile).
 let notes: readonly string[] = [];
@@ -24,11 +29,34 @@ function subscribe(listener: () => void) {
   };
 }
 
+function changed() {
+  for (const listener of [...listeners]) listener();
+}
+
 /** The `add-note` command: add a note, answer how many there are. */
 export function addNote({ text }: { text: string }): { count: number } {
   notes = [...notes, text];
-  for (const listener of [...listeners]) listener();
+  changed();
   return { count: notes.length };
+}
+
+/**
+ * The `new-note` command (menus, palette, keybinding): ask for the text in the declared dialog,
+ * add the note, and say so in the declared notification, whose Undo removes it again.
+ */
+export async function newNote(): Promise<{ added: boolean }> {
+  const answer = await dialogs.show(NEW_NOTE_DIALOG);
+  const text = answer.value?.trim();
+  if (answer.action !== "add" || !text) return { added: false };
+  await commands.call(ADD_NOTE, { text });
+  void notifications.show(NOTE_ADDED, { text }).then(({ action }) => {
+    if (action !== "undo") return;
+    const index = notes.lastIndexOf(text);
+    if (index < 0) return;
+    notes = notes.filter((_, i) => i !== index);
+    changed();
+  });
+  return { added: true };
 }
 
 /** The notes view: the notes, and a field whose button runs `add-note` on the command bus. */

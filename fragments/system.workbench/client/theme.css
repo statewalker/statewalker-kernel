@@ -67,3 +67,26 @@ body {
   color: var(--foreground);
 }
 
+
+/*
+ * The few preflight rules the shadcn primitives rely on (fragments' CSS is built without
+ * preflight): no UA borders or button chrome. In the `base` layer, declared before the
+ * fragments' `theme` and `utilities` layers, so every utility wins over them.
+ */
+@layer base {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+    border: 0 solid;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+    background-color: transparent;
+  }
+}

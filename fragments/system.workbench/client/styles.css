@@ -8,6 +8,8 @@
 @import "dockview-react/dist/styles/dockview.css";
 
 @source "./";
+/* The shadcn primitives the chrome renders (menus, the palette, dialogs, toasts). */
+@source "../node_modules/@statewalker/ui.view.shadcn/src";
 
 /*
  * The dock reads its colours from the shadcn tokens, so it follows the theme (and `.dark`).
