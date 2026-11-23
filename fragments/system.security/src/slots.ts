@@ -9,8 +9,12 @@ export interface CapabilityRefusal {
   readonly id: string;
   readonly contributor: string;
   readonly point: string;
-  /** `not-system-code`: only `system.` fragments may grant. */
-  readonly code: "not-system-code";
+  /**
+   * `not-system-code`: only `system.` fragments may grant; `runtime-contribution`: only static
+   * extensions (a fragment's own aspect file) may grant, since a runtime contribution names its
+   * contributor itself.
+   */
+  readonly code: "not-system-code" | "runtime-contribution";
   readonly message: string;
 }
 

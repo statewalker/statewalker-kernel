@@ -73,6 +73,12 @@ export class SecurityRefusal extends Error {
   }
 }
 
+/** Whether `id` is a static extension's id, `<contributor>#<n>` (runtime ones are `<contributor>/<name>`). */
+function isStaticId(id: string, contributor: string): boolean {
+  if (!id.startsWith(`${contributor}#`)) return false;
+  return /^[0-9]+$/.test(id.slice(contributor.length + 1));
+}
+
 export function createSystemSecurity(options: SystemSecurityOptions = {}): SystemSecurity {
   const { slots, attended = false } = options;
   const waiting = new Map<string, Waiting>();
@@ -84,24 +90,42 @@ export function createSystemSecurity(options: SystemSecurityOptions = {}): Syste
   const refusals = new Map<string, () => void>();
   const isRevoked = (ids: readonly string[]) => ids.some((id) => revoked.has(id));
 
-  /** Keep the system contributions; refuse (and publish) every other one. */
+  /**
+   * Keep the static extensions of system fragments; refuse (and publish) every other one. Only a
+   * static extension's contributor is the kernel's word (its id is `<contributor>#<n>`, from the
+   * fragment's own aspect file); a runtime contribution names its contributor itself, so it is
+   * refused whatever it claims.
+   */
   function follow(extensions: readonly Extension[]) {
     const kept: StandingGrant[] = [];
     const refused = new Set<string>();
     for (const extension of extensions) {
-      if (isSystemId(extension.contributor)) {
+      const isStatic = isStaticId(extension.id, extension.contributor);
+      if (isStatic && isSystemId(extension.contributor)) {
         kept.push(extension.data as StandingGrant);
         continue;
       }
       refused.add(extension.id);
       if (refusals.has(extension.id) || !slots) continue;
-      const dispose = slots.register(capabilityRefusalsSlot, extension.id, {
-        id: extension.id,
-        contributor: extension.contributor,
-        point: extension.point,
-        code: "not-system-code",
-        message: `"${extension.id}": only system code grants capabilities; ${extension.contributor} is a fragment`,
-      });
+      const dispose = slots.register(
+        capabilityRefusalsSlot,
+        extension.id,
+        isStatic
+          ? {
+              id: extension.id,
+              contributor: extension.contributor,
+              point: extension.point,
+              code: "not-system-code",
+              message: `"${extension.id}": only system code grants capabilities; ${extension.contributor} is a fragment`,
+            }
+          : {
+              id: extension.id,
+              contributor: extension.contributor,
+              point: extension.point,
+              code: "runtime-contribution",
+              message: `"${extension.id}": a runtime contribution cannot grant capabilities; only a system fragment's own aspect file can`,
+            },
+      );
       refusals.set(extension.id, dispose);
     }
     for (const [id, dispose] of refusals) {

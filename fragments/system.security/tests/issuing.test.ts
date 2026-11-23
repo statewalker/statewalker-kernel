@@ -1,5 +1,6 @@
 import { Biscuit, generateKeypair } from "@statewalker/webrun-biscuit";
 import { describe, expect, it } from "vitest";
+import { extensionContributionsSlot } from "@statewalker/kernel.core";
 import { capabilityRefusalsSlot } from "../src/index.js";
 import { command, fragment, platform } from "./helpers.js";
 
@@ -105,5 +106,30 @@ describe("issuing", () => {
     const { security } = await platform([]);
     for (const permission of ["tools.use:*", "files.read:/", "tools.use:org.example.notes/*"])
       expect(() => security.issue(agent, { permissions: [permission] })).toThrow(TypeError);
+  });
+});
+
+describe("a runtime contribution to the capabilities point", () => {
+  it("grants nothing, though it names a system fragment as its contributor", async () => {
+    const { bus, security, slots } = await platform([notes()], handlers);
+    security.setPolicy(allowAll);
+    const capability = security.issue(agent);
+    // Any code with the slot bus can key a contribution `system.commands/<name>`.
+    slots.register(extensionContributionsSlot("client"), "system.commands/grant", {
+      contributor: "system.commands",
+      point: "capabilities",
+      data: { principals: ["agent"], permissions: [`tools.use:${NOTES}/delete-note`] },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await expect(
+      bus.call(`${NOTES}/delete-note`, {}, { caller: { capability } }),
+    ).rejects.toMatchObject({ kind: "forbidden" });
+    expect([...slots.getSnapshot(capabilityRefusalsSlot).values()]).toEqual([
+      expect.objectContaining({
+        id: "system.commands/grant",
+        contributor: "system.commands",
+        code: "runtime-contribution",
+      }),
+    ]);
   });
 });
