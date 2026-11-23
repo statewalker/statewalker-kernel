@@ -20,13 +20,49 @@ export interface CommandContext {
   readonly command: string;
 }
 
+/**
+ * Who makes a call. The user is the default and is never restricted; any other caller (an agent
+ * session, a peer, a sandbox) presents the capability system code issued it, and its calls go
+ * through the gate.
+ */
+export type Caller = { readonly kind: "user" } | { readonly capability: string };
+
+/** How a call is made. */
+export interface CallOptions {
+  /** The caller; the user when absent. */
+  readonly caller?: Caller;
+}
+
+/** A call the gate decides: from a caller other than the user, before its input is checked. */
+export interface CallRequest {
+  readonly command: CommandEntry;
+  readonly caller: Exclude<Caller, { kind: "user" }>;
+  readonly input: unknown;
+}
+
+/**
+ * Decides a call from a caller other than the user: returns (or resolves) to let it run, throws
+ * (or rejects) to refuse it; the call then fails `forbidden` with the thrown error as `cause` and
+ * its message. It may wait, as long as an approval takes.
+ */
+export type CallGate = (request: CallRequest) => void | Promise<void>;
+
+export interface SystemCommandsOptions {
+  /**
+   * The gate of calls from callers other than the user (system.security's). Without one, every
+   * such call is refused.
+   */
+  readonly gate?: CallGate;
+}
+
 /** The internal bus: every live command, callable by its identity. */
 export interface CommandBus {
   /**
    * Call the command `id` (`<fragment-id>/<command-id>`) with `input`, validated against its
-   * input schema; the result is validated against its output schema.
+   * input schema; the result is validated against its output schema. A caller other than the
+   * user (`options.caller`) is first let through or refused by the gate.
    */
-  call<T = unknown>(id: string, input?: unknown): Promise<T>;
+  call<T = unknown>(id: string, input?: unknown, options?: CallOptions): Promise<T>;
   /** The live commands, in the order their extensions are read. */
   list(): readonly CommandEntry[];
   /** The live command `id`. */
@@ -63,7 +99,16 @@ interface Live {
   readonly unlisten?: () => void;
 }
 
-export function createSystemCommands(): SystemCommands {
+/** Only an absent caller or exactly `{ kind: "user" }` is the user; anything else is gated. */
+const isUser = (caller: Caller | undefined): caller is { kind: "user" } | undefined =>
+  caller === undefined ||
+  (typeof caller === "object" &&
+    caller !== null &&
+    (caller as { kind?: unknown }).kind === "user" &&
+    !("capability" in caller));
+
+export function createSystemCommands(options: SystemCommandsOptions = {}): SystemCommands {
+  const gate = options.gate;
   const substrate = Commands.create();
   const live = new Map<string, Live>();
   let keybindings: readonly Keybinding[] = [];
@@ -123,11 +168,44 @@ export function createSystemCommands(): SystemCommands {
   }
 
   const bus: CommandBus = {
-    async call<T>(id: string, input?: unknown): Promise<T> {
+    async call<T>(id: string, input?: unknown, callOptions?: CallOptions): Promise<T> {
       const found = live.get(id);
       if (!found) throw new CommandCallError("unknown-command", id);
+      const caller = callOptions?.caller;
+      let payload = input ?? {};
+      if (!isUser(caller)) {
+        // The gate decides on a copy the caller cannot change while it waits (an approval), and
+        // that copy is what runs.
+        try {
+          payload = structuredClone(payload);
+        } catch (error) {
+          throw new CommandCallError("invalid-input", id, {
+            message: `invalid-input: ${id}: the input cannot be copied`,
+            cause: error,
+            issues: ["the input is not plain data"],
+          });
+        }
+        if (!gate)
+          throw new CommandCallError("forbidden", id, {
+            message: `forbidden: ${id}: no gate decides calls from callers other than the user`,
+          });
+        try {
+          await gate({
+            command: found.entry,
+            caller: caller as Exclude<Caller, { kind: "user" }>,
+            input: payload,
+          });
+        } catch (error) {
+          throw new CommandCallError("forbidden", id, {
+            message: error instanceof Error ? error.message : `forbidden: ${id}`,
+            cause: error,
+          });
+        }
+        // The command may have left while the gate waited.
+        if (live.get(id) !== found) throw new CommandCallError("unknown-command", id);
+      }
       try {
-        return (await substrate.call(found.declaration, input ?? {}).promise) as T;
+        return (await substrate.call(found.declaration, payload).promise) as T;
       } catch (error) {
         throw callError(found.entry, error);
       }
