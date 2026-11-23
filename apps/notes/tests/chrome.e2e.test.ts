@@ -104,14 +104,14 @@ describe("the workbench chrome runs notes' command", () => {
     });
   });
 
-  it("from the command palette, which lists every command by its label", async () => {
+  it("from the command palette, which lists every command it can run, by its label", async () => {
     await withPage(async ({ page }) => {
       await notesView(page).waitFor();
       await page.keyboard.press("Control+Shift+P");
       const palette = page.getByRole("dialog", { name: "Command Palette" });
       await palette.waitFor();
+      // add-note needs a text, which the palette cannot give: it is not offered.
       await expect(palette.getByRole("option").allInnerTexts()).resolves.toEqual([
-        "Add a note",
         expect.stringMatching(/^New note…\s*Ctrl\+Alt\+N$/),
       ]);
       await palette.getByRole("combobox").fill("new");
@@ -177,13 +177,8 @@ describe("dialogs and notifications raised by a fragment", () => {
   it("look the same for every fragment: a failing command raises the workbench's own notification", async () => {
     await withPage(async ({ page }) => {
       await notesView(page).waitFor();
-      // add-note needs a text: run from the palette without one, it fails, and the workbench says so.
-      await page.keyboard.press("Control+Shift+P");
-      await page
-        .getByRole("dialog", { name: "Command Palette" })
-        .getByRole("combobox")
-        .fill("add a");
-      await page.keyboard.press("Enter");
+      // add-note run as the chrome runs commands (no input) fails, and the workbench says so.
+      await page.evaluate((id) => window.platform.workbench.execute(`${id}/add-note`), NOTES);
       const toast = page.getByTestId("notification").filter({ hasText: "Add a note failed" });
       await toast.waitFor();
       // Same markup as notes' own notification: one component renders every fragment's.

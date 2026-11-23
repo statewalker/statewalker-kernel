@@ -47,3 +47,68 @@ describe("the command palette", () => {
     expect(workbench.palette().map((p) => p.command)).toEqual([`${TODO}/add-task`]);
   });
 });
+
+describe("commands that need an input", () => {
+  // The chrome runs commands with no input: a command whose input requires properties, or whose
+  // request body is required, cannot run from it and is not offered there.
+  const needsText = (id: string) => ({
+    point: "commands",
+    data: {
+      operation: {
+        operationId: id,
+        summary: `Summary of ${id}`,
+        requestBody: {
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                required: ["text"],
+                properties: { text: { type: "string" } },
+              },
+            },
+          },
+        },
+      },
+    },
+    reference: { module: "./index.js", export: id },
+  });
+  const requiredBody = (id: string) => ({
+    point: "commands",
+    data: {
+      operation: {
+        operationId: id,
+        summary: `Summary of ${id}`,
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: { type: "object" } } },
+        },
+      },
+    },
+    reference: { module: "./index.js", export: id },
+  });
+
+  it("are left out of the palette, menus, keybindings and bars", async () => {
+    const { workbench } = await platform([
+      fragment(NOTES, [
+        command("new-note"),
+        needsText("add-note"),
+        requiredBody("import"),
+        ext("menus", { menu: "m", command: `${NOTES}/add-note` }),
+        ext("menus", { menu: "m", command: `${NOTES}/import`, title: "Import" }),
+        ext("menus", { menu: "m", command: `${NOTES}/new-note` }),
+        ext("keybindings", { key: "f3", command: `${NOTES}/add-note` }),
+        ext("statusbar", { id: "s", text: "Add", command: `${NOTES}/add-note` }),
+        ext("activitybar", { id: "a", title: "Add", command: `${NOTES}/add-note` }),
+      ]),
+    ]);
+    expect(workbench.palette().map((p) => p.command)).toEqual([`${NOTES}/new-note`]);
+    expect(workbench.menu("m").map((n) => (n.kind === "command" ? n.command : n.kind))).toEqual([
+      `${NOTES}/new-note`,
+    ]);
+    expect(workbench.keybindings()).toEqual([]);
+    expect(workbench.statusbar()).toEqual([
+      { id: `${NOTES}/s`, fragment: NOTES, text: "Add", alignment: "left", order: 0 },
+    ]);
+    expect(workbench.activitybar()).toEqual([]);
+  });
+});

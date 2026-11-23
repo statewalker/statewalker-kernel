@@ -1,5 +1,5 @@
 import type { ActivationContext, Extension } from "@statewalker/kernel.core";
-import { type CommandBus, labelsOf } from "@statewalker/system.commands";
+import { type CommandBus, type CommandEntry, labelsOf } from "@statewalker/system.commands";
 import {
   ACTIVITYBAR_POINT,
   COMMAND_FAILED_NOTIFICATION,
@@ -155,8 +155,26 @@ function entryOf(extension: Extension): ViewEntry {
   };
 }
 
+/**
+ * Whether a command needs an input: its request body is required, or its input schema requires
+ * properties. The chrome runs commands with no input, so it offers only those that need none.
+ */
+export function needsInput(entry: CommandEntry): boolean {
+  const body = entry.operation.requestBody as { readonly required?: unknown } | undefined;
+  if (body?.required === true) return true;
+  const input = entry.input;
+  if (typeof input !== "object" || input === null) return false;
+  const required = (input as { required?: unknown }).required;
+  return Array.isArray(required) && required.length > 0;
+}
+
 export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): SystemWorkbench {
   const { commands, locale } = options;
+  /** A live command the chrome can run: on the bus, needing no input. */
+  const runnable = (id: string): CommandEntry | undefined => {
+    const entry = commands?.get(id);
+    return entry && !needsInput(entry) ? entry : undefined;
+  };
   let views: readonly ViewEntry[] = [];
   /** The live extensions of the chrome's points (every point but `views`), by point. */
   const points = new Map<string, readonly Extension[]>();
@@ -238,6 +256,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
       const bound = keybindings();
       return commands
         .list()
+        .filter((entry) => !needsInput(entry))
         .map((entry): PaletteEntry => {
           const { title, description } = labelsOf(entry, locale);
           const keybinding = bound.find((k) => k.command === entry.id)?.key;
@@ -253,12 +272,12 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
     },
     keyCommand: (event, context) => commandForKey(keybindings(), event, context),
     statusbar: (context = {}) =>
-      buildStatusbar(read(STATUSBAR_POINT), (id) => commands?.get(id) !== undefined, context),
+      buildStatusbar(read(STATUSBAR_POINT), (id) => runnable(id) !== undefined, context),
     activitybar: () =>
       buildActivitybar(
         read(ACTIVITYBAR_POINT),
         (id) => workbench.view(id) !== undefined,
-        (id) => commands?.get(id) !== undefined,
+        (id) => runnable(id) !== undefined,
       ),
     dialogs,
     notifications,
@@ -270,7 +289,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
         const cause = reason.cause instanceof Error ? `: ${reason.cause.message}` : "";
         void notifications
           .show(COMMAND_FAILED_NOTIFICATION, {
-            command: menuCommands.title(id) ?? id,
+            command: titleOf(id) ?? id,
             error: `${reason.message}${cause}`,
           })
           .catch(() => undefined);
@@ -294,7 +313,7 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
     if (!commands) return [];
     return commands
       .keybindings()
-      .filter((k) => commands.get(k.command) !== undefined)
+      .filter((k) => runnable(k.command) !== undefined)
       .map(({ key, command, when, fragment }) => ({
         key: normalizeChord(key),
         command,
@@ -303,11 +322,14 @@ export function createSystemWorkbench(options: SystemWorkbenchOptions = {}): Sys
       }));
   }
 
+  /** A live command's title in the locale. */
+  function titleOf(id: string): string | undefined {
+    const entry = commands?.get(id);
+    return entry ? labelsOf(entry, locale).title : undefined;
+  }
+
   const menuCommands = {
-    title(command: string) {
-      const entry = commands?.get(command);
-      return entry ? labelsOf(entry, locale).title : undefined;
-    },
+    title: (command: string) => (runnable(command) ? titleOf(command) : undefined),
     keybinding(command: string) {
       return keybindings().find((k) => k.command === command)?.key;
     },
