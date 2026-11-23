@@ -46,5 +46,31 @@
   },
   "files": {
     "includes": ["**", "!**/*.css"]
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "react": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories).",
+                  "react-dom": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
+                },
+                "patterns": [
+                  {
+                    "group": ["react/**", "react-dom/**"],
+                    "message": "packages/ holds UI-free, isomorphic packages: React belongs in packages-react/ (statewalker-root ADR 2026-11-19-platform-project-and-fragment-repositories)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

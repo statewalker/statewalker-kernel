@@ -19,13 +19,14 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "test": "pnpm -r run test",
-    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test && pnpm run test:repo",
+    "typecheck": "pnpm -r run typecheck && tsc -p tests",
     "lint": "biome check --write .",
-    "lint:check": "biome check .",
+    "lint:check": "biome check . && node scripts/check-no-react.mjs",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "changeset": "changeset"
+    "changeset": "changeset",
+    "test:repo": "vitest run --config tests/vitest.config.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",
