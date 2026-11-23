@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { readArchive } from "@statewalker/fragment-build.core";
 import { createKernel } from "@statewalker/kernel.core";
@@ -131,5 +131,16 @@ export default defineFragment({
     expect(existsSync(join(dir, "escaped-1.0.0.fragment.json"))).toBe(false);
     expect(existsSync(join(dir, "..", "escaped-1.0.0.fragment.json"))).toBe(false);
     expect(existsSync(outDir) ? await readdir(outDir) : []).toEqual([]);
+  });
+
+  it("refuses a symbolic link in an aspect folder, naming it", async () => {
+    const dir = await copyFixture("counter");
+    await symlink("index.js", join(dir, "client", "alias.js"));
+    await expect(buildFragment(dir)).rejects.toThrow(/client\/alias\.js.*not a regular file/);
+
+    const linked = await copyFixture("counter");
+    await rm(join(linked, "client"), { recursive: true });
+    await symlink(join(dir, "client"), join(linked, "client"));
+    await expect(buildFragment(linked)).rejects.toThrow(/client.*not a regular folder/);
   });
 });

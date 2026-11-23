@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -65,9 +65,15 @@ async function walk(root: string, dir: string, out: Record<string, string>): Pro
     // Dot entries (.wrangler state, .DS_Store) and installed dependencies stay out.
     if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
     const path = join(dir, entry.name);
+    const name = relative(root, path).split(sep).join("/");
     if (entry.isDirectory()) await walk(root, path, out);
-    else if (entry.isFile()) {
-      const name = relative(root, path).split(sep).join("/");
+    else if (!entry.isFile()) {
+      // A symbolic link (or socket, FIFO) is not packed silently: the archive would differ
+      // from the folder that runs. Refused by name, like a binary file.
+      throw new Error(
+        `${name} is not a regular file (a symbolic link or special file): archives carry regular files only`,
+      );
+    } else {
       try {
         out[name] = decoder.decode(await readFile(path));
       } catch {
@@ -107,8 +113,14 @@ export async function readFragmentFolder(
   for (const aspect of ASPECTS) {
     const entry = manifest.aspects?.[aspect as Aspect];
     if (!entry) continue;
-    const folder = join(dir, entry.dir ?? DEFAULT_DIRS[aspect]);
-    if (existsSync(folder)) await walk(dir, folder, files);
+    const name = entry.dir ?? DEFAULT_DIRS[aspect];
+    const folder = join(dir, name);
+    const stats = await lstat(folder).catch(() => undefined);
+    if (!stats) continue;
+    if (!stats.isDirectory()) {
+      throw new Error(`${name} is not a regular folder (a symbolic link or a file)`);
+    }
+    await walk(dir, folder, files);
   }
   return files;
 }
