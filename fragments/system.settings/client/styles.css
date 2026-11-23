@@ -1,0 +1,11 @@
+/*
+ * system.settings' prebuilt CSS (`dist/client.css`): the utilities its settings view uses,
+ * against the shared shadcn tokens, and no preflight.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "@statewalker/system.workbench/tokens.css";
+
+@source "./";
+/* The shadcn primitives the view renders (cards, inputs, selects, labels, buttons). */
+@source "../node_modules/@statewalker/ui.view.shadcn/src";

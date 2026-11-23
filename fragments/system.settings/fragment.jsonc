@@ -1,0 +1,15 @@
+// The system.settings core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/settings.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.settings",
+  "version": "0.1.0",
+  "name": "Settings",
+  "description": "Every fragment's settings in one settings view; the values kept in the user's profile.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

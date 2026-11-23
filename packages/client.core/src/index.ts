@@ -87,6 +87,34 @@ export interface ClientRequests {
   show(id: string, params?: ClientParams): Promise<ClientAnswer>;
 }
 
+/** A setting's value: a string, a number or a boolean, as its schema allows. */
+export type ClientSettingValue = string | number | boolean;
+
+/** One fragment's settings values, by key. */
+export type ClientSettingsValues = Readonly<Record<string, ClientSettingValue>>;
+
+/**
+ * A fragment's own settings (system.settings): the values of the settings its `settings` page
+ * declares, kept in the user's profile on this device, each the schema's default until set.
+ */
+export interface ClientFragmentSettings {
+  /** The values: each stored one valid against its schema, else the schema's default. */
+  values(): ClientSettingsValues;
+  /** One value; `undefined` for a key with no value and no default. */
+  get(key: string): ClientSettingValue | undefined;
+  /** Store a value; throws when the fragment's schema refuses it or declares no such key. */
+  set(key: string, value: unknown): void;
+  /** Forget the value of `key` (every key when none is given): the default applies. */
+  reset(key?: string): void;
+  /** Called at once, then after each change of these values. Returns a disposer. */
+  observe(listener: (values: ClientSettingsValues) => void): () => void;
+}
+
+/** The settings of each fragment, by its id: a fragment asks for its own. */
+export interface ClientSettings {
+  of(fragment: string): ClientFragmentSettings;
+}
+
 /** Values a text's `{name}` placeholders are filled from. */
 export type ClientMessageParams = Readonly<Record<string, unknown>>;
 
@@ -134,6 +162,8 @@ export interface ClientApi {
   readonly l10n?: ClientL10n;
   /** The workbench's notifications; a host without a workbench leaves it out. */
   readonly notifications?: ClientRequests;
+  /** system.settings' values; a host without it refuses `settings`' calls (`not-installed`). */
+  readonly settings?: ClientSettings;
 }
 
 /** Why the client API refused: no host installed it, or a second host tried to. */
@@ -220,6 +250,26 @@ export const notifications: ClientRequests = {
   async show(id, params) {
     return requests("notifications").show(id, params);
   },
+};
+
+function currentSettings(fragment: string): ClientFragmentSettings {
+  const found = current().settings;
+  if (!found) throw new ClientApiError("not-installed");
+  return found.of(fragment);
+}
+
+/**
+ * Settings (system.settings): `settings.of("<this fragment's id>")` reads, writes and observes the
+ * fragment's own values. Every member throws a `ClientApiError` before the install.
+ */
+export const settings: ClientSettings = {
+  of: (fragment) => ({
+    values: () => currentSettings(fragment).values(),
+    get: (key) => currentSettings(fragment).get(key),
+    set: (key, value) => currentSettings(fragment).set(key, value),
+    reset: (key) => currentSettings(fragment).reset(key),
+    observe: (listener) => currentSettings(fragment).observe(listener),
+  }),
 };
 
 function currentL10n(): ClientL10n {

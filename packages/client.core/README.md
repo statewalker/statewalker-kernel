@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, system.host's host services (`host`: the clipboard, the file picker, the URL state), and system.l10n's localization (`l10n`, `translator`: the interface language and each fragment's texts in it). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
+The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer, system.host's host services (`host`: the clipboard, the file picker, the URL state), system.l10n's localization (`l10n`, `translator`: the interface language and each fragment's texts in it), and a fragment's own settings values (`settings`, from system.settings). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -13,7 +13,7 @@ ADR `2026-11-18-react-only-shell-with-shared-modules` (statewalker-root) shares 
 In a fragment's client code (bundled with `@statewalker/client.core` external):
 
 ```ts
-import { commands, dialogs, host, notifications } from "@statewalker/client.core";
+import { commands, dialogs, host, l10n, notifications, settings, translator } from "@statewalker/client.core";
 
 await commands.call("org.statewalker.notes/add-note", { text: "Buy milk" });
 const stop = commands.observe((all) => console.log(all.map((c) => c.id)));
@@ -30,6 +30,12 @@ const { blobs, names } = await host.files.pickFile({ accept: [".md"] });
 const { path, query } = await host.urlState.read();
 await host.urlState.write({ path, query: { ...query, note: "n1" } }, { replace: true });
 const unfollow = host.urlState.observe((state) => console.log(state.query));
+
+// system.settings: this fragment's own values (its `settings` page in fragment.client.jsonc),
+// the schema's defaults until the user sets them in the settings view.
+const own = settings.of("org.statewalker.notes");
+own.get("sort"); // "added"
+const unwatch = own.observe((values) => render(values.sort));
 
 // system.l10n: this fragment's texts in the interface language, from its bundles on the `l10n`
 // point; the inline text is the default language's, used when no bundle has the key.
@@ -50,6 +56,7 @@ const uninstall = installClient({
   dialogs: systemWorkbench.workbench.dialogs,
   notifications: systemWorkbench.workbench.notifications,
   host: systemHost.services,
+  settings: systemSettings.settings,
   l10n: systemL10n.l10n,
 });
 ```
@@ -59,6 +66,8 @@ const uninstall = installClient({
 | `commands` | `call(id, input)`, `list()`, `observe(listener)` on the installed command bus. |
 | `dialogs`, `notifications` | `show(id, params?)` → `Promise<{ action?, value? }>`: raise a declared dialog or notification by identity (`<fragment-id>/<id>`), its texts filled from `params` (`{name}`); `{}` when dismissed. |
 | `host` | `clipboard` (`writeText`, `readText`), `files` (`pickFile(options?)` → `{ blobs, names }`), `urlState` (`read()`, `write(state, { replace? })`, `observe(listener)`): system.host's services. |
+| `settings` | `of(fragmentId)` → `values()`, `get(key)`, `set(key, value)`, `reset(key?)`, `observe(listener)`: the fragment's own settings values, defaults from its schema; `set` throws when the schema refuses the value. |
+| `ClientSettings`, `ClientFragmentSettings`, `ClientSettingsValues`, `ClientSettingValue` | The settings' shapes the host installs (system.settings' model is one). `settings` is optional, for a host without system.settings. |
 | `l10n` | `locale()`, `locales()`, `setLocale(locale)`, `text(namespace, key, { params?, fallback? })`, `format(text, params?)`, `observe(listener)`: system.l10n's model. |
 | `translator(namespace)` | `t(key, params?, fallback?)`: `l10n.text` in one fragment's namespace. |
 | `installClient(api)` | Install the host's bindings; returns the uninstaller. |
@@ -69,7 +78,7 @@ const uninstall = installClient({
 
 ## Internals
 
-`commands`, `dialogs`, `notifications`, `host` and `l10n` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, `host`'s members when it installed no host services, and `l10n`'s (and a translator's `t`) when it installed no l10n. One host at a time: a second `installClient` throws until the first is uninstalled.
+`commands`, `dialogs`, `notifications`, `host`, `l10n` and `settings` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench, `host`'s members when it installed no host services, and `l10n`'s (and a translator's `t`) when it installed no l10n, and `settings`' when it installed no settings. A fragment names its own id in `settings.of`: in the page every fragment's code shares one realm, so the namespace is declared, not proven; the model behind it reads and writes only that fragment's namespace and the keys its schema declares. One host at a time: a second `installClient` throws until the first is uninstalled.
 
 ## License
 

@@ -2,7 +2,8 @@
 // menu, the view's context and tab menus, a keybinding, a status bar item, an activity bar entry),
 // plus the dialog and the notification new-note raises, and its texts in English and French on
 // system.l10n's `l10n` point (the French bundle leaves `view.count` out on purpose: French shows
-// the English text, the default language's). All static: the workbench shows them before
+// the English text, the default language's), and its settings page on system.settings' `settings`
+// point, its labels in both languages too. All static: the workbench shows them before
 // client/index.js loads. Its code is client/index.js, built from client/index.tsx with the shared
 // modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the shell's
 // import map; its CSS is client/index.css.
@@ -214,11 +215,36 @@
       }
     },
     {
+      "point": "settings",
+      "data": {
+        "title": "Notes",
+        "description": "How the notes view shows your notes.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "sort": {
+              "type": "string",
+              "title": "Sort notes by",
+              "enum": ["added", "alphabetical"],
+              "default": "added"
+            },
+            "copyButtons": {
+              "type": "boolean",
+              "title": "Show Copy buttons",
+              "default": true
+            }
+          }
+        }
+      }
+    },
+    {
       "point": "l10n",
       "data": {
         "locale": "en",
         "messages": {
-          "view.count": "Notes: {count}"
+          "view.count": "Notes: {count}",
+          "settings.sort.enum.added": "Order added",
+          "settings.sort.enum.alphabetical": "Alphabetical"
         }
       }
     },
@@ -246,7 +272,13 @@
           "statusbar.new-note.text": "Nouvelle note",
           "statusbar.new-note.tooltip": "Écrire une nouvelle note",
           "statusbar.active.text": "Vue des notes",
-          "statusbar.active.tooltip": "La vue des notes est active"
+          "statusbar.active.tooltip": "La vue des notes est active",
+          "settings.title": "Bloc-notes",
+          "settings.description": "Comment la vue des notes montre vos notes.",
+          "settings.sort.title": "Trier les notes par",
+          "settings.sort.enum.added": "Ordre d'ajout",
+          "settings.sort.enum.alphabetical": "Ordre alphabétique",
+          "settings.copyButtons.title": "Afficher les boutons Copier"
         }
       }
     }
