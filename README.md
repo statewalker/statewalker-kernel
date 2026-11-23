@@ -2,7 +2,7 @@
 
 ## What it is
 
-The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. `fragments/` holds the platform's core fragments, so far `system.commands` and `system.workbench`, and `apps/` the demo applications, so far `notes`. All packages but `kernel.core` and the core fragments (private for now) are published to npm under `@statewalker/*`.
+The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. `fragments/` holds the platform's core fragments, so far `system.commands` and `system.workbench`, and `apps/` the demo applications, so far `notes`. All packages but `kernel.core`, `fragment-build.*` and the core fragments (private for now) are published to npm under `@statewalker/*`.
 
 ## The shape
 
@@ -10,6 +10,7 @@ The kernel of a StateWalker application and its React shell. `packages/` holds t
 packages/
   kernel.core                                                fragment manifests, lifecycle and extension registry (private for now)
   client.core                                                the client API fragments' client halves import (private for now)
+  fragment-build.core  fragment-build.node                   fragment.config.ts generator, content-hashed archives (private for now)
   backbone.core      backbone.browser   backbone.node       start an app from an AppManifest
   workspace.core     workspace.browser                       Workspace, files, adapters
   workspace-vcs.core                                         git as an opt-in project nature
@@ -43,6 +44,7 @@ system.commands ─> kernel.core                           (and shared-commands)
 system.workbench ─> kernel.core                          (client half: dockview-react, React)
 client.core                                              (no dependencies)
 apps/notes ─> system.workbench, system.commands, client.core, ui.view.shadcn
+fragment-build.node ─> fragment-build.core ─> kernel.core  (zod, peer; tsx for the config)
 
 platform.browser ─┐
 platform.node ────┴─> platform.core ─────────────┐
@@ -71,6 +73,7 @@ inline.view.react ─┼─> inline.core, mime.core
 | [system.commands](fragments/system.commands) | The first core fragment: declares the `commands` and `keybindings` points; calls commands declared as OpenAPI operations on the bus (input and output checked against their schemas, typed errors), and projects the opt-in `agent` and `mcp` exposures to harness tool documents and MCP tools. | not published yet |
 | [system.workbench](fragments/system.workbench) | The core fragment owning the workbench: declares the `views` point, keeps which views exist and which are open (a view closes when its fragment leaves), and renders them as one dockview with the shadcn tokens; prebuilt CSS without preflight, and the tokens for fragments' CSS. | not published yet |
 | [client.core](packages/client.core) | The client API a fragment's client half imports by bare specifier (shared through the shell's import map): the command bus, installed by the shell at boot. | not published yet |
+| [fragment-build.core](packages/fragment-build.core), [fragment-build.node](packages/fragment-build.node) | Fragment authoring: `defineFragment` for `fragment.config.ts`, generating `fragment.jsonc`, the aspect files, a standard `wrangler.jsonc` and the `openapi.json` command catalogue (commands' schemas from Zod, the operations `system.commands` calls); packs the built folder into a content-hashed archive the kernel installs with no build; the `fragment-build` command. | not published yet |
 | [backbone.core](packages/backbone.core) | `AppManifest`, module resolution and the fragment activation loop. No dependencies. | [@statewalker/backbone.core](https://www.npmjs.com/package/@statewalker/backbone.core) |
 | [backbone.browser](packages/backbone.browser) | Browser bootstrap: bundler mode or runtime import maps with es-module-shims. | [@statewalker/backbone.browser](https://www.npmjs.com/package/@statewalker/backbone.browser) |
 | [backbone.node](packages/backbone.node) | Node bootstrap and the `backbone-start` / `backbone-watch` scripts. | [@statewalker/backbone.node](https://www.npmjs.com/package/@statewalker/backbone.node) |
@@ -95,7 +98,7 @@ inline.view.react ─┼─> inline.core, mime.core
 | [settings.view.react](packages-react/settings.view.react) | Settings dialog and header button. | [@statewalker/settings.view.react](https://www.npmjs.com/package/@statewalker/settings.view.react) |
 | [inline.view.react](packages-react/inline.view.react) | Renders components embedded in content. | [@statewalker/inline.view.react](https://www.npmjs.com/package/@statewalker/inline.view.react) |
 
-Every package is public except `kernel.core`, `client.core`, `system.commands` and `system.workbench`, which stay private until their names are confirmed and their first versions published. The one app so far, [apps/notes](apps/notes), is private: it boots the platform in the browser and carries the browser tests (seam 2, Playwright).
+Every package is public except `kernel.core`, `client.core`, `fragment-build.*`, `system.commands` and `system.workbench`, which stay private until their names are confirmed and their first versions published. The one app so far, [apps/notes](apps/notes), is private: it boots the platform in the browser and carries the browser tests (seam 2, Playwright).
 
 This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. A core fragment's `src/` is React-free the same way (React imports and `.tsx`/`.jsx` files fail there), while its `client/` folder, the client aspect's default folder, may use React. React code goes to `packages-react/` or a fragment's `client/`, the core fragments to `fragments/` and the demos to `apps/`. The six React packages came from statewalker-shell-react (statewalker/statewalker-root#245) with their names and versions; the views of integration fragments (explorer, MIME viewers, workspace, web app, AI configuration) stay there for now.
 
