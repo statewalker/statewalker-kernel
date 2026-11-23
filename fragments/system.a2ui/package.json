@@ -1,0 +1,88 @@
+{
+  "name": "@statewalker/system.a2ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The system.a2ui core fragment: the catalog extension point, defineComponent, strict A2UI 1.0 surfaces on @a2ui/web_core, and its client half, the React renderer with surfaces that pop out into the workbench's dock.",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/fragments/system.a2ui#readme",
+  "author": {
+    "name": "Mikhail Kotelnikov",
+    "email": "mikhail.kotelnikov@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "fragments/system.a2ui"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./client": {
+      "source": "./client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client.css": "./dist/client.css"
+  },
+  "files": [
+    "dist",
+    "src",
+    "client",
+    "fragment.jsonc",
+    "fragment.client.jsonc"
+  ],
+  "scripts": {
+    "build": "tsdown && tailwindcss -i client/styles.css -o dist/client.css --minify",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "lint": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@a2ui/web_core": "catalog:",
+    "@statewalker/kernel.core": "workspace:^",
+    "zod": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:peers",
+    "react-dom": "catalog:peers"
+  },
+  "devDependencies": {
+    "@codemirror/commands": "catalog:",
+    "@codemirror/lang-markdown": "catalog:",
+    "@codemirror/state": "catalog:",
+    "@codemirror/view": "catalog:",
+    "@json-render/core": "catalog:",
+    "@statewalker/shared-slots": "catalog:",
+    "@statewalker/system.commands": "workspace:^",
+    "@statewalker/system.workbench": "workspace:^",
+    "@tailwindcss/cli": "catalog:",
+    "@types/leaflet": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
+    "leaflet": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
+}

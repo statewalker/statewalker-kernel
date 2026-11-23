@@ -8,6 +8,8 @@
     "react-dom/client": "^19.3.0",
     "dockview-react": "^8.9.0",
     "@statewalker/ui.view.shadcn": "^0.1.4",
-    "@statewalker/client.core": "^0.1.0"
+    "@statewalker/client.core": "^0.1.0",
+    "@statewalker/system.a2ui": "^0.1.0",
+    "@statewalker/system.a2ui/client": "^0.1.0"
   }
 }

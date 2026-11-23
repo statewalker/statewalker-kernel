@@ -1,0 +1,15 @@
+// The system.a2ui core fragment (statewalker-root ADR 2026-11-20-kernel-and-core-fragments).
+// Kept equal to src/archive.ts by tests/fragment.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.a2ui",
+  "version": "0.1.0",
+  "name": "A2UI surfaces",
+  "description": "Declarative surfaces (A2UI 1.0) from agents and server halves, rendered from the catalog components fragments contribute.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

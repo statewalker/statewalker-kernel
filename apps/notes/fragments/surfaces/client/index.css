@@ -1,0 +1,9 @@
+/*
+ * The surfaces demo's prebuilt CSS: only the utilities it uses, against the shared shadcn tokens,
+ * without preflight.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "@statewalker/system.workbench/tokens.css";
+
+@source "./";

@@ -1,5 +1,5 @@
-// The client aspect of system.workbench: the `views` extension point.
-// Kept equal to src/archive.ts by tests/views.test.ts.
+// The client aspect of system.workbench: the `views` extension point, and the commands that dock
+// surfaces. Kept equal to src/archive.ts by tests/views.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
   "extensionPoints": {
@@ -24,5 +24,100 @@
         }
       }
     }
-  }
+  },
+  "extensions": [
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "open-surface",
+          "summary": "Pop a surface out into the workbench's dock",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["surfaceId"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surfaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Done",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "openSurface"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "close-surface",
+          "summary": "Take a surface out of the dock",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["surfaceId"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "surfaceId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 256
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Done",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "additionalProperties": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "closeSurface"
+      }
+    }
+  ]
 }
