@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.16.1",
-  "description": "Headless kernel of the StateWalker workbench: backbone, platform, workspace, explorer, render, shell, settings, mime, inline, webapp.",
+  "description": "Kernel of the StateWalker workbench (backbone, platform, workspace, explorer, render, shell, settings, mime, inline, webapp) and its React shell and views.",
   "bugs": {
     "url": "https://github.com/statewalker/statewalker-kernel/issues"
   },

@@ -1,0 +1,58 @@
+{
+  "name": "@statewalker/render.view.react",
+  "version": "0.3.0",
+  "private": false,
+  "type": "module",
+  "description": "The sole @json-render/react boundary: <SpecRenderer spec registry> (json-render Renderer + JSONUIProvider) plus defineRegistry/schema re-exports.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "packages-react/render.view.react"
+  },
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/packages-react/render.view.react#readme",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check --write .",
+    "format": "biome format --write .",
+    "build": "tsdown"
+  },
+  "dependencies": {
+    "@json-render/core": "catalog:",
+    "@json-render/react": "catalog:"
+  },
+  "peerDependencies": {
+    "react": "catalog:peers",
+    "react-dom": "catalog:peers"
+  },
+  "devDependencies": {
+    "@testing-library/react": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  }
+}
