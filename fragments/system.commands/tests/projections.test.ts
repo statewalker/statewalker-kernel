@@ -192,3 +192,25 @@ describe("removal", () => {
     expect(mcpTools(bus.list())).toEqual([]);
   });
 });
+
+describe("the mcp exposure", () => {
+  it("implies http, at /commands/<command-id> unless a path is given", async () => {
+    const { bus } = await platform([
+      fragment(NOTES, {
+        commands: [
+          command(operation("sync"), { exposures: { mcp: {} } }),
+          command(operation("pull"), { exposures: { mcp: {}, http: { path: "/pull-now" } } }),
+        ],
+      }),
+    ]);
+    expect(bus.get(`${NOTES}/sync`)?.exposures).toEqual({
+      mcp: {},
+      http: { path: "/commands/sync" },
+    });
+    expect(bus.get(`${NOTES}/pull`)?.exposures.http).toEqual({ path: "/pull-now" });
+    expect(mcpTools(bus.list()).map((t) => t.name)).toEqual([
+      "org_example_notes__sync",
+      "org_example_notes__pull",
+    ]);
+  });
+});

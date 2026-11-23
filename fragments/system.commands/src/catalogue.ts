@@ -63,6 +63,7 @@ export interface CommandEntry {
   /** The command id, the operation's `operationId`. */
   readonly command: string;
   readonly operation: CommandOperation;
+  /** The exposures in effect: `mcp` implies `http` (`defaultHttpPath` unless a path is given). */
   readonly exposures: Exposures;
   readonly labels: Readonly<Record<string, Label>>;
   /** The input schema: the JSON request body's, or a closed empty object. */
@@ -88,7 +89,7 @@ export function entryOf(extension: Extension): CommandEntry {
     fragment: extension.contributor,
     command: operation.operationId,
     operation,
-    exposures: data.exposures ?? {},
+    exposures: exposuresOf(data.exposures ?? {}, operation.operationId),
     labels: data.labels ?? {},
     input: operation.requestBody?.content["application/json"].schema ?? EMPTY_INPUT,
     output: operation.responses?.["200"]?.content?.["application/json"]?.schema,
@@ -117,4 +118,15 @@ function declaredErrors(operation: CommandOperation): DeclaredError[] {
     if (schema !== undefined && codes.length > 0) out.push({ status, codes, schema });
   }
   return out;
+}
+
+/** The HTTP path an `mcp`-exposed command takes when it declares no `http` exposure. */
+export function defaultHttpPath(command: string): string {
+  return `/commands/${command}`;
+}
+
+/** The exposures in effect: `mcp` implies `http`, at the default path unless one is given. */
+function exposuresOf(exposures: Exposures, command: string): Exposures {
+  if (!exposures.mcp || exposures.http) return exposures;
+  return { ...exposures, http: { path: defaultHttpPath(command) } };
 }

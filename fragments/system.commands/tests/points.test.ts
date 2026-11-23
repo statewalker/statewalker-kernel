@@ -41,7 +41,6 @@ describe("the commands point", () => {
         commands: [
           command(operation("Bad_Id")),
           command(operation("text-input", { type: "string" })),
-          command(operation("mcp-only"), { exposures: { mcp: {} } }),
           command(operation("agent-no-action"), { exposures: { agent: {} } }),
           command(operation("fine")),
         ],
@@ -49,7 +48,7 @@ describe("the commands point", () => {
     ]);
     expect(bus.list().map((c) => c.id)).toEqual([`${NOTES}/fine`]);
     const refused = refusals(kernel.slots);
-    expect(refused).toHaveLength(4);
+    expect(refused).toHaveLength(3);
     for (const r of refused) {
       expect(r).toMatchObject({ contributor: NOTES, point: "commands", code: "invalid-data" });
     }

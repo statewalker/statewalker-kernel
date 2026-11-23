@@ -30,7 +30,7 @@ import {
 | `CommandBus` | `call(id, input)`, `list()`, `get(id)`, `keybindings()`, `observe(listener)`. |
 | `CommandCallError`, `CommandCallErrorKind`, `CommandFailure` | The one error a call rejects with, and what a handler throws for a declared error. |
 | `harnessTools(commands, { locale })`, `mcpTools(commands, { locale, fragment })` | The projections, recomputed from `bus.list()`. |
-| `toolNames(commands)`, `toolByName(commands, name)`, `toolPermission(id)` | Provider-safe names, their reverse map, `tools.use:<id>`. |
+| `toolNames(commands)`, `toolByName(commands, name)`, `toolPermission(id)`, `defaultHttpPath(command)` | Provider-safe names, their reverse map, `tools.use:<id>`, the HTTP path `mcp` implies. |
 | `labelsOf(entry, locale)`, `closedSchema(schema)` | A command's localized title and description; the profile's closed input schema. |
 | `commandSchema`, `keybindingSchema` | The two points' schemas (JSON Schema 2020-12). |
 | `CommandEntry`, `CommandData`, `CommandOperation`, `Exposures`, `Label`, `Keybinding`, `HarnessToolDocument`, `McpTool` | The types. |
@@ -119,7 +119,7 @@ commands.bus.observe((all) => {
 An extension's data is `{ operation, exposures?, labels? }`, checked by the kernel against `commandSchema`; a declaration that breaks it is refused with a reason in `system:extensions:refused:client` and never reaches the bus.
 
 - **`operation`** is an OpenAPI 3.1 operation object. `operationId` is the command id (lowercase letters and digits with inner hyphens, at most 64). The JSON request body's schema is the input and must be an object (none means an empty closed object, and a missing input is `{}`); the `200` JSON response's schema is the output (none means anything). Every non-2xx response whose JSON schema names `properties.code` (`const` or `enum`) is a declared error.
-- **`exposures`** are opt-in; a command is internal without them. `agent: { action: "read" | "write" | "admin" }` makes it a harness tool. `http: { path }` serves it (POST) at `path` under `/fragments/{id}/`. `mcp: {}` offers it through MCP and requires `http`.
+- **`exposures`** are opt-in; a command is internal without them. `agent: { action: "read" | "write" | "admin" }` makes it a harness tool. `http: { path }` serves it (POST) at `path` under `/fragments/{id}/`. `mcp: {}` offers it through MCP and implies `http`: without an `http` exposure the command is served at `/commands/<command-id>` under the fragment prefix (`defaultHttpPath`), and an explicit `http.path` wins. `CommandEntry.exposures` holds the exposures in effect.
 - **`labels`** map a locale (`fr`, `fr-CA`) to `{ title?, description? }`.
 - **The handler** is the extension's lazy reference (a module export, or a server entrypoint method reached over RPC), resolved by the host's resolver on the first call. A command without one is listed but fails `no-handler`.
 

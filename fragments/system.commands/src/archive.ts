@@ -101,12 +101,12 @@ export const commandSchema = {
           properties: { path: { type: "string", pattern: "^/" } },
         },
         mcp: {
-          description: "An MCP tool; requires `http`.",
+          description:
+            "An MCP tool. Implies `http`: without one, the command is served at `/commands/<command-id>`.",
           type: "object",
           additionalProperties: false,
         },
       },
-      dependentRequired: { mcp: ["http"] },
     },
     labels: {
       description: "Localized title and description, by locale (`fr`, `fr-CA`).",
