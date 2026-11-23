@@ -2,6 +2,8 @@
  * Why a call failed:
  *
  * - `unknown-command`: no live command has this identity (never declared, or its fragment left);
+ * - `forbidden`: the caller is not the user and the gate refused the call, or no gate is wired;
+ *   the handler did not run;
  * - `invalid-input`: the input does not match the input schema; the handler did not run;
  * - `no-handler`: the command is declared without a handler;
  * - `unavailable`: the contributing fragment left while the call ran (`ExtensionUnavailable`);
@@ -11,6 +13,7 @@
  */
 export type CommandCallErrorKind =
   | "unknown-command"
+  | "forbidden"
   | "invalid-input"
   | "no-handler"
   | "unavailable"

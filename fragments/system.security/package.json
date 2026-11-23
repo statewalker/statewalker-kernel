@@ -1,0 +1,59 @@
+{
+  "name": "@statewalker/system.security",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The system.security core fragment: the capabilities extension point, principals and their capabilities (Biscuit tokens only system code issues), deny-by-default grants, and the user's Allow/Ask/Block policy gating command calls from agents, peers and sandboxes.",
+  "bugs": {
+    "url": "https://github.com/statewalker/statewalker-kernel/issues"
+  },
+  "homepage": "https://github.com/statewalker/statewalker-kernel/tree/main/fragments/system.security#readme",
+  "author": {
+    "name": "Mikhail Kotelnikov",
+    "email": "mikhail.kotelnikov@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/statewalker/statewalker-kernel.git",
+    "directory": "fragments/system.security"
+  },
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "fragment.jsonc",
+    "fragment.client.jsonc"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf dist",
+    "lint": "biome check --write .",
+    "format": "biome format --write ."
+  },
+  "dependencies": {
+    "@statewalker/kernel.core": "workspace:^",
+    "@statewalker/shared-slots": "catalog:",
+    "@statewalker/system.commands": "workspace:^",
+    "@statewalker/webrun-biscuit": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "rimraf": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "sideEffects": false
+}

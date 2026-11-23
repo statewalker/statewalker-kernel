@@ -1,0 +1,40 @@
+// The client aspect of system.security: the `capabilities` extension point.
+// Kept equal to src/archive.ts by tests/fragment.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "capabilities": {
+      "description": "Standing grants to kinds of principal; system code only.",
+      "schema": {
+        "type": "object",
+        "required": ["principals", "permissions"],
+        "additionalProperties": false,
+        "properties": {
+          "principals": {
+            "description": "The kinds of principal granted the permissions.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "enum": ["agent", "peer", "sandbox"]
+            }
+          },
+          "permissions": {
+            "description": "The permissions granted, each `tools.use:<fragment-id>/<command-id>`.",
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^tools\\.use:[a-z][a-z0-9.-]*/[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+            }
+          },
+          "description": {
+            "description": "Why the grant exists, shown with it.",
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
