@@ -79,7 +79,7 @@ system.appearance.setMode("dark"); // the user's choice over prefers-color-schem
 
 ## Internals
 
-**Tokens.** A token is a shadcn variable's name without `--` (`primary`, `card-foreground`, `radius`) and a value. The schemas refuse a value that could leave its declaration or rule (`;`, braces, `<`, `>`, a backslash, quotes, a line break, `/*`), so a fragment's brand cannot write CSS beyond its tokens; `tokensCss` drops such tokens again for any other caller. A logo is an image data URL, an https URL or a path on the page's site, shown in an `<img>` (an SVG there runs no script).
+**Tokens.** A token is a shadcn variable's name without `--` (`primary`, `card-foreground`, `radius`) and a value. The schemas refuse a value that could leave its declaration or rule (`;`, braces, `<`, `>`, a backslash, quotes, a line break, U+2028, U+2029, `/*` or `*/` anywhere; a slash or a star alone passes), so a fragment's brand cannot write CSS beyond its tokens; `tokensCss` drops such tokens again for any other caller. A logo is an image data URL, an https URL or a path on the page's site, shown in an `<img>` (an SVG there runs no script).
 
 **The palette.** The active brand's tokens, the selected theme's laid over them, per mode. A token neither sets keeps system.workbench's default from `theme.css`: `tokensCss`'s selectors (`:root:not(.dark)`, `:root.dark`) outrank that file's `:root` and `.dark`, so no change there was needed.
 

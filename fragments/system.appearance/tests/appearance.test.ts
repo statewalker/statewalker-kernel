@@ -164,19 +164,40 @@ describe("the branding point", () => {
   });
 
   it("refuses a brand whose tokens could break out of their CSS declaration", async () => {
-    const bad = fragment("org.example.bad", [
-      {
+    // A brace; a comment opened after a line separator (which `.` does not match) in light and
+    // closed in dark, which would swallow the declarations, braces and selector between them.
+    const values = ["red}", "red \u2028/*", "*/ blue", "red\u2029", "red /* x"];
+    const bad = fragment(
+      "org.example.bad",
+      values.map((value, i) => ({
         point: "branding",
-        data: { id: "bad", name: "Bad", tokens: { light: { primary: "red}" }, dark: {} } },
-      },
-    ]);
+        data: { id: `bad-${i}`, name: "Bad", tokens: { light: { primary: value }, dark: {} } },
+      })),
+    );
     const { kernel, appearance } = await platform([bad]);
     expect(appearance.brands().map((b) => b.id)).toEqual(["notes"]);
     const refused: ExtensionRefusal[] = [
       ...kernel.slots.getSnapshot(extensionRefusalsSlot("client")).values(),
     ];
-    expect(refused).toHaveLength(1);
-    expect(refused[0]).toMatchObject({ contributor: "org.example.bad", point: "branding" });
+    expect(refused).toHaveLength(values.length);
+    for (const r of refused) {
+      expect(r).toMatchObject({ contributor: "org.example.bad", point: "branding" });
+    }
+  });
+
+  it("keeps a slash or a star that opens and closes no comment", async () => {
+    const ok = fragment("org.example.ok", [
+      {
+        point: "branding",
+        data: {
+          id: "ok",
+          name: "Ok",
+          tokens: { light: { border: "oklch(1 0 0 / 10%)", x: "calc(2 * 3px)" }, dark: {} },
+        },
+      },
+    ]);
+    const { appearance } = await platform([ok]);
+    expect(appearance.brands().map((b) => b.id)).toEqual(["notes", "org.example.ok/ok"]);
   });
 });
 
@@ -201,6 +222,15 @@ describe("the themes point", () => {
 });
 
 describe("tokensCss", () => {
+  it("drops tokens that open or close a comment, so the dark rule survives", () => {
+    expect(
+      tokensCss({
+        light: { primary: "red \u2028/*", ring: "x" },
+        dark: { primary: "*/ blue", ring: "y" },
+      }),
+    ).toBe(":root:not(.dark) {\n  --ring: x;\n}\n:root.dark {\n  --ring: y;\n}\n");
+  });
+
   it("writes the light tokens for the page without .dark and the dark ones under it", () => {
     expect(
       tokensCss({

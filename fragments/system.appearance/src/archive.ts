@@ -17,10 +17,11 @@ export const NAME_PATTERN = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$";
 
 /**
  * A token's value: anything a CSS declaration's value holds, except what could end the
- * declaration or its rule (`;`, braces, `<`, `>`, a backslash, quotes, a line break) or open a
- * comment (`/*`). `oklch(1 0 0 / 10%)` passes.
+ * declaration or its rule (`;`, braces, `<`, `>`, a backslash, quotes, a line break, U+2028,
+ * U+2029) or open or close a comment (`/*`, `*\/`), anywhere. A slash or a star alone passes:
+ * `oklch(1 0 0 / 10%)`, `calc(2 * 3px)`.
  */
-export const TOKEN_VALUE_PATTERN = "^(?!.*/\\*)[^;{}<>\\\\\"'\\n\\r]*$";
+export const TOKEN_VALUE_PATTERN = "^(?:[^;{}<>\\\\\"'\\n\\r\\u2028\\u2029/*]|/(?!\\*)|\\*(?!/))*$";
 
 /** Where a logo may come from: an image data URL, an https URL, or a path on the page's site. */
 export const LOGO_PATTERN = "^(data:image/(svg\\+xml|png|jpeg|gif|webp)[;,]|https://|\\./|/)";

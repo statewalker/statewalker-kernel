@@ -9,8 +9,8 @@ export interface Palette {
   readonly dark: TokenSet;
 }
 
-const NAME = new RegExp(NAME_PATTERN);
-const VALUE = new RegExp(TOKEN_VALUE_PATTERN);
+const NAME = new RegExp(NAME_PATTERN, "u");
+const VALUE = new RegExp(TOKEN_VALUE_PATTERN, "u");
 
 function block(selector: string, tokens: TokenSet): string {
   const lines = Object.entries(tokens)
