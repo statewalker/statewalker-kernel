@@ -2,7 +2,7 @@
 
 ## What it is
 
-The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`). The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
+The platform's client API: the one module a fragment's client half imports to reach the platform. So far it holds the command bus (`commands`), and the workbench's dialogs and notifications (`dialogs`, `notifications`), which return the user's answer. The shell shares it through its import map, so every fragment gets the same instance, and installs its bindings once at boot. Private for now; no React, no DOM, no Node built-ins.
 
 ## Why it exists
 
@@ -13,10 +13,16 @@ ADR `2026-11-18-react-only-shell-with-shared-modules` (statewalker-root) shares 
 In a fragment's client code (bundled with `@statewalker/client.core` external):
 
 ```ts
-import { commands } from "@statewalker/client.core";
+import { commands, dialogs, notifications } from "@statewalker/client.core";
 
 await commands.call("org.statewalker.notes/add-note", { text: "Buy milk" });
 const stop = commands.observe((all) => console.log(all.map((c) => c.id)));
+
+// Declared in the fragment's fragment.client.jsonc on system.workbench's `dialogs` and
+// `notifications` points; the answer is what the user picked.
+const { action, value } = await dialogs.show("org.statewalker.notes/new-note");
+const answer = await notifications.show("org.statewalker.notes/note-added", { text: value });
+if (answer.action === "undo") undo();
 ```
 
 In the shell, once, at boot:
@@ -24,19 +30,24 @@ In the shell, once, at boot:
 ```ts
 import { installClient } from "@statewalker/client.core";
 
-const uninstall = installClient({ commands: systemCommands.bus });
+const uninstall = installClient({
+  commands: systemCommands.bus,
+  dialogs: systemWorkbench.workbench.dialogs,
+  notifications: systemWorkbench.workbench.notifications,
+});
 ```
 
 | Export | Provides |
 | --- | --- |
 | `commands` | `call(id, input)`, `list()`, `observe(listener)` on the installed command bus. |
+| `dialogs`, `notifications` | `show(id, params?)` → `Promise<{ action?, value? }>`: raise a declared dialog or notification by identity (`<fragment-id>/<id>`), its texts filled from `params` (`{name}`); `{}` when dismissed. |
 | `installClient(api)` | Install the host's bindings; returns the uninstaller. |
-| `ClientApi`, `ClientCommands`, `ClientCommand` | The shapes the host installs. |
+| `ClientApi`, `ClientCommands`, `ClientCommand`, `ClientRequests`, `ClientAnswer`, `ClientParams` | The shapes the host installs. `dialogs` and `notifications` are optional, for a host without a workbench. |
 | `ClientApiError` | `not-installed` (used before the shell installed it), `already-installed` (a second host). |
 
 ## Internals
 
-`commands` delegates each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` rejects) a `ClientApiError`. One host at a time: a second `installClient` throws until the first is uninstalled.
+`commands`, `dialogs` and `notifications` delegate each call to the bindings installed at the time of the call, so a module that imported it before the install works once the shell has booted. Before that every member throws (`call` and `show` reject) a `ClientApiError`; `show` also rejects `not-installed` when the host installed no workbench. One host at a time: a second `installClient` throws until the first is uninstalled.
 
 ## License
 

@@ -1,6 +1,13 @@
 // The client API as a fragment's client half sees it: one module whose bindings the host installs.
 import { afterEach, describe, expect, it } from "vitest";
-import { ClientApiError, type ClientCommands, commands, installClient } from "../src/index.js";
+import {
+  ClientApiError,
+  type ClientCommands,
+  commands,
+  dialogs,
+  installClient,
+  notifications,
+} from "../src/index.js";
 
 function fakeBus(): ClientCommands & { calls: unknown[][] } {
   const calls: unknown[][] = [];
@@ -53,5 +60,50 @@ describe("the client API", () => {
     uninstall();
     uninstall = installClient({ commands: fakeBus() });
     expect(commands.list()).toHaveLength(1);
+  });
+});
+
+describe("dialogs and notifications", () => {
+  it("are refused before the install, and when the host installed no workbench", async () => {
+    await expect(dialogs.show("org.example.notes/new-note")).rejects.toMatchObject({
+      kind: "not-installed",
+    });
+    uninstall = installClient({ commands: fakeBus() });
+    await expect(dialogs.show("org.example.notes/new-note")).rejects.toMatchObject({
+      kind: "not-installed",
+    });
+    await expect(notifications.show("org.example.notes/saved")).rejects.toBeInstanceOf(
+      ClientApiError,
+    );
+  });
+
+  it("reach the host's workbench and return the user's answer", async () => {
+    const raised: unknown[][] = [];
+    uninstall = installClient({
+      commands: fakeBus(),
+      dialogs: {
+        async show(id, params) {
+          raised.push(["dialog", id, params]);
+          return { action: "add", value: "Milk" };
+        },
+      },
+      notifications: {
+        async show(id, params) {
+          raised.push(["notification", id, params]);
+          return { action: "undo" };
+        },
+      },
+    });
+    await expect(dialogs.show("org.example.notes/new-note", { who: "you" })).resolves.toEqual({
+      action: "add",
+      value: "Milk",
+    });
+    await expect(notifications.show("org.example.notes/saved")).resolves.toEqual({
+      action: "undo",
+    });
+    expect(raised).toEqual([
+      ["dialog", "org.example.notes/new-note", { who: "you" }],
+      ["notification", "org.example.notes/saved", undefined],
+    ]);
   });
 });

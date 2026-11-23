@@ -1,4 +1,7 @@
-// The client aspect of notes. Its code is client/index.js, built from client/index.tsx with the
+// The client aspect of notes: a view, two commands, and the chrome that reaches them (a menu bar
+// menu, the view's context and tab menus, a keybinding, a status bar item, an activity bar entry),
+// plus the dialog and the notification new-note raises. All static: the workbench shows them
+// before client/index.js loads. Its code is client/index.js, built from client/index.tsx with the
 // shared modules (react, @statewalker/ui.view.shadcn, @statewalker/client.core) left to the
 // shell's import map; its CSS is client/index.css.
 {
@@ -66,6 +69,136 @@
       "reference": {
         "module": "./index.js",
         "export": "addNote"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "new-note",
+          "summary": "New note…",
+          "description": "Ask for a note's text in a dialog, add it, and say so in a notification.",
+          "responses": {
+            "200": {
+              "description": "Whether a note was added",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["added"],
+                    "properties": {
+                      "added": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "labels": {
+          "fr": {
+            "title": "Nouvelle note…"
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "newNote"
+      }
+    },
+    {
+      "point": "menus",
+      "data": {
+        "menu": "menubar",
+        "submenu": "notes",
+        "title": "Notes"
+      }
+    },
+    {
+      "point": "menus",
+      "data": {
+        "menu": "notes",
+        "command": "org.statewalker.notes/new-note"
+      }
+    },
+    {
+      "point": "menus",
+      "data": {
+        "menu": "view/context",
+        "command": "org.statewalker.notes/new-note",
+        "when": "view == org.statewalker.notes/notes"
+      }
+    },
+    {
+      "point": "menus",
+      "data": {
+        "menu": "view/title",
+        "command": "org.statewalker.notes/new-note",
+        "when": "view == org.statewalker.notes/notes"
+      }
+    },
+    {
+      "point": "keybindings",
+      "data": {
+        "key": "ctrl+alt+n",
+        "command": "org.statewalker.notes/new-note"
+      }
+    },
+    {
+      "point": "dialogs",
+      "data": {
+        "id": "new-note",
+        "title": "New note",
+        "message": "What should the note say?",
+        "input": {
+          "label": "Note",
+          "placeholder": "Write a note"
+        },
+        "actions": [
+          {
+            "id": "add",
+            "label": "Add",
+            "primary": true
+          },
+          {
+            "id": "cancel",
+            "label": "Cancel"
+          }
+        ]
+      }
+    },
+    {
+      "point": "notifications",
+      "data": {
+        "id": "note-added",
+        "title": "Note added",
+        "message": "{text}",
+        "severity": "success",
+        "actions": [
+          {
+            "id": "undo",
+            "label": "Undo"
+          }
+        ]
+      }
+    },
+    {
+      "point": "statusbar",
+      "data": {
+        "id": "new-note",
+        "text": "New note",
+        "tooltip": "Write a new note",
+        "command": "org.statewalker.notes/new-note"
+      }
+    },
+    {
+      "point": "activitybar",
+      "data": {
+        "id": "notes",
+        "title": "Notes",
+        "view": "org.statewalker.notes/notes"
       }
     }
   ]
