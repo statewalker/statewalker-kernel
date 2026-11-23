@@ -2,13 +2,14 @@
 
 ## What it is
 
-The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. `fragments/` holds the platform's core fragments, starting with `system.commands`. All packages but `kernel.core` and the core fragments (private for now) are published to npm under `@statewalker/*`.
+The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. `fragments/` holds the platform's core fragments, starting with `system.commands`. All packages but `kernel.core`, `fragment-build.*` and the core fragments (private for now) are published to npm under `@statewalker/*`.
 
 ## The shape
 
 ```
 packages/
   kernel.core                                                fragment manifests, lifecycle and extension registry (private for now)
+  fragment-build.core  fragment-build.node                   fragment.config.ts generator, content-hashed archives (private for now)
   backbone.core      backbone.browser   backbone.node       start an app from an AppManifest
   workspace.core     workspace.browser                       Workspace, files, adapters
   workspace-vcs.core                                         git as an opt-in project nature
@@ -37,6 +38,7 @@ backbone.node ────┴─> backbone.core                      (no other d
 
 kernel.core                                              (shared-slots only)
 system.commands ─> kernel.core                           (and shared-commands)
+fragment-build.node ─> fragment-build.core ─> kernel.core  (zod, peer; tsx for the config)
 
 platform.browser ─┐
 platform.node ────┴─> platform.core ─────────────┐
@@ -63,6 +65,7 @@ inline.view.react ─┼─> inline.core, mime.core
 | --- | --- | --- |
 | [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots, and routes extensions (static and runtime, dormant until their owner arrives, validated against the point's schema, with lazy references) to the extension points' owners. | not published yet |
 | [system.commands](fragments/system.commands) | The first core fragment: declares the `commands` and `keybindings` points; calls commands declared as OpenAPI operations on the bus (input and output checked against their schemas, typed errors), and projects the opt-in `agent` and `mcp` exposures to harness tool documents and MCP tools. | not published yet |
+| [fragment-build.core](packages/fragment-build.core), [fragment-build.node](packages/fragment-build.node) | Fragment authoring: `defineFragment` for `fragment.config.ts`, generating `fragment.jsonc`, the aspect files, a standard `wrangler.jsonc` and the `openapi.json` command catalogue (commands' schemas from Zod, the operations `system.commands` calls); packs the built folder into a content-hashed archive the kernel installs with no build; the `fragment-build` command. | not published yet |
 | [backbone.core](packages/backbone.core) | `AppManifest`, module resolution and the fragment activation loop. No dependencies. | [@statewalker/backbone.core](https://www.npmjs.com/package/@statewalker/backbone.core) |
 | [backbone.browser](packages/backbone.browser) | Browser bootstrap: bundler mode or runtime import maps with es-module-shims. | [@statewalker/backbone.browser](https://www.npmjs.com/package/@statewalker/backbone.browser) |
 | [backbone.node](packages/backbone.node) | Node bootstrap and the `backbone-start` / `backbone-watch` scripts. | [@statewalker/backbone.node](https://www.npmjs.com/package/@statewalker/backbone.node) |
