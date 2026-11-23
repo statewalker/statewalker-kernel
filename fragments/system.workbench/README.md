@@ -172,7 +172,7 @@ With system.l10n wired (`l10n`), every text the workbench shows is read through 
 | Text | Key |
 | --- | --- |
 | A view's title | `views.<view-id>.title` |
-| A command's title, description | `commands.<command-id>.title`, `.description` (the command's inline `labels` come after the language's bundles, before the default language's) |
+| A command's title, description | `commands.<command-id>.title`, `.description` (in each locale, the fragment's own bundle, then the command's inline `labels`, then language packs; the default language's text comes after the language's) |
 | A submenu's title; a command entry's own title | `menus.<submenu>.title`; `menus.<menu>.<command>.title` |
 | A status bar item | `statusbar.<id>.text`, `.tooltip` |
 | An activity bar entry | `activitybar.<id>.title` |

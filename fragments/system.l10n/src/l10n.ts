@@ -57,10 +57,12 @@ export interface L10n {
    */
   setLocale(locale: string): void;
   /**
-   * The text of `key` in `namespace` (a fragment id), in the interface language: its bundles
-   * (`fr-CA`, then `fr`), then `options.labels` in those locales, then the default language's
-   * bundles, then `options.fallback`, then the key. The namespace's own bundles win over language
-   * packs at each step. `{name}` is filled from `options.params`.
+   * The text of `key` in `namespace` (a fragment id), in the interface language. For each locale
+   * of the language (`fr-CA`, then `fr`): the namespace's own bundles, then `options.labels`,
+   * then language packs' bundles. Then, in the default language: its own bundles and labels, then
+   * `options.fallback` (the owner's inline text), then packs. Then the key. A pack fills only a
+   * locale the owner does not cover; it never replaces an owner's text, inline or in a bundle.
+   * `{name}` is filled from `options.params`.
    */
   text(namespace: string, key: string, options?: TextOptions): string;
   /** Whether `key` has a text in `namespace` for `locale` (the interface language by default). */
@@ -138,29 +140,42 @@ export function createSystemL10n(options: SystemL10nOptions = {}): SystemL10n {
   const defaultLocale = canonicalLocale(options.defaultLocale ?? DEFAULT_LOCALE);
   let locale = options.locale === undefined ? defaultLocale : canonicalLocale(options.locale);
   let bundles: readonly BundleEntry[] = [];
-  /** `<namespace>\n<locale>` → the bundles' messages, the namespace's own first. */
-  let index = new Map<string, Readonly<Record<string, string>>[]>();
+  /** `<namespace>\n<locale>` → the messages of the namespace's own bundles, in the order read. */
+  let owners = new Map<string, Readonly<Record<string, string>>[]>();
+  /** `<namespace>\n<locale>` → the messages of language packs' bundles, in the order read. */
+  let packs = new Map<string, Readonly<Record<string, string>>[]>();
   const listeners = new Set<(state: L10nState) => void>();
 
   function reindex() {
-    const next = new Map<string, Readonly<Record<string, string>>[]>();
-    const add = (b: BundleEntry) => {
+    const nextOwners = new Map<string, Readonly<Record<string, string>>[]>();
+    const nextPacks = new Map<string, Readonly<Record<string, string>>[]>();
+    for (const b of bundles) {
+      const into = b.fragment === b.namespace ? nextOwners : nextPacks;
       const slot = `${b.namespace}\n${b.locale.toLowerCase()}`;
-      const list = next.get(slot) ?? [];
+      const list = into.get(slot) ?? [];
       list.push(b.messages);
-      next.set(slot, list);
-    };
-    for (const b of bundles) if (b.fragment === b.namespace) add(b);
-    for (const b of bundles) if (b.fragment !== b.namespace) add(b);
-    index = next;
+      into.set(slot, list);
+    }
+    owners = nextOwners;
+    packs = nextPacks;
   }
 
-  /** The bundles' text of `key` for exactly `tag`, if any. */
-  function lookup(namespace: string, key: string, tag: string): string | undefined {
-    for (const messages of index.get(`${namespace}\n${tag.toLowerCase()}`) ?? []) {
+  /** The text of `key` for exactly `tag` in one tier of bundles, if any. */
+  function find(
+    tier: Map<string, Readonly<Record<string, string>>[]>,
+    namespace: string,
+    key: string,
+    tag: string,
+  ): string | undefined {
+    for (const messages of tier.get(`${namespace}\n${tag.toLowerCase()}`) ?? []) {
       if (own.call(messages, key)) return messages[key];
     }
     return undefined;
+  }
+
+  /** Any bundle's text of `key` for exactly `tag`, the namespace's own first. */
+  function lookup(namespace: string, key: string, tag: string): string | undefined {
+    return find(owners, namespace, key, tag) ?? find(packs, namespace, key, tag);
   }
 
   /** `labels`' text for exactly `tag` (case-insensitive), if any. */
@@ -171,21 +186,30 @@ export function createSystemL10n(options: SystemL10nOptions = {}): SystemL10n {
     return undefined;
   }
 
+  /**
+   * The owner's texts (its bundles, then its inline labels) form one tier ahead of language
+   * packs in every locale: a pack fills only a locale the owner does not cover, never replaces
+   * an owner's text. The inline fallback is the owner's text in the default language.
+   */
   function resolve(namespace: string, key: string, opts: TextOptions): string {
-    const chain = localeChain(locale);
-    for (const tag of chain) {
-      const found = lookup(namespace, key, tag);
+    const defaults = localeChain(defaultLocale);
+    const isDefault = new Set(defaults.map((t) => t.toLowerCase()));
+    const ownerText = (tag: string) => find(owners, namespace, key, tag) ?? label(opts.labels, tag);
+    for (const tag of localeChain(locale)) {
+      if (isDefault.has(tag.toLowerCase())) break; // the default language's step, below
+      const found = ownerText(tag) ?? find(packs, namespace, key, tag);
       if (found !== undefined) return found;
     }
-    for (const tag of chain) {
-      const found = label(opts.labels, tag);
+    for (const tag of defaults) {
+      const found = ownerText(tag);
       if (found !== undefined) return found;
     }
-    for (const tag of localeChain(defaultLocale)) {
-      const found = lookup(namespace, key, tag);
+    if (opts.fallback !== undefined) return opts.fallback;
+    for (const tag of defaults) {
+      const found = find(packs, namespace, key, tag);
       if (found !== undefined) return found;
     }
-    return opts.fallback ?? key;
+    return key;
   }
 
   const locales = (): readonly string[] => {

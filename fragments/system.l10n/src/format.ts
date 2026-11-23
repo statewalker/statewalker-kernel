@@ -25,7 +25,12 @@ export function formatValue(value: unknown, locale?: string): string {
       return new Intl.ListFormat(locale).format(value);
     }
   } catch {
-    // A locale Intl refuses: written as a string below.
+    // A locale or a value Intl refuses (an invalid date): written as a string below.
   }
-  return String(value);
+  try {
+    return String(value);
+  } catch {
+    // A value without a string form (no prototype, a throwing `toString`): its tag.
+    return Object.prototype.toString.call(value);
+  }
 }

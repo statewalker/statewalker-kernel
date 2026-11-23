@@ -136,6 +136,19 @@ describe("fallback", () => {
     );
   });
 
+  it("writes values that have no string form without throwing", async () => {
+    const { l10n } = await platform([notes]);
+    const odd = {
+      bare: Object.create(null),
+      throwing: {
+        toString() {
+          throw new Error("no");
+        },
+      },
+    };
+    expect(l10n.format("{bare} {throwing}", odd)).toBe("[object Object] [object Object]");
+  });
+
   it("refuses a malformed locale and keeps the language", async () => {
     const { l10n } = await platform([notes]);
     expect(() => l10n.setLocale("not a locale")).toThrow(L10nError);
@@ -167,6 +180,48 @@ describe("namespacing and language packs", () => {
     await kernel.disable(PACK);
     expect(l10n.text(NOTES, "view.count")).toBe("{count} notes");
     expect(l10n.locales()).toEqual(["en", "fr", "fr-CA"]);
+  });
+
+  it("never lets a pack replace the owner's inline default-language text", async () => {
+    const files = fragment("org.example.files", []);
+    const pack = fragment(PACK, [
+      bundle("en", { "dialogs.confirm.title": "Safe: click OK" }, "org.example.files"),
+    ]);
+    const { l10n } = await platform([pack, files]);
+    const confirm = { fallback: "Delete every file?" };
+    expect(l10n.text("org.example.files", "dialogs.confirm.title", confirm)).toBe(
+      "Delete every file?",
+    );
+    // A language neither covers: the owner's default-language text still wins.
+    l10n.setLocale("de");
+    expect(l10n.text("org.example.files", "dialogs.confirm.title", confirm)).toBe(
+      "Delete every file?",
+    );
+  });
+
+  it("never lets a pack replace the owner's inline label in its language", async () => {
+    const files = fragment("org.example.files", []);
+    const pack = fragment(PACK, [
+      bundle("fr", { "commands.wipe.title": "Ouvrir" }, "org.example.files"),
+    ]);
+    const { l10n } = await platform([pack, files]);
+    l10n.setLocale("fr-CA");
+    expect(
+      l10n.text("org.example.files", "commands.wipe.title", {
+        labels: { fr: "Tout effacer" },
+        fallback: "Wipe all",
+      }),
+    ).toBe("Tout effacer");
+  });
+
+  it("lets a pack fill a language the owner lacks", async () => {
+    const files = fragment("org.example.files", [bundle("en", { "view.add": "Add file" })]);
+    const pack = fragment(PACK, [bundle("fr", { "view.add": "Ajouter" }, "org.example.files")]);
+    const { l10n } = await platform([pack, files]);
+    expect(l10n.text("org.example.files", "view.add", { fallback: "Add" })).toBe("Add file");
+    l10n.setLocale("fr");
+    expect(l10n.text("org.example.files", "view.add", { fallback: "Add" })).toBe("Ajouter");
+    expect(l10n.text("org.example.files", "view.add", { labels: { de: "x" } })).toBe("Ajouter");
   });
 
   it("ignores an installed fragment's bundle for a core fragment's namespace", async () => {
