@@ -69,7 +69,8 @@ export function createBrowserHostServices(): BrowserHostServices {
       read: async () => parseHash(location.hash),
       async write(state, options) {
         const hash = buildHash(state);
-        if (hash === (location.hash || "#")) return;
+        // Compared as states: the browser may spell the hash differently (its own escapes).
+        if (hash === buildHash(parseHash(location.hash))) return;
         if (options?.replace) history.replaceState(history.state, "", hash);
         else history.pushState(history.state, "", hash);
         changed();

@@ -88,4 +88,20 @@ describe("browser host services", () => {
       services.close();
     }
   });
+
+  it("round-trips paths the browser percent-encodes, and writes the same state once", async () => {
+    const services = createBrowserHostServices();
+    try {
+      for (const path of ["/a b", "/café", "/a?b", "/a#b"]) {
+        const state = { path, query: { views: "x" } };
+        await services.urlState.write(state);
+        await expect(services.urlState.read()).resolves.toEqual(state);
+        const length = history.length;
+        await services.urlState.write(state);
+        expect(history.length).toBe(length);
+      }
+    } finally {
+      services.close();
+    }
+  });
 });

@@ -116,4 +116,27 @@ describe("host services in apps/notes", () => {
       await context.close();
     }
   });
+
+  it("round-trips a URL state whose path Chromium percent-encodes, writing it once", async () => {
+    const { context, page, errors } = await open();
+    try {
+      await page.getByTestId("notes-view").waitFor();
+      const result = await page.evaluate(async (views) => {
+        const { urlState } = window.platform.host.services;
+        const state = { path: "/café a?b#c", query: { views } };
+        await urlState.write(state);
+        const length = history.length;
+        await urlState.write(state);
+        return { read: await urlState.read(), added: history.length - length };
+      }, NOTES_VIEW);
+      expect(result).toEqual({
+        read: { path: "/café a?b#c", query: { views: NOTES_VIEW } },
+        added: 0,
+      });
+      await expect(opened(page)).resolves.toEqual([NOTES_VIEW]);
+      expect(errors).toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
 });
