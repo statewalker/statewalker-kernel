@@ -2,7 +2,7 @@
 
 ## What it is
 
-The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. All packages but `kernel.core` (private for now) are published to npm under `@statewalker/*`.
+The kernel of a StateWalker application and its React shell. `packages/` holds the headless packages that start an application from a manifest (`backbone.*`), hold the workspace and its files (`workspace.*`), declare host capabilities (`platform.*`), and keep the state of the dock, panels, file explorer, settings and web-app projects; nothing there renders UI or depends on React. `packages-react/` holds the React renderers of that state: the substrate, the dock shell, the shadcn primitives, and the render, settings and inline views. `fragments/` holds the platform's core fragments, starting with `system.commands`. All packages but `kernel.core` and the core fragments (private for now) are published to npm under `@statewalker/*`.
 
 ## The shape
 
@@ -20,7 +20,8 @@ packages-react/
   ui.view.react      ui.view.shadcn                          React substrate (mount, hooks), shadcn primitives
   shell.view.react   render.view.react                       the dock shell (dockview-react), json-render boundary
   settings.view.react  inline.view.react                     settings dialog, inline content
-fragments/                                                   the platform's core fragments, empty so far
+fragments/
+  system.commands                                            the command bus, commands and keybindings points (private for now)
 apps/                                                        the demo applications (private), empty so far
 scripts/                                                     maintenance scripts (see Reference)
 tests/                                                       repository-level tests (no-React rule, release coverage)
@@ -35,6 +36,7 @@ backbone.browser ─┐
 backbone.node ────┴─> backbone.core                      (no other dependencies)
 
 kernel.core                                              (shared-slots only)
+system.commands ─> kernel.core                           (and shared-commands)
 
 platform.browser ─┐
 platform.node ────┴─> platform.core ─────────────┐
@@ -60,6 +62,7 @@ inline.view.react ─┼─> inline.core, mime.core
 | Package | What it does | npm |
 | --- | --- | --- |
 | [kernel.core](packages/kernel.core) | The platform kernel: validates `fragment.jsonc` against its versioned JSON Schema, refuses what this host cannot run, and keeps the fragment lifecycle (installed, enabled, resolved, active per aspect) as membership in the `system:fragments:*` keyed slots, and routes extensions (static and runtime, dormant until their owner arrives, validated against the point's schema, with lazy references) to the extension points' owners. | not published yet |
+| [system.commands](fragments/system.commands) | The first core fragment: declares the `commands` and `keybindings` points; calls commands declared as OpenAPI operations on the bus (input and output checked against their schemas, typed errors), and projects the opt-in `agent` and `mcp` exposures to harness tool documents and MCP tools. | not published yet |
 | [backbone.core](packages/backbone.core) | `AppManifest`, module resolution and the fragment activation loop. No dependencies. | [@statewalker/backbone.core](https://www.npmjs.com/package/@statewalker/backbone.core) |
 | [backbone.browser](packages/backbone.browser) | Browser bootstrap: bundler mode or runtime import maps with es-module-shims. | [@statewalker/backbone.browser](https://www.npmjs.com/package/@statewalker/backbone.browser) |
 | [backbone.node](packages/backbone.node) | Node bootstrap and the `backbone-start` / `backbone-watch` scripts. | [@statewalker/backbone.node](https://www.npmjs.com/package/@statewalker/backbone.node) |
@@ -84,11 +87,11 @@ inline.view.react ─┼─> inline.core, mime.core
 | [settings.view.react](packages-react/settings.view.react) | Settings dialog and header button. | [@statewalker/settings.view.react](https://www.npmjs.com/package/@statewalker/settings.view.react) |
 | [inline.view.react](packages-react/inline.view.react) | Renders components embedded in content. | [@statewalker/inline.view.react](https://www.npmjs.com/package/@statewalker/inline.view.react) |
 
-Every package is public except `kernel.core`, which stays private until its name is confirmed and its first version published; there are no apps in this repository yet.
+Every package is public except `kernel.core` and `system.commands`, which stay private until their names are confirmed and its first version published; there are no apps in this repository yet.
 
 This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: `lint:check` fails on any `react` or `react-dom` import there (a Biome rule) and on React entering without an import (`scripts/check-no-react.mjs`: `.tsx`/`.jsx` files, a tsconfig `jsx` option, React in a `package.json`); `tests/no-react-in-packages.test.ts` checks both. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`. The six React packages came from statewalker-shell-react (statewalker/statewalker-root#245) with their names and versions; the views of integration fragments (explorer, MIME viewers, workspace, web app, AI configuration) stay there for now.
 
-Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`); `semver`, `jsonc-parser` and `@cfworker/json-schema` (used by `kernel.core`).
+Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`); `semver`, `jsonc-parser` and `@cfworker/json-schema` (used by `kernel.core`; the last also by `system.commands`).
 
 ## How to run it
 
