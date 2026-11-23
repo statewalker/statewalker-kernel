@@ -20,6 +20,8 @@ export interface KeyEventLike {
   readonly shiftKey: boolean;
   readonly altKey: boolean;
   readonly metaKey: boolean;
+  /** The DOM's modifier state: a key typed with `AltGraph` (AltGr) is text, never a chord. */
+  getModifierState?(modifier: string): boolean;
 }
 
 const MODIFIERS = ["ctrl", "shift", "alt", "meta"] as const;
@@ -49,8 +51,12 @@ export function normalizeChord(chord: string): string {
   return [...modifiers, ...keys].join("+");
 }
 
-/** The chord a key event makes; undefined for a modifier pressed alone. */
+/**
+ * The chord a key event makes; undefined for a modifier pressed alone, and for a key typed with
+ * AltGr (which Windows reports as ctrl+alt: `ctrl+alt+n` would otherwise swallow a Polish ń).
+ */
 export function chordOf(event: KeyEventLike): string | undefined {
+  if (event.getModifierState?.("AltGraph")) return undefined;
   const physical = /^Key([A-Z])$|^Digit([0-9])$/.exec(event.code ?? "");
   const key = physical ? (physical[1] ?? physical[2] ?? "").toLowerCase() : event.key.toLowerCase();
   if (["control", "shift", "alt", "meta", "os", ""].includes(key)) return undefined;
@@ -63,7 +69,23 @@ export function chordOf(event: KeyEventLike): string | undefined {
   return [...modifiers, ALIASES[key] ?? key].join("+");
 }
 
-/** The command `event` runs among `bindings`: the last one whose chord matches and `when` holds. */
+/**
+ * Whether a chord may type text in a field: no modifier, shift alone, alt (with or without
+ * shift), or ctrl+alt (AltGr on Windows). Only ctrl and meta chords are commands for sure.
+ */
+export function typesText(chord: string): boolean {
+  const parts = chord.split("+");
+  const ctrl = parts.includes("ctrl");
+  const meta = parts.includes("meta");
+  return !(ctrl || meta) || (ctrl && parts.includes("alt") && !meta);
+}
+
+/**
+ * The command `event` runs among `bindings`: the last one whose chord matches and `when` holds.
+ * While a text field has the focus (`context.inputFocus`), a binding without a `when` leaves
+ * chords that may type text (`typesText`) to the field; a binding whose `when` is given decides
+ * for itself.
+ */
 export function commandForKey(
   bindings: readonly WorkbenchKeybinding[],
   event: KeyEventLike,
@@ -73,7 +95,9 @@ export function commandForKey(
   if (chord === undefined) return undefined;
   for (let i = bindings.length - 1; i >= 0; i--) {
     const binding = bindings[i];
-    if (binding?.key === chord && evaluateWhen(binding.when, context)) return binding.command;
+    if (binding?.key !== chord) continue;
+    if (binding.when === undefined && context.inputFocus && typesText(chord)) continue;
+    if (evaluateWhen(binding.when, context)) return binding.command;
   }
   return undefined;
 }

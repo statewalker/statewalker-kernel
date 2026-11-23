@@ -129,6 +129,41 @@ describe("the workbench chrome runs notes' command", () => {
     });
   });
 
+  it("but not while typing: a text field keeps Ctrl+Alt+N, and AltGr keys are never taken", async () => {
+    await withPage(async ({ page }) => {
+      const field = notesView(page).getByPlaceholder("Write a note");
+      await field.click();
+      await field.pressSequentially("ab");
+      await page.keyboard.press("Control+Alt+KeyN");
+      await field.pressSequentially("c");
+      await expect(field.inputValue()).resolves.toMatch(/^ab.*c$/);
+      await expect(newNoteDialog(page).count()).resolves.toBe(0);
+
+      // AltGr+N as Chromium on Windows reports it (a Polish ń): ctrl, alt and AltGraph's state.
+      await field.blur();
+      const altGr = (altGraph: boolean) =>
+        page.evaluate((modifierAltGraph) => {
+          document.body.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key: modifierAltGraph ? "ń" : "n",
+              code: "KeyN",
+              ctrlKey: true,
+              altKey: true,
+              modifierAltGraph,
+              bubbles: true,
+              cancelable: true,
+            } as KeyboardEventInit),
+          );
+        }, altGraph);
+      await altGr(true);
+      await page.waitForTimeout(300);
+      await expect(newNoteDialog(page).count()).resolves.toBe(0);
+      // The same event without AltGraph is the binding.
+      await altGr(false);
+      await newNoteDialog(page).waitFor();
+    });
+  });
+
   it("from the status bar and the activity bar", async () => {
     await withPage(async ({ page }) => {
       await page.getByTestId("statusbar").getByRole("button", { name: "New note" }).click();

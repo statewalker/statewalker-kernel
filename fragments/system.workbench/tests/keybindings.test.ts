@@ -77,6 +77,46 @@ describe("keybindings", () => {
     expect(workbench.keyCommand(key("F2", {}, "F2"), { inputFocus: true })).toBe(`${NOTES}/other`);
   });
 
+  it("leaves text-producing chords to a focused text field unless the binding's `when` asks", async () => {
+    const { workbench } = await platform([
+      fragment(NOTES, [
+        command("new-note"),
+        command("save"),
+        command("rename"),
+        ext("keybindings", { key: "ctrl+alt+n", command: NEW_NOTE }),
+        ext("keybindings", { key: "ctrl+s", command: `${NOTES}/save` }),
+        ext("keybindings", { key: "f2", command: `${NOTES}/rename` }),
+        ext("keybindings", { key: "shift+f2", command: `${NOTES}/rename`, when: "inputFocus" }),
+      ]),
+    ]);
+    const inInput = { inputFocus: true };
+    // ctrl+alt is AltGr on Windows, no modifier or shift alone types text: the field keeps them.
+    expect(workbench.keyCommand(key("n", { ctrl: true, alt: true }, "KeyN"), inInput)).toBe(
+      undefined,
+    );
+    expect(workbench.keyCommand(key("F2", {}, "F2"), inInput)).toBeUndefined();
+    // Outside a field they run, and so do ctrl/meta chords and bindings whose `when` names it.
+    expect(workbench.keyCommand(key("n", { ctrl: true, alt: true }, "KeyN"))).toBe(NEW_NOTE);
+    expect(workbench.keyCommand(key("F2", {}, "F2"))).toBe(`${NOTES}/rename`);
+    expect(workbench.keyCommand(key("s", { ctrl: true }, "KeyS"), inInput)).toBe(`${NOTES}/save`);
+    expect(workbench.keyCommand(key("F2", { shift: true }, "F2"), inInput)).toBe(`${NOTES}/rename`);
+  });
+
+  it("never takes a key typed with AltGr", async () => {
+    const { workbench } = await platform([
+      fragment(NOTES, [
+        command("new-note"),
+        ext("keybindings", { key: "ctrl+alt+n", command: NEW_NOTE }),
+      ]),
+    ]);
+    // What Chromium on Windows reports for AltGr+N (Polish ń): ctrl and alt, and AltGraph's state.
+    const altGr = {
+      ...key("ń", { ctrl: true, alt: true }, "KeyN"),
+      getModifierState: (modifier: string) => modifier === "AltGraph",
+    };
+    expect(workbench.keyCommand(altGr)).toBeUndefined();
+  });
+
   it("shows a command's keybinding beside its menu entry", async () => {
     const { workbench } = await platform([
       fragment(NOTES, [
