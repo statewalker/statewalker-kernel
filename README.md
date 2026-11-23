@@ -15,7 +15,11 @@ packages/
   render.core  shell.core  mime.core  explorer.core          panel specs, dock, file viewers, explorer
   inline.core  settings.core                                 inline content, settings
   webapp.core        webapp.browser                          web-app projects served from a ServiceWorker
+packages-react/                                              React packages (the shell, views), empty so far
+fragments/                                                   the platform's core fragments, empty so far
+apps/                                                        the demo applications (private), empty so far
 scripts/                                                     maintenance scripts (see Reference)
+tests/                                                       repository-level tests (the no-React rule)
 ```
 
 The suffix says where a package runs: `.core` runs anywhere (no DOM, no Node built-ins), `.browser` needs a browser, `.node` needs Node.
@@ -56,7 +60,9 @@ inline.core                                              (shared-* only)
 | [webapp.core](packages/webapp.core) | Web-app projects: convention detection, config, module-server cache. | [@statewalker/webapp.core](https://www.npmjs.com/package/@statewalker/webapp.core) |
 | [webapp.browser](packages/webapp.browser) | Serves a web-app project from a ServiceWorker with cross-origin isolation headers. | [@statewalker/webapp.browser](https://www.npmjs.com/package/@statewalker/webapp.browser) |
 
-Every package is public; there are no private packages or apps in this repository.
+Every package is public; there are no private packages or apps in this repository yet.
+
+This repository is becoming the platform (statewalker-platform, specified in statewalker/statewalker-root#215), so it takes the platform's layout. `packages/` holds only UI-free, isomorphic packages: a Biome rule fails `lint:check` on any `react` or `react-dom` import there, and `tests/no-react-in-packages.test.ts` checks that the rule holds. React code goes to `packages-react/`, the core fragments to `fragments/` and the demos to `apps/`.
 
 Dependencies from outside the repository, by package: `@statewalker/shared-adapters`, `shared-baseclass`, `shared-commands`, `shared-logger`, `shared-logger-pino`, `shared-registry`, `shared-slots`; `@statewalker/webrun-files` and its `-browser`, `-node`, `-mem`, `-composite` backends, `webrun-builder`, `webrun-modules`; `@statewalker/webrun-site-builder`, `webrun-site-host`; `@statewalker/vcs-*` (used by `workspace-vcs.core`).
 
