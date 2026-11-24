@@ -54,7 +54,8 @@ catalog:
   # 0.1.7 and 0.2.0 on npm leak catalog:/workspace: specifiers and cannot install; 0.2.1 is clean.
   "@statewalker/webrun-site-host": ^0.4.0
   "@statewalker/shared-slots": ^0.2.0
-  "@statewalker/shared-commands": ^0.2.0
+  # 0.4: call options with an AbortSignal (statewalker/statewalker-root#405).
+  "@statewalker/shared-commands": ^0.4.0
   "@statewalker/webrun-files-node": "^0.12.0"
   "@statewalker/shared-logger-pino": ^0.1.0
   "@biomejs/biome": ^2.5.15

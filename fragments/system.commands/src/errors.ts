@@ -9,7 +9,8 @@
  * - `unavailable`: the contributing fragment left while the call ran (`ExtensionUnavailable`);
  * - `declared-error`: the handler raised one of the errors the operation declares;
  * - `handler-error`: the handler threw anything else;
- * - `invalid-output`: the result does not match the output schema.
+ * - `invalid-output`: the result does not match the output schema;
+ * - `aborted`: the caller's `signal` aborted before the call settled; `cause` is its reason.
  */
 export type CommandCallErrorKind =
   | "unknown-command"
@@ -19,7 +20,8 @@ export type CommandCallErrorKind =
   | "unavailable"
   | "declared-error"
   | "handler-error"
-  | "invalid-output";
+  | "invalid-output"
+  | "aborted";
 
 export interface CommandCallErrorOptions {
   readonly message?: string;

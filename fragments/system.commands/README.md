@@ -151,7 +151,20 @@ const commands = createSystemCommands({ gate: security.gate });
 await commands.bus.call("org.example.notes/get-note", { id: "n1" }, { caller: { capability } });
 ```
 
-A handler is called as `handler(input, { command })`. The context object is where call ids, progress and cancellation can be added if statewalker-root#204 asks for them, without changing a handler's signature.
+A handler is called as `handler(input, context)`. The context has the command's identity `command`, and three fields for the call. They are not enumerable, so the context stays plain data when logged:
+
+- `callId`: a fresh id per call, or the one the user or system code passes as `callOptions.callId`. The task runner passes a task's id, so a handler that serves tasks deduplicates by it. A caller that goes through the gate and supplies an id is refused `forbidden`.
+- `signal`: aborts when the caller's `callOptions.signal` does. The call then rejects with `CommandCallError` of kind `aborted`, whose `cause` is the signal's reason. An already-aborted signal rejects before the gate or the handler runs.
+- `progress(entry)`: sends untyped JSON to the caller's `callOptions.onProgress`, in order. It resolves once `onProgress` has taken the entry, so progress can be written somewhere durable; without `onProgress` it does nothing.
+
+```ts
+const result = await commands.bus.call("org.example.notes/export", { all: true }, {
+  signal: controller.signal,
+  onProgress: (entry) => console.log(entry),
+});
+```
+
+These follow ADR `2026-11-23-commands-tasks-and-jobs` in statewalker-root (statewalker-root#407).
 
 ### Projections
 

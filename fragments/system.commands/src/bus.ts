@@ -14,10 +14,25 @@ import { type CommandEntry, entryOf } from "./catalogue.js";
 import { CommandCallError, isCommandFailure } from "./errors.js";
 import { jsonStandardSchema, jsonValidator } from "./json-schema.js";
 
-/** What a handler gets beside its input. Room for ids, progress and cancellation later. */
+/**
+ * What a handler gets beside its input. `callId`, `signal` and `progress` are not enumerable, so
+ * the context stays plain data when it is logged or compared.
+ */
 export interface CommandContext {
   /** The command's identity, `<fragment-id>/<command-id>`. */
   readonly command: string;
+  /**
+   * This call's id: a fresh one, or the one the user or system code supplied (the task runner
+   * passes a task's id, so a handler serving tasks deduplicates by it).
+   */
+  readonly callId: string;
+  /** Aborted when the caller cancels the call; a long-running handler stops on it. */
+  readonly signal: AbortSignal;
+  /**
+   * Reports progress to the caller (untyped JSON), in order. It resolves once the caller's
+   * `onProgress` has taken the entry; without one it does nothing.
+   */
+  progress(entry: unknown): Promise<void>;
 }
 
 /**
@@ -31,6 +46,38 @@ export type Caller = { readonly kind: "user" } | { readonly capability: string }
 export interface CallOptions {
   /** The caller; the user when absent. */
   readonly caller?: Caller;
+  /**
+   * The call's id, for the user and system code only (the task runner passes a task's id): a
+   * caller that goes through the gate and supplies one is refused, since handlers deduplicate by
+   * it. A fresh id otherwise.
+   */
+  readonly callId?: string;
+  /** Cancels the call: the handler's `signal` aborts, and the call rejects `aborted`. */
+  readonly signal?: AbortSignal;
+  /** Receives the handler's progress entries, in order; the handler waits for it. */
+  readonly onProgress?: (entry: unknown) => void | Promise<void>;
+}
+
+/** What a running call carries to its handler, found by the call's own signal. */
+interface RunningCall {
+  readonly callId: string;
+  readonly onProgress?: (entry: unknown) => void | Promise<void>;
+}
+
+const NEVER = new AbortController().signal;
+
+/** The handler's context for one call; the call's fields are not enumerable. */
+function contextOf(command: string, signal: AbortSignal, call: RunningCall | undefined) {
+  const onProgress = call?.onProgress;
+  return Object.defineProperties({ command } as CommandContext, {
+    callId: { value: call?.callId ?? crypto.randomUUID() },
+    signal: { value: signal },
+    progress: {
+      value: async (entry: unknown) => {
+        if (onProgress) await onProgress(entry);
+      },
+    },
+  });
 }
 
 /** A call the gate decides: from a caller other than the user, before its input is checked. */
@@ -113,6 +160,8 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
   const live = new Map<string, Live>();
   let keybindings: readonly Keybinding[] = [];
   const listeners = new Set<(commands: readonly CommandEntry[]) => void>();
+  // Each call dispatches with a signal of its own: the key to its id and progress.
+  const running = new WeakMap<AbortSignal, RunningCall>();
   const list = () => [...live.values()].map((l) => l.entry);
   function notify() {
     const commands = list();
@@ -131,9 +180,11 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
       .output(jsonStandardSchema(entry.output ?? true))
       .build();
     const reference = extension.reference;
-    const context: CommandContext = { command: entry.id };
     const unlisten = reference
-      ? substrate.listen(declaration, (cmd) => reference.call(cmd.payload, context))
+      ? substrate.listen(declaration, (cmd) => {
+          const signal = cmd.signal ?? NEVER;
+          return reference.call(cmd.payload, contextOf(entry.id, signal, running.get(signal)));
+        })
       : undefined;
     return { entry, declaration, unlisten };
   }
@@ -172,6 +223,17 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
       const found = live.get(id);
       if (!found) throw new CommandCallError("unknown-command", id);
       const caller = callOptions?.caller;
+      const callerSignal = callOptions?.signal;
+      const aborted = () =>
+        new CommandCallError("aborted", id, {
+          message: `aborted: ${id}`,
+          cause: callerSignal?.reason,
+        });
+      if (callOptions?.callId !== undefined && !isUser(caller))
+        throw new CommandCallError("forbidden", id, {
+          message: `forbidden: ${id}: only the user or system code chooses a call's id`,
+        });
+      if (callerSignal?.aborted) throw aborted();
       let payload = input ?? {};
       if (!isUser(caller)) {
         // The gate decides on a copy the caller cannot change while it waits (an approval), and
@@ -201,13 +263,25 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
             cause: error,
           });
         }
-        // The command may have left while the gate waited.
+        // The command may have left, or the caller given up, while the gate waited.
         if (live.get(id) !== found) throw new CommandCallError("unknown-command", id);
+        if (callerSignal?.aborted) throw aborted();
       }
+      const controller = new AbortController();
+      const cancel = () => controller.abort(callerSignal?.reason);
+      callerSignal?.addEventListener("abort", cancel, { once: true });
+      running.set(controller.signal, {
+        callId: callOptions?.callId ?? crypto.randomUUID(),
+        ...(callOptions?.onProgress ? { onProgress: callOptions.onProgress } : {}),
+      });
       try {
-        return (await substrate.call(found.declaration, payload).promise) as T;
+        return (await substrate.call(found.declaration, payload, { signal: controller.signal })
+          .promise) as T;
       } catch (error) {
         throw callError(found.entry, error);
+      } finally {
+        callerSignal?.removeEventListener("abort", cancel);
+        running.delete(controller.signal);
       }
     },
     list,
@@ -274,6 +348,8 @@ function callError(entry: CommandEntry, error: unknown): CommandCallError {
       return new CommandCallError("no-handler", id, { cause: error });
     case "listener-threw":
       return thrownError(entry, error.cause);
+    case "aborted":
+      return new CommandCallError("aborted", id, { message: `aborted: ${id}`, cause: error.cause });
   }
 }
 
