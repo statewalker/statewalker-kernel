@@ -1,5 +1,8 @@
-// The notes fragment of apps/notes: client-only. It contributes a view to system.workbench's
-// `views` point and a command to system.commands' `commands` point, without requiring either.
+// The notes fragment of apps/notes. Its client half contributes a view to system.workbench's
+// `views` point and a command to system.commands' `commands` point, without requiring either. Its
+// server half (wrangler.jsonc, server/) keeps notes in its fragment DO, at
+// `idFromName("org.statewalker.notes")`, reached at `/fragments/org.statewalker.notes/…`
+// (statewalker/statewalker-root#259).
 {
   "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
   "id": "org.statewalker.notes",
@@ -10,6 +13,7 @@
     "platform": "^0.1.0"
   },
   "aspects": {
+    "server": {},
     "client": {}
   }
 }

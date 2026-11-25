@@ -166,7 +166,7 @@ describe("apps/notes in the browser", () => {
 
       // The notes fragment's bundle imports the shared modules by bare specifier: every import
       // it makes is either relative to it or a key of the import map, so nothing is bundled twice.
-      const bundlePath = `/fragments/${NOTES}/client/index.js`;
+      const bundlePath = `/archives/${NOTES}/client/index.js`;
       expect(scripts).toContain(bundlePath);
       const bundle = await (await fetch(new URL(bundlePath, server.url))).text();
       const specifiers = [...bundle.matchAll(/(?:from|import)\s*["']([^"']+)["']/g)].map(

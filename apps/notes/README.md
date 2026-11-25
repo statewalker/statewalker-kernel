@@ -14,7 +14,12 @@ The application's default layout (`application.json`'s `layout.open`, given to t
 From the repository root, after `pnpm install`:
 
 1. `pnpm --filter @statewalker/notes.app... run build`: builds the app and the packages it uses into `apps/notes/dist/`.
-2. `pnpm --filter @statewalker/notes.app start`: serves `dist/` on http://127.0.0.1:4173/ (`PORT` changes it).
+2. `pnpm --filter @statewalker/notes.app start`: serves `dist/` on http://127.0.0.1:4173/ (`PORT` or `--port` changes it), with the fragments' server halves running in the browser. The launch configurations (`scripts/launch.mjs`, statewalker/statewalker-root#259) say who serves them at `/fragments/{id}/…`:
+   - `start:browser` (what `start` runs): CellB in the page's origin. A ServiceWorker (`fragments-sw.js`, CellB's router) sends `/fragments/{id}/…` to a pool of shard workers the tabs share (`fragment-shard.js`), each running every server half on SQLite WASM in OPFS.
+   - `start:node`: CellB on Node, one fragment host (`createFragmentHost`) holding every server half, its data under `--data <dir>` (memory by default).
+   - `start:wrangler`: `wrangler dev`, one per server half, its Worker routing `/fragments/{id}/…` to its fragment DO; the app's server forwards to it.
+
+   Each takes `--peer-id <id>`: `/peers/<id>/fragments/{id}/…` then answers as `/fragments/{id}/…`. The page reads which one runs from `launch.json` (`window.launch`); the built `dist/launch.json` says `none`, so a plain file server runs no server halves.
 3. `pnpm --filter @statewalker/notes.app test`: the browser tests, against `dist/` (build first). They need Chromium for the pinned `playwright`: `pnpm --filter @statewalker/notes.app exec playwright install chromium` once, if it is not there.
 
 `window.platform` holds the kernel, the command bus, the workbench model, the A2UI model, the profile store, system.host's services (`host.services`, `host.provider(kind)`), the settings model (`settings`), the vault (`vault`: its state, and its secrets once unlocked), the lifecycle slots (`slots.installed`, `enabled`, `active`) and system.l10n's model (`l10n`: `setLocale`, `locales()`), for the console and the tests. `localStorage.clear()` and a reload give a fresh profile.
@@ -60,6 +65,15 @@ From the repository root, after `pnpm install`:
 | A fresh profile: `firstRun` is true, both baseline fragments are enabled, the notes view is open in a tab titled "Notes"; after a reload, `firstRun` is false and the notes view is back | Baseline fragments installed on first run; the default layout; the profile restoring what it recorded |
 | A profile recording `org.example.gone`, which the app does not serve: the reload boots, with the baseline installed, and the record is gone | A recorded fragment no longer served is forgotten, not fatal |
 | `kernel.remove("org.statewalker.notes")` is refused (a baseline fragment) and the view stays; `kernel.disable` closes it; after a reload notes is installed but not enabled (surfaces still enabled) and no notes view opens; enabling it brings the view back | Baseline fragments can be disabled, not removed (`KernelOptions.baseline`); the enabled state is kept in the profile |
+
+`tests/fragments.e2e.test.ts` (seam 2) runs the notes fragment's server half in each launch configuration, `browser`, `node` and `wrangler` (statewalker/statewalker-root#259):
+
+| Test step | Feature |
+| --- | --- |
+| The page posts a note to `/fragments/org.statewalker.notes/notes` (201) and reads it back; an empty one is refused (400); after a reload the note is still there | The notes fragment's server half (`wrangler.jsonc`, `server/index.js`): one fragment DO at `idFromName("org.statewalker.notes")` keeping notes in SQLite, the same project on CellB in the browser, CellB on Node and `wrangler dev` |
+| `/fragments/org.example.nope/…` answers 404 | A fragment the host does not have; in the browser the ServiceWorker answers it itself |
+| `/peers/peer-self/fragments/org.statewalker.notes/notes` lists what `/fragments/…` lists | `/peers/{self}/…` equals `/fragments/…` |
+| Browser: `kernel.disable("org.statewalker.notes")`; Node: the fragment host's `disable`. Three posts answer 503; enabled again, the notes are as before (browser and Node) | A disabled fragment answers 503 without waking its DO: in the browser the shard pool follows the kernel's fragments (`src/fragment-servers.ts`) and the router answers from the tabs' fragment table |
 
 `tests/surfaces.e2e.test.ts` (seam 2) opens the surfaces demo's view in Chromium:
 
@@ -124,10 +138,14 @@ application.json       the application definition: brand, baseline fragments, de
 src/boot.ts            the shell: kernel, core fragments, client API, app fragments (React-free)
 src/main.tsx           renders the workbench, docks surfaces through system.a2ui, keeps the open views in the URL
 src/url-layout.ts      the open views kept in the URL state, through system.host's urlState
-fragments/notes/       the notes fragment: fragment.jsonc, fragment.client.jsonc, client/
+src/fragment-servers.ts  the launch configuration `browser`: the router ServiceWorker and the shard pool, following the kernel
+src/fragments-sw.ts    CellB's router, as the app's ServiceWorker
+src/fragment-shard.ts  a shard worker of the pool (CellB, SQLite WASM)
+fragments/notes/       the notes fragment: fragment.jsonc, fragment.client.jsonc, client/, wrangler.jsonc, server/
 fragments/surfaces/    the surfaces demo: the NoteEditor catalog component and a view with a surface
 scripts/build.mjs      the build (Vite library builds, Tailwind CLI)
-scripts/serve.mjs      the static server (`pnpm start`; the tests use static-server.mjs)
+scripts/serve.mjs      a plain static server (no server halves; the tests use static-server.mjs)
+scripts/launch.mjs     the launch configurations: browser, node, wrangler
 tests/                 the seam-2 browser tests
 ```
 
@@ -138,7 +156,9 @@ tests/                 the seam-2 browser tests
 - `index.html` with the import map, generated from `platform.json`'s `shared` list;
 - `shared/<module>.js`: one ES module per shared module. React and react-dom are CommonJS, so each gets an entry re-exporting its exports by name; their `require()`s of one another become imports, since an ES module cannot `require` in a browser;
 - `main.js` and `main.css`: the shell, with the kernel, system.commands and system.workbench bundled in, and the workbench's and system.a2ui's prebuilt CSS (system.a2ui itself is a shared module: fragments import `defineComponent` and the renderer from it);
-- `fragments/<id>/`: each folder of `fragments/`, its root files copied and its client half bundled to `client/index.js`, with `client/index.css` compiled by the Tailwind CLI against system.workbench's `tokens.css`, without preflight; `fragments/index.json` lists them.
+- `archives/<id>/`: each folder of `fragments/`, its root files copied and its client half bundled to `client/index.js`, with `client/index.css` compiled by the Tailwind CLI against system.workbench's `tokens.css`, without preflight, and its server half bundled for CellB in a browser to `server/bundle.js`; `archives/index.json` lists them. The archives are not under `fragments/`: `/fragments/{id}/…` is the fragments' server halves;
+- `fragments-sw.js`, `fragment-shard.js` and `assets/`: CellB's router and shard worker (with SQLite WASM), for the launch configuration `browser`;
+- `launch.json`: `{ "fragments": "none" }`; the launch scripts serve their own.
 
 Every bundle (the shell, the shared modules, the fragments) leaves the shared modules external as bare specifiers, so the import map resolves each to its one file. The build refuses an installed shared module outside its range in `platform.json`: moving one is a platform version change, which fragments declare against in `engines.platform`.
 
@@ -148,7 +168,7 @@ Every bundle (the shell, the shared modules, the fragments) leaves the shared mo
 
 Which app fragments: the kernel's records live in the user's profile, kept in localStorage under `org.statewalker.apps.notes:` (system.profile's store). A fresh profile, one without the application's record (`applications/org.statewalker.apps.notes`), installs and enables `application.json`'s `baseline`, then writes that record; `window.platform.firstRun` says which run this is. A later run installs again the fragments the profile records (`fragments/<id>`, core fragments aside), enabling those recorded enabled, plus any baseline fragment the profile lacks. A recorded fragment the app no longer serves is skipped with a warning and its record dropped, so it cannot stop later boots; a baseline fragment that cannot be fetched stops the boot. The kernel's `removeData` (a removal with `{ withData: true }`) deletes the fragment's settings values; a plain removal keeps them. The kernel gets the baseline as `KernelOptions.baseline`, so removing a baseline fragment is refused while disabling it works, and stays disabled on the next run. system.appearance gets `application.json`'s `brand` as the application's brand; `main.tsx` applies it to the page (`applyAppearance`: tokens, `.dark` following `prefers-color-scheme` unless `appearance.setMode` overrides it, title, icon), and renders its `BrandMark` above the workbench beside system.l10n's `LanguagePicker`.
 
-Which views show: the views the URL state names (`#?views=<id>,<id>`) win, opened and closed in the current device mode's layout, which the workbench then saves as any change; a URL naming none leaves the workbench showing the mode's saved layout (`workbench/layouts/<mode>` in the profile), else its default layout, `layout.open` (the host's `layouts`, before the `layouts` point's). `bindLayoutToUrl` (`src/url-layout.ts`) then keeps the two in step: opening or closing a view replaces the URL's history entry with the current mode's open views, and a navigation to another URL state opens and closes views to match. A named view nobody contributes is skipped. A core fragment's module reference resolves to its in-process module (system.workbench's commands; system.settings' view, whose React module loads with it, bound to the model); an app fragment's resolves to an export of the contributor's client folder (`fragments/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
+Which views show: the views the URL state names (`#?views=<id>,<id>`) win, opened and closed in the current device mode's layout, which the workbench then saves as any change; a URL naming none leaves the workbench showing the mode's saved layout (`workbench/layouts/<mode>` in the profile), else its default layout, `layout.open` (the host's `layouts`, before the `layouts` point's). `bindLayoutToUrl` (`src/url-layout.ts`) then keeps the two in step: opening or closing a view replaces the URL's history entry with the current mode's open views, and a navigation to another URL state opens and closes views to match. A named view nobody contributes is skipped. A core fragment's module reference resolves to its in-process module (system.workbench's commands; system.settings' view, whose React module loads with it, bound to the model); an app fragment's resolves to an export of the contributor's client folder (`archives/<id>/<client dir>/<module>`), imported on first use. Activating an app fragment's client aspect links its `index.css`, removed when the aspect deactivates. The shell follows `system:fragments:resolved` and activates the client aspect of every fragment that resolves after boot (enabled again, or installed later), since its extensions come back on resolve.
 
 ## License
 
