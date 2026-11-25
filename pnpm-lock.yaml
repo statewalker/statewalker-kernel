@@ -64,8 +64,8 @@ catalogs:
       specifier: ^0.1.0
       version: 0.1.6
     '@statewalker/shared-commands':
-      specifier: ^0.2.0
-      version: 0.2.6
+      specifier: ^0.4.0
+      version: 0.4.0
     '@statewalker/shared-logger':
       specifier: ^0.1.0
       version: 0.1.6
@@ -496,7 +496,7 @@ importers:
         version: link:../../packages/kernel.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
     devDependencies:
       '@statewalker/shared-slots':
         specifier: 'catalog:'
@@ -776,7 +776,7 @@ importers:
         version: link:../../packages/mime.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -856,7 +856,7 @@ importers:
         version: link:../../packages/settings.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -920,7 +920,7 @@ importers:
         version: link:../render.view.react
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -981,7 +981,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1204,7 +1204,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1368,7 +1368,7 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1405,7 +1405,7 @@ importers:
         version: link:../platform.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-logger':
         specifier: 'catalog:'
         version: 0.1.6
@@ -1454,7 +1454,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/webrun-files':
         specifier: 'catalog:'
         version: 0.12.0
@@ -1482,7 +1482,7 @@ importers:
         version: link:../platform.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1519,7 +1519,7 @@ importers:
     dependencies:
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1553,7 +1553,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1581,7 +1581,7 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1618,7 +1618,7 @@ importers:
         version: link:../render.core
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shell.core':
         specifier: workspace:^
         version: link:../shell.core
@@ -1741,7 +1741,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-registry':
         specifier: 'catalog:'
         version: 0.1.4
@@ -1781,7 +1781,7 @@ importers:
         version: 0.1.6
       '@statewalker/shared-commands':
         specifier: 'catalog:'
-        version: 0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
+        version: 0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@statewalker/shared-logger':
         specifier: 'catalog:'
         version: 0.1.6
@@ -3407,8 +3407,8 @@ packages:
   '@statewalker/shared-baseclass@0.1.6':
     resolution: {integrity: sha512-fLyFEgrWwvteFzI+TZPOM/cOPoTXt+TDM3I773t4Lus4U+A2hi/SwecUUlx+ZW9+xByjdMjf+H9+ZQrRU+E0sQ==}
 
-  '@statewalker/shared-commands@0.2.6':
-    resolution: {integrity: sha512-nXYiE3FAIN2jzd0ox8GWPrIu1MmJzKScmoQz5NJKKrM5oLtywQVI9JsfaHD3lZKa7hbXdKGNJuxXvDtvJ9QHBQ==}
+  '@statewalker/shared-commands@0.4.0':
+    resolution: {integrity: sha512-q0F8bb+ou7ExfhPeV1ziXp85bJHlsIpDFJ7HiKHWqBXd4+5hCwvL5z+G7RC5XciY9ENjxW88mvS0usFai+Erhg==}
 
   '@statewalker/shared-generators@0.1.4':
     resolution: {integrity: sha512-XZGpMe2Wbw/L93QoQY8bQdFKJG3DZ5qotmceL+Zd591Oy5q8L5HGayBYtZSNCz9hirjsqMrmKbXKHZQOV/qjhw==}
@@ -6820,7 +6820,7 @@ snapshots:
     dependencies:
       '@statewalker/shared-generators': 0.1.4
 
-  '@statewalker/shared-commands@0.2.6(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)':
+  '@statewalker/shared-commands@0.4.0(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)':
     dependencies:
       '@standard-community/standard-json': 0.4.1(@standard-schema/spec@1.1.0)(@types/json-schema@7.0.15)(zod-to-json-schema@3.25.2(zod@4.6.5))(zod@4.6.5)
       '@standard-schema/spec': 1.1.0
