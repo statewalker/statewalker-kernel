@@ -9,6 +9,54 @@
         "type": "object",
         "required": ["operation"],
         "additionalProperties": false,
+        "if": {
+          "required": ["exposures"],
+          "properties": {
+            "exposures": {
+              "required": ["task"]
+            }
+          }
+        },
+        "then": {
+          "properties": {
+            "operation": {
+              "required": ["x-idempotent", "responses"],
+              "properties": {
+                "x-idempotent": {
+                  "const": true
+                },
+                "responses": {
+                  "required": ["200"],
+                  "properties": {
+                    "200": {
+                      "required": ["content"],
+                      "properties": {
+                        "content": {
+                          "required": ["application/json"],
+                          "properties": {
+                            "application/json": {
+                              "required": ["schema"],
+                              "properties": {
+                                "schema": {
+                                  "required": ["type"],
+                                  "properties": {
+                                    "type": {
+                                      "const": "object"
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "properties": {
           "operation": {
             "description": "The command as an OpenAPI 3.1 operation: operationId is the command id, the JSON request body its input (an object), the 200 JSON response its output, other responses its errors.",
@@ -109,6 +157,11 @@
               },
               "mcp": {
                 "description": "An MCP tool. Implies `http`: without one, the command is served at `/commands/<command-id>`.",
+                "type": "object",
+                "additionalProperties": false
+              },
+              "task": {
+                "description": "Served from the task queue (system.tasks): a task under `fragments.<fragment-id>.<command-id>` runs the command. A task is delivered at least once and its reply is JSON, so the operation must declare `x-idempotent: true` and a JSON object output (its 200 response).",
                 "type": "object",
                 "additionalProperties": false
               }

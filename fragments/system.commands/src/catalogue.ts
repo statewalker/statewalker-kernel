@@ -10,6 +10,8 @@ export interface Exposures {
   readonly agent?: { readonly action: ActionKind };
   readonly http?: { readonly path: string };
   readonly mcp?: Readonly<Record<string, never>>;
+  /** Served from the task queue (system.tasks); the operation is idempotent with a JSON output. */
+  readonly task?: Readonly<Record<string, never>>;
 }
 
 /** A localized title and description. */

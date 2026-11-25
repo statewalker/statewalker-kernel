@@ -1,0 +1,15 @@
+// The system.tasks core fragment (statewalker-root ADR 2026-11-23-commands-tasks-and-jobs).
+// Kept equal to src/archive.ts by tests/archive.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "system.tasks",
+  "version": "0.1.0",
+  "name": "Tasks",
+  "description": "The host's task queue: commands exposed as `task` served from it, and publishing, cancelling and job logs.",
+  "engines": {
+    "platform": "*"
+  },
+  "aspects": {
+    "client": {}
+  }
+}

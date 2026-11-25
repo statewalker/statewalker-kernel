@@ -1,0 +1,210 @@
+// The client aspect of system.tasks: its publish, cancel and job commands.
+// Kept equal to src/archive.ts by tests/archive.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "publish",
+          "summary": "Publish a task; by default wait for its reply",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["subject"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "subject": {
+                      "description": "The task's subject: `fragments.<fragment-id>.<command-id>` runs that command.",
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 1024
+                    },
+                    "payload": {
+                      "description": "The task's input: JSON, at most 64 KB."
+                    },
+                    "wait": {
+                      "description": "Wait for the reply (the default); `false` returns once published.",
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["task"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "task": {
+                        "type": "string"
+                      },
+                      "job": {
+                        "description": "The job log of the attempt that answered.",
+                        "type": "string"
+                      },
+                      "result": {},
+                      "error": {
+                        "type": "string"
+                      },
+                      "cancelled": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "agent": {
+            "action": "write"
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "publish"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "cancel",
+          "summary": "Cancel a task: a waiting one is removed, a running one stops",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["task"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "task": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["cancelled"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "cancelled": {
+                        "const": true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "cancel"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "job",
+          "summary": "Read a job log, after a stamp, waiting up to wait_ms for an entry",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["job"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "job": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "after": {
+                      "type": "number"
+                    },
+                    "wait_ms": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 60000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["id", "task", "subscription", "entries"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "task": {
+                        "type": "string"
+                      },
+                      "subscription": {
+                        "type": "string"
+                      },
+                      "entries": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["at", "progress"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "at": {
+                              "type": "number"
+                            },
+                            "progress": {},
+                            "outcome": {
+                              "enum": ["done", "error", "cancelled"]
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "job"
+      }
+    }
+  ]
+}

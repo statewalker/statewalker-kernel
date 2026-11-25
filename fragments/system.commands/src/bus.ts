@@ -15,12 +15,14 @@ import { CommandCallError, isCommandFailure } from "./errors.js";
 import { jsonStandardSchema, jsonValidator } from "./json-schema.js";
 
 /**
- * What a handler gets beside its input. `callId`, `signal` and `progress` are not enumerable, so
- * the context stays plain data when it is logged or compared.
+ * What a handler gets beside its input. `caller`, `callId`, `signal` and `progress` are not
+ * enumerable, so the context stays plain data when it is logged or compared.
  */
 export interface CommandContext {
   /** The command's identity, `<fragment-id>/<command-id>`. */
   readonly command: string;
+  /** Who calls: the user, or the capability a gated caller presented (the gate let it through). */
+  readonly caller: Caller;
   /**
    * This call's id: a fresh one, or the one the user or system code supplied (the task runner
    * passes a task's id, so a handler serving tasks deduplicates by it).
@@ -60,16 +62,19 @@ export interface CallOptions {
 
 /** What a running call carries to its handler, found by the call's own signal. */
 interface RunningCall {
+  readonly caller: Caller;
   readonly callId: string;
   readonly onProgress?: (entry: unknown) => void | Promise<void>;
 }
 
 const NEVER = new AbortController().signal;
+const USER: Caller = Object.freeze({ kind: "user" });
 
 /** The handler's context for one call; the call's fields are not enumerable. */
 function contextOf(command: string, signal: AbortSignal, call: RunningCall | undefined) {
   const onProgress = call?.onProgress;
   return Object.defineProperties({ command } as CommandContext, {
+    caller: { value: call?.caller ?? USER },
     callId: { value: call?.callId ?? crypto.randomUUID() },
     signal: { value: signal },
     progress: {
@@ -136,6 +141,18 @@ export interface Keybinding {
 /** The system.commands fragment's code: its bus, and the activator body of its client aspect. */
 export interface SystemCommands {
   readonly bus: CommandBus;
+  /**
+   * Run the command `id` for `caller` without asking the gate, with a `callId` of system code's
+   * choosing: for system code that has already had the gate decide this caller's call (the task
+   * runner, for a task a gated caller published). The handler sees `caller` as its caller. The
+   * host holds this, never a fragment: fragments get the bus.
+   */
+  callAs<T = unknown>(
+    caller: Caller,
+    id: string,
+    input?: unknown,
+    options?: Omit<CallOptions, "caller">,
+  ): Promise<T>;
   /** Activate the client aspect: follow the `commands` and `keybindings` points. Returns the cleanup. */
   activate(context: ActivationContext): () => void;
 }
@@ -218,6 +235,33 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
     return true;
   }
 
+  /** Runs a live command's handler for `caller`, the call already decided. */
+  async function dispatch<T>(
+    found: Live,
+    payload: unknown,
+    caller: Caller,
+    callOptions: Omit<CallOptions, "caller"> | undefined,
+  ): Promise<T> {
+    const callerSignal = callOptions?.signal;
+    const controller = new AbortController();
+    const cancel = () => controller.abort(callerSignal?.reason);
+    callerSignal?.addEventListener("abort", cancel, { once: true });
+    running.set(controller.signal, {
+      caller,
+      callId: callOptions?.callId ?? crypto.randomUUID(),
+      ...(callOptions?.onProgress ? { onProgress: callOptions.onProgress } : {}),
+    });
+    try {
+      return (await substrate.call(found.declaration, payload, { signal: controller.signal })
+        .promise) as T;
+    } catch (error) {
+      throw callError(found.entry, error);
+    } finally {
+      callerSignal?.removeEventListener("abort", cancel);
+      running.delete(controller.signal);
+    }
+  }
+
   const bus: CommandBus = {
     async call<T>(id: string, input?: unknown, callOptions?: CallOptions): Promise<T> {
       const found = live.get(id);
@@ -267,22 +311,7 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
         if (live.get(id) !== found) throw new CommandCallError("unknown-command", id);
         if (callerSignal?.aborted) throw aborted();
       }
-      const controller = new AbortController();
-      const cancel = () => controller.abort(callerSignal?.reason);
-      callerSignal?.addEventListener("abort", cancel, { once: true });
-      running.set(controller.signal, {
-        callId: callOptions?.callId ?? crypto.randomUUID(),
-        ...(callOptions?.onProgress ? { onProgress: callOptions.onProgress } : {}),
-      });
-      try {
-        return (await substrate.call(found.declaration, payload, { signal: controller.signal })
-          .promise) as T;
-      } catch (error) {
-        throw callError(found.entry, error);
-      } finally {
-        callerSignal?.removeEventListener("abort", cancel);
-        running.delete(controller.signal);
-      }
+      return dispatch<T>(found, payload, isUser(caller) ? USER : caller, callOptions);
     },
     list,
     keybindings: () => keybindings,
@@ -299,6 +328,21 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
 
   return {
     bus,
+    async callAs<T>(
+      caller: Caller,
+      id: string,
+      input?: unknown,
+      callOptions: Omit<CallOptions, "caller"> = {},
+    ): Promise<T> {
+      const found = live.get(id);
+      if (!found) throw new CommandCallError("unknown-command", id);
+      if (callOptions.signal?.aborted)
+        throw new CommandCallError("aborted", id, {
+          message: `aborted: ${id}`,
+          cause: callOptions.signal.reason,
+        });
+      return dispatch<T>(found, input ?? {}, isUser(caller) ? USER : caller, callOptions);
+    },
     activate(context) {
       const stop = context.extensions.observe(COMMANDS_POINT, (all) => {
         if (sync(all)) notify();
