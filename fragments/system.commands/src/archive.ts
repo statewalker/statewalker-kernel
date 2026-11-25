@@ -28,6 +28,38 @@ export const commandSchema = {
   type: "object",
   required: ["operation"],
   additionalProperties: false,
+  // The `task` exposure: an idempotent operation (`x-idempotent: true`) with a JSON object output.
+  if: { required: ["exposures"], properties: { exposures: { required: ["task"] } } },
+  // biome-ignore lint/suspicious/noThenProperty: JSON Schema's `if`/`then`, not a thenable.
+  then: {
+    properties: {
+      operation: {
+        required: ["x-idempotent", "responses"],
+        properties: {
+          "x-idempotent": { const: true },
+          responses: {
+            required: ["200"],
+            properties: {
+              200: {
+                required: ["content"],
+                properties: {
+                  content: {
+                    required: ["application/json"],
+                    properties: {
+                      "application/json": {
+                        required: ["schema"],
+                        properties: { schema: { type: "object" } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
   properties: {
     operation: {
       description:
@@ -103,6 +135,12 @@ export const commandSchema = {
         mcp: {
           description:
             "An MCP tool. Implies `http`: without one, the command is served at `/commands/<command-id>`.",
+          type: "object",
+          additionalProperties: false,
+        },
+        task: {
+          description:
+            "Served from the task queue (system.tasks): a task under `fragments.<fragment-id>.<command-id>` runs the command. A task is delivered at least once and its reply is JSON, so the operation must declare `x-idempotent: true` and a JSON object output (its 200 response).",
           type: "object",
           additionalProperties: false,
         },

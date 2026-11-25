@@ -15,12 +15,14 @@ import { CommandCallError, isCommandFailure } from "./errors.js";
 import { jsonStandardSchema, jsonValidator } from "./json-schema.js";
 
 /**
- * What a handler gets beside its input. `callId`, `signal` and `progress` are not enumerable, so
- * the context stays plain data when it is logged or compared.
+ * What a handler gets beside its input. `caller`, `callId`, `signal` and `progress` are not
+ * enumerable, so the context stays plain data when it is logged or compared.
  */
 export interface CommandContext {
   /** The command's identity, `<fragment-id>/<command-id>`. */
   readonly command: string;
+  /** Who calls: the user, or the capability a gated caller presented (the gate let it through). */
+  readonly caller: Caller;
   /**
    * This call's id: a fresh one, or the one the user or system code supplied (the task runner
    * passes a task's id, so a handler serving tasks deduplicates by it).
@@ -60,16 +62,19 @@ export interface CallOptions {
 
 /** What a running call carries to its handler, found by the call's own signal. */
 interface RunningCall {
+  readonly caller: Caller;
   readonly callId: string;
   readonly onProgress?: (entry: unknown) => void | Promise<void>;
 }
 
 const NEVER = new AbortController().signal;
+const USER: Caller = Object.freeze({ kind: "user" });
 
 /** The handler's context for one call; the call's fields are not enumerable. */
 function contextOf(command: string, signal: AbortSignal, call: RunningCall | undefined) {
   const onProgress = call?.onProgress;
   return Object.defineProperties({ command } as CommandContext, {
+    caller: { value: call?.caller ?? USER },
     callId: { value: call?.callId ?? crypto.randomUUID() },
     signal: { value: signal },
     progress: {
@@ -271,6 +276,7 @@ export function createSystemCommands(options: SystemCommandsOptions = {}): Syste
       const cancel = () => controller.abort(callerSignal?.reason);
       callerSignal?.addEventListener("abort", cancel, { once: true });
       running.set(controller.signal, {
+        caller: isUser(caller) ? USER : caller,
         callId: callOptions?.callId ?? crypto.randomUUID(),
         ...(callOptions?.onProgress ? { onProgress: callOptions.onProgress } : {}),
       });

@@ -146,6 +146,20 @@ describe("the call context", () => {
     );
   });
 
+  it("names the caller: the user, or the capability a gated caller presented", async () => {
+    const callers: unknown[] = [];
+    const { bus } = await withHandler(
+      (_input, context) => {
+        callers.push(context.caller);
+        return {};
+      },
+      { gate: () => {} },
+    );
+    await bus.call(`${NOTES}/ping`);
+    await bus.call(`${NOTES}/ping`, {}, { caller: { capability: "agent-1" } });
+    expect(callers).toEqual([{ kind: "user" }, { capability: "agent-1" }]);
+  });
+
   it("ignores progress when the caller does not listen", async () => {
     const { bus } = await withHandler(async (_input, context) => {
       await context.progress({ ignored: true });

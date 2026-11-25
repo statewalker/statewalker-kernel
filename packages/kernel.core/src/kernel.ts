@@ -76,6 +76,13 @@ export interface ActivationContext {
   readonly extensions: OwnedExtensionPoints;
 }
 
+/**
+ * The core fragments that can be disabled: only `system.agents`, so the platform runs without
+ * AI (statewalker-root ADR 2026-11-20-kernel-and-core-fragments). Every other core fragment is
+ * part of the platform itself.
+ */
+export const DISABLEABLE_CORE: readonly string[] = Object.freeze(["system.agents"]);
+
 export interface KernelOptions extends ExtensionRegistryOptions {
   readonly platform: PlatformInfo;
   /** The slot bus the lifecycle state is published on; a new one by default. */
@@ -162,7 +169,8 @@ export interface Kernel {
   enable(id: string): Promise<void>;
   /**
    * Disable a fragment. When resolved fragments require it, nothing changes unless
-   * `cascade` confirms it: they are then deactivated first and become unresolved.
+   * `cascade` confirms it: they are then deactivated first and become unresolved. Refused for
+   * a core fragment other than those in `DISABLEABLE_CORE`.
    */
   disable(id: string, options?: { cascade?: boolean }): Promise<void>;
   /**
@@ -834,9 +842,14 @@ export function createKernel(options: KernelOptions): Kernel {
     }),
     install: serial((archives: readonly FragmentFiles[]) => install(archives, false)),
     enable: serial(enable),
-    disable: serial((id: string, { cascade = false }: { cascade?: boolean } = {}) =>
-      disable(id, cascade),
-    ),
+    disable: serial(async (id: string, { cascade = false }: { cascade?: boolean } = {}) => {
+      if (installed(id)?.core && !DISABLEABLE_CORE.includes(id)) {
+        throw new FragmentLifecycleError(
+          `"${id}" ships with the platform and cannot be disabled (only ${DISABLEABLE_CORE.join(", ")} can)`,
+        );
+      }
+      return disable(id, cascade);
+    }),
     remove: serial(
       async (id: string, { cascade = false, withData = false }: RemoveOptions = {}) => {
         const fragment = installed(id);

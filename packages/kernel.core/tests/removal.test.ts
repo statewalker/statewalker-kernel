@@ -121,6 +121,23 @@ describe("removal", () => {
     expect(ids(slots.getSnapshot(enabledFragmentsSlot))).toEqual(["system.commands"]);
   });
 
+  it("refuses disabling a core fragment, except system.agents", async () => {
+    const { kernel, slots } = newKernel({
+      core: [archive(fragment("system.tasks")), archive(fragment("system.agents"))],
+    });
+    await kernel.start();
+    const refused = await kernel.disable("system.tasks").catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(FragmentLifecycleError);
+    expect(String((refused as Error).message)).toMatch(/system\.tasks.*cannot be disabled/);
+    expect(ids(slots.getSnapshot(enabledFragmentsSlot)).sort()).toEqual([
+      "system.agents",
+      "system.tasks",
+    ]);
+    // Only system.agents may be: the platform runs without AI (ADR 2026-11-20-kernel-and-core-fragments).
+    await kernel.disable("system.agents");
+    expect(ids(slots.getSnapshot(enabledFragmentsSlot))).toEqual(["system.tasks"]);
+  });
+
   it("reports a failing data removal to the caller; the fragment is removed all the same", async () => {
     const boom = new Error("storage unavailable");
     const { kernel, slots } = await setup({

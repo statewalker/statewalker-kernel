@@ -54,6 +54,32 @@ describe("the commands point", () => {
     }
   });
 
+  it("takes the `task` exposure only for an idempotent command with a JSON output", async () => {
+    const out = { type: "object", properties: { n: { type: "number" } } };
+    const idempotent = { "x-idempotent": true };
+    const { kernel, bus } = await platform([
+      fragment(NOTES, {
+        commands: [
+          command(operation("not-idempotent", undefined, out), { exposures: { task: {} } }),
+          command(operation("no-output", undefined, undefined, idempotent), {
+            exposures: { task: {} },
+          }),
+          command(operation("served", undefined, out, idempotent), { exposures: { task: {} } }),
+        ],
+      }),
+    ]);
+    expect(bus.list().map((c) => c.id)).toEqual([`${NOTES}/served`]);
+    expect(bus.get(`${NOTES}/served`)?.exposures).toEqual({ task: {} });
+    const refused = refusals(kernel.slots);
+    expect(refused).toHaveLength(2);
+    for (const r of refused) {
+      expect(r).toMatchObject({ contributor: NOTES, point: "commands", code: "invalid-data" });
+    }
+    const reasons = refused.map((r) => r.message).join("\n");
+    expect(reasons).toMatch(/x-idempotent/);
+    expect(reasons).toMatch(/200|responses/);
+  });
+
   it("keeps the first of two commands one fragment declares under one id", async () => {
     const { bus } = await platform(
       [
