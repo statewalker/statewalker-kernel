@@ -192,6 +192,48 @@ describe("the system.tasks fragment", () => {
     expect(tools).toContain("system.tasks/publish");
   });
 
+  it("runs an agent's task as that agent: the handler sees its capability", async () => {
+    const callers: unknown[] = [];
+    const { bus } = await platform(
+      [fragment(NOTES, [taskCommand("export")])],
+      {
+        [NOTES]: {
+          export: (_input: unknown, context: CommandContext) => {
+            callers.push(context.caller);
+            return {};
+          },
+        },
+      },
+      { gate: () => {} },
+    );
+    await bus.call(
+      "system.tasks/publish",
+      { subject: taskSubject(EXPORT) },
+      { caller: { capability: "agent-1" } },
+    );
+    expect(callers).toEqual([{ capability: "agent-1" }]);
+  });
+
+  it("refuses a waited publish no subscription serves, at once", async () => {
+    const { bus } = await platform([]);
+    await expect(
+      bus.call("system.tasks/publish", { subject: "fragments.nobody.here" }),
+    ).rejects.toMatchObject({ kind: "handler-error" });
+  });
+
+  it("answers the waiting publishers of a removed fragment's tasks with an error", async () => {
+    const { bus, kernel } = await platform([fragment(NOTES, [taskCommand("export")])], {
+      [NOTES]: { export: () => ({}) },
+    });
+    await kernel.disable(NOTES);
+    const waiting = bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    await kernel.remove(NOTES);
+    expect((await waiting).error).toMatch(/removed/);
+  });
+
   it("runs a task an agent published only if the gate lets the agent run that command", async () => {
     const decided: unknown[] = [];
     let ran = 0;
@@ -199,7 +241,8 @@ describe("the system.tasks fragment", () => {
       [fragment(NOTES, [taskCommand("export")])],
       { [NOTES]: { export: () => ({ ran: ++ran }) } },
       {
-        maxAttempts: 1,
+        // A refusal is final: the gate is not asked again for the attempts left.
+        maxAttempts: 3,
         gate: ({ command, caller }) => {
           decided.push([command.id, caller]);
           if (command.id === EXPORT) throw new Error("no grant for export");

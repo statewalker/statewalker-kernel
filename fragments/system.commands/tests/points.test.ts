@@ -64,6 +64,9 @@ describe("the commands point", () => {
           command(operation("no-output", undefined, undefined, idempotent), {
             exposures: { task: {} },
           }),
+          command(operation("string-output", undefined, { type: "string" }, idempotent), {
+            exposures: { task: {} },
+          }),
           command(operation("served", undefined, out, idempotent), { exposures: { task: {} } }),
         ],
       }),
@@ -71,7 +74,7 @@ describe("the commands point", () => {
     expect(bus.list().map((c) => c.id)).toEqual([`${NOTES}/served`]);
     expect(bus.get(`${NOTES}/served`)?.exposures).toEqual({ task: {} });
     const refused = refusals(kernel.slots);
-    expect(refused).toHaveLength(2);
+    expect(refused).toHaveLength(3);
     for (const r of refused) {
       expect(r).toMatchObject({ contributor: NOTES, point: "commands", code: "invalid-data" });
     }

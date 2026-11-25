@@ -20,6 +20,7 @@ import {
   queueApi,
   type SqlLike,
   serveSubscription,
+  subjectMatches,
   TaskQueue,
   type TaskQueueOptions,
 } from "@statewalker/shared-tasks";
@@ -29,6 +30,7 @@ import type {
   CommandBus,
   CommandContext,
   CommandEntry,
+  SystemCommands,
 } from "@statewalker/system.commands";
 
 /** The queue's project: one queue per host. */
@@ -74,6 +76,11 @@ function callerOf(sender: string): Caller | undefined {
 export interface SystemTasksOptions {
   /** system.commands' bus: the commands it serves, and its own. */
   readonly commands: CommandBus;
+  /**
+   * system.commands' `callAs`: runs a task's command for its publisher, the gate already asked,
+   * with the task's id as `callId`. The host passes it; fragments never get it.
+   */
+  readonly callAs: SystemCommands["callAs"];
   /** The kernel's slots: a fragment's removal removes its subscriptions. */
   readonly slots: Slots;
   /** Where the queue lives: the fragment DO's SQL storage, or SQLite in memory headless. */
@@ -116,7 +123,7 @@ export interface SystemTasks {
 }
 
 export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
-  const { commands, slots, gate } = options;
+  const { commands, callAs, slots, gate } = options;
   const onError = options.onError ?? (() => {});
   const waitMs = options.waitMs ?? 30_000;
   const queue = new TaskQueue(options.sql, options.queue ?? {});
@@ -133,6 +140,17 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     running.get(task)?.();
   }
 
+  /** Ends a task for good with an error: its reply (when it asks for one), then a cancel. */
+  function refuse(task: string, replyTo: string | undefined, job: string, error: unknown): void {
+    const message = String((error as Error)?.message ?? error);
+    try {
+      if (replyTo) queue.reply(P, task, TASKS_PRINCIPAL, { payload: { job, error: message } });
+      cancelTask(task, TASKS_PRINCIPAL, true);
+    } catch (e) {
+      onError(e);
+    }
+  }
+
   function processorOf(id: string): Processor {
     return {
       async run(lease, context) {
@@ -142,16 +160,25 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
         if (!caller) throw new Error(`a task from '${lease.task.sender}' runs no command`);
         const payload = lease.task.payload ?? {};
         if (!isUser(caller)) {
-          if (!gate) throw new Error(`forbidden: ${id}: no gate decides tasks from gated callers`);
-          await gate({
-            command: entry,
-            caller: caller as Exclude<Caller, { kind: "user" }>,
-            input: payload,
-          });
+          try {
+            if (!gate)
+              throw new Error(`forbidden: ${id}: no gate decides tasks from gated callers`);
+            await gate({
+              command: entry,
+              caller: caller as Exclude<Caller, { kind: "user" }>,
+              input: payload,
+            });
+          } catch (refusal) {
+            // A refusal is final: the publisher gets it now, and the task is not tried again
+            // (nor the user asked again for an approval).
+            refuse(lease.task.id, lease.task.reply_to, lease.id, refusal);
+            throw refusal;
+          }
         }
         running.set(lease.task.id, () => void context.progress(null).catch(() => {}));
         try {
-          return await commands.call(id, payload, {
+          // As its publisher: the handler sees the caller the gate let through.
+          return await callAs(caller, id, payload, {
             callId: lease.task.id,
             signal: context.signal,
             onProgress: (entry) => context.progress(entry),
@@ -206,10 +233,27 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     }
   }
 
-  /** A removed fragment's subscriptions go with it (their waiting tasks are done for them). */
+  /**
+   * A removed fragment's subscriptions go with it. Their waiting tasks are done for them: each
+   * one asking for a reply gets an error, so no publisher waits for a command that is gone.
+   */
   function removed(fragment: string): void {
     for (const sub of queue.listSubscriptions(P)) {
       if (sub.inbox || sub.owner !== TASKS_PRINCIPAL || fragmentOf(sub.name) !== fragment) continue;
+      for (;;) {
+        const waiting = queue.take(P, sub.name, own, { limit: 100 });
+        if (!waiting.length) break;
+        for (const task of waiting) {
+          if (!task.reply_to) continue;
+          try {
+            queue.reply(P, task.id, TASKS_PRINCIPAL, {
+              payload: { error: `${fragment} was removed: ${sub.name} serves no more tasks` },
+            });
+          } catch (error) {
+            onError(error);
+          }
+        }
+      }
       queue.unsubscribe(P, sub.name);
     }
   }
@@ -219,6 +263,11 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
       const sender = principalOf(context.caller);
       const task = { subject, ...(payload !== undefined ? { payload } : {}) };
       if (wait === false) return { task: queue.publish(P, task, sender).id };
+      // Nobody would answer: a waited publish no subscription serves is refused at once.
+      const served = queue
+        .listSubscriptions(P)
+        .some((s) => !s.inbox && subjectMatches(s.filter.subject, subject));
+      if (!served) throw new Error(`no subscription serves '${subject}'`);
       const inbox = queue.createInbox(P, sender);
       const reader: QueueReader = { id: sender, destinations: [] };
       try {

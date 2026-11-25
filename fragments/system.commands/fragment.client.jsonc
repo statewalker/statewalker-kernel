@@ -38,7 +38,12 @@
                               "required": ["schema"],
                               "properties": {
                                 "schema": {
-                                  "type": "object"
+                                  "required": ["type"],
+                                  "properties": {
+                                    "type": {
+                                      "const": "object"
+                                    }
+                                  }
                                 }
                               }
                             }

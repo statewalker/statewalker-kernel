@@ -38,7 +38,13 @@ const kernel = createKernel({
       fragment.id === SYSTEM_TASKS_ID ? tasks.activate(context) : activateClient(fragment, context),
   },
 });
-tasks = createSystemTasks({ commands: commands.bus, slots: kernel.slots, sql, gate: security.gate });
+tasks = createSystemTasks({
+  commands: commands.bus,
+  callAs: commands.callAs, // held by the host: runs a task's command for its publisher
+  slots: kernel.slots,
+  sql,
+  gate: security.gate,
+});
 
 // Run org.example.notes/export from the queue, and wait for its reply.
 const reply = await commands.bus.call("system.tasks/publish", {
@@ -71,7 +77,7 @@ A fragment exposes a command to the queue in its `fragment.client.jsonc`. The op
 | Export | What it is |
 | --- | --- |
 | `createSystemTasks(options)` | The fragment's code: `queue`, `module` (its commands' handlers) and `activate(context)`. |
-| `SystemTasksOptions` | `commands` (the bus), `slots` (the kernel's), `sql`, `gate`, and optionally `queue` (clock, ids, limits), `leaseMs`, `maxAttempts`, `waitMs`, `onError`. |
+| `SystemTasksOptions` | `commands` (the bus), `callAs` (system.commands', held by the host), `slots` (the kernel's), `sql`, `gate`, and optionally `queue` (clock, ids, limits), `leaseMs`, `maxAttempts`, `waitMs`, `onError`. |
 | `taskSubject(id)`, `subscriptionName(id)` | `fragments.<fragment-id>.<command-id>` and `<fragment-id>.<command-id>` for a command `<fragment-id>/<command-id>` (a subscription's name takes no `/`). |
 | `TASKS_PROJECT`, `TASKS_PRINCIPAL` | The queue's one project (`local`) and the principal system.tasks holds leases as (`system:tasks`). |
 | `SYSTEM_TASKS_ID`, `systemTasksArchive` | The fragment's id and its archive for `createKernel({ core })`. |
@@ -80,18 +86,18 @@ A fragment exposes a command to the queue in its `fragment.client.jsonc`. The op
 
 | Command | Does |
 | --- | --- |
-| `system.tasks/publish` `{ subject, payload?, wait? }` | Publishes a task. By default it waits for the reply: `{ task, job, result }`, or `error`, or `cancelled`. With `wait: false` it returns `{ task }` at once. Aborting the call cancels the task. Offered to agents as a `write` tool. |
+| `system.tasks/publish` `{ subject, payload?, wait? }` | Publishes a task. By default it waits for the reply: `{ task, job, result }`, or `error`, or `cancelled`; a waited publish that no subscription serves is refused at once. With `wait: false` it returns `{ task }` at once. Aborting the call cancels the task. Offered to agents as a `write` tool. |
 | `system.tasks/cancel` `{ task }` | Cancels a task. A waiting one is removed. A running one stops at once on this host (its runner renews, the queue answers "cancelled", the handler's `signal` aborts), with no retry and no dead letter. |
 | `system.tasks/job` `{ job, after?, wait_ms? }` | Reads a job log: its entries after the stamp `after`, waiting up to `wait_ms` (at most 60 s) for one. The last entry of an ended job records `done`, `error` or `cancelled`. |
 
 **Behaviour**
 
 - **One subscription per `task`-exposed command**, `<fragment-id>.<command-id>` on `fragments.<fragment-id>.<command-id>`, created when the command reaches the bus. A runner serves it while the command is on the bus.
-- **A disabled fragment's commands leave the bus,** and their runners stop. The subscriptions stay, so tasks wait for the fragment's return and are served then. Removing the fragment removes its subscriptions.
+- **A disabled fragment's commands leave the bus,** and their runners stop. The subscriptions stay, so tasks wait for the fragment's return and are served then. Removing the fragment removes its subscriptions, and its waiting tasks' publishers get an error reply.
 - **Retries and dead letters** are the queue's. A handler that throws is retried up to the subscription's attempts (3 by default); the last failure replies with the error and goes to the dead letters.
 - **Rights.**
   - Each task carries its publisher: `user` for the user and system code, `capability:<c>` for a caller that went through system.commands' gate.
-  - A task a gated caller published runs only if the gate lets that caller run the target command when the task runs, as a direct call would be decided. Without a gate it is refused.
+  - A task a gated caller published runs only if the gate lets that caller run the target command when the task runs, as a direct call would be decided. It then runs as that caller (`callAs`), so its handler sees the capability, not the user. A refusal is final: the publisher gets the error, and the task is not tried again. Without a gate it is refused.
   - The user cancels any task and reads any job log. A gated caller cancels only its own tasks and reads only their job logs.
 
 ## Related

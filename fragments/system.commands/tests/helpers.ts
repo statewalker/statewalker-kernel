@@ -94,5 +94,5 @@ export async function platform(
   const installed = await kernel.install(archives);
   for (const f of installed) await kernel.enable(f.id);
   await kernel.activate("client");
-  return { kernel, bus: system.bus, errors };
+  return { kernel, bus: system.bus, callAs: system.callAs, errors };
 }

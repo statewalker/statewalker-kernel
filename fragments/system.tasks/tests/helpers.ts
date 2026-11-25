@@ -101,6 +101,7 @@ export async function platform(
   });
   tasks = createSystemTasks({
     commands: commands.bus,
+    callAs: commands.callAs,
     slots: kernel.slots,
     sql,
     waitMs: 50,

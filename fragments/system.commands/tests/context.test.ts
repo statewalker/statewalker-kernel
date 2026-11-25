@@ -160,6 +160,25 @@ describe("the call context", () => {
     expect(callers).toEqual([{ kind: "user" }, { capability: "agent-1" }]);
   });
 
+  it("lets the host run a call already decided as a gated caller, with its own call id", async () => {
+    const seen: unknown[] = [];
+    let gated = 0;
+    const { callAs } = await withHandler(
+      (_input, context) => {
+        seen.push([context.caller, context.callId]);
+        return {};
+      },
+      {
+        gate: () => {
+          gated++;
+        },
+      },
+    );
+    await callAs({ capability: "agent-1" }, `${NOTES}/ping`, {}, { callId: "task-7" });
+    expect(seen).toEqual([[{ capability: "agent-1" }, "task-7"]]);
+    expect(gated).toBe(0);
+  });
+
   it("ignores progress when the caller does not listen", async () => {
     const { bus } = await withHandler(async (_input, context) => {
       await context.progress({ ignored: true });

@@ -48,7 +48,9 @@ export const commandSchema = {
                     properties: {
                       "application/json": {
                         required: ["schema"],
-                        properties: { schema: { type: "object" } },
+                        properties: {
+                          schema: { required: ["type"], properties: { type: { const: "object" } } },
+                        },
                       },
                     },
                   },
