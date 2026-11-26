@@ -173,7 +173,8 @@ describe("the subscriptions of task-exposed commands", () => {
     await until(() => ran.length === 1);
     expect(ran).toEqual([{ n: 1 }]);
     await kernel.remove(NOTES);
-    expect(tasks.queue.listSubscriptions("local").map((s) => s.name)).not.toContain(name);
+    // The subscription leaves with it, once the queue (in the DO, possibly) has answered.
+    await until(() => !tasks.queue.listSubscriptions("local").some((s) => s.name === name));
   });
 });
 

@@ -16,8 +16,6 @@ import {
 import type { Slots } from "@statewalker/shared-slots";
 import {
   type Processor,
-  type QueueReader,
-  queueApi,
   type SqlLike,
   serveSubscription,
   subjectMatches,
@@ -32,6 +30,7 @@ import type {
   CommandEntry,
   SystemCommands,
 } from "@statewalker/system.commands";
+import { localQueueStore, type QueueReaderData, type QueueStore } from "./store.js";
 
 /** The queue's project: one queue per host. */
 export const TASKS_PROJECT = "local";
@@ -83,8 +82,12 @@ export interface SystemTasksOptions {
   readonly callAs: SystemCommands["callAs"];
   /** The kernel's slots: a fragment's removal removes its subscriptions. */
   readonly slots: Slots;
-  /** Where the queue lives: the fragment DO's SQL storage, or SQLite in memory headless. */
-  readonly sql: SqlLike;
+  /**
+   * Where the queue lives: `store`, the fragment DO's (`remoteQueueStore`, through its server
+   * half), or a queue over `sql` in this process (SQLite in memory headless). One of them.
+   */
+  readonly store?: QueueStore;
+  readonly sql?: SqlLike;
   /** system.security's gate: decides, when they run, the tasks gated callers published. */
   readonly gate?: CallGate;
   /** The queue's clock, ids and limits. */
@@ -105,7 +108,10 @@ export interface SystemTasksModule {
     input: { subject: string; payload?: unknown; wait?: boolean },
     context: CommandContext,
   ) => Promise<Record<string, unknown>>;
-  readonly cancel: (input: { task: string }, context: CommandContext) => { cancelled: true };
+  readonly cancel: (
+    input: { task: string },
+    context: CommandContext,
+  ) => Promise<{ cancelled: true }>;
   readonly job: (
     input: { job: string; after?: number; wait_ms?: number },
     context: CommandContext,
@@ -115,7 +121,9 @@ export interface SystemTasksModule {
 
 /** The system.tasks fragment's code: its queue, its module, and its client activator body. */
 export interface SystemTasks {
-  readonly queue: TaskQueue;
+  /** The queue, when it is in this process (`sql`); none when it is the fragment DO's. */
+  readonly queue: TaskQueue | undefined;
+  readonly store: QueueStore;
   /** The fragment's module: what its own extensions' references (`./index.js`) resolve to. */
   readonly module: SystemTasksModule;
   /** Activate the client aspect: serve the task-exposed commands. Returns the cleanup. */
@@ -126,26 +134,35 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   const { commands, callAs, slots, gate } = options;
   const onError = options.onError ?? (() => {});
   const waitMs = options.waitMs ?? 30_000;
-  const queue = new TaskQueue(options.sql, options.queue ?? {});
+  const queue = options.sql ? new TaskQueue(options.sql, options.queue ?? {}) : undefined;
+  const chosen = options.store ?? (queue ? localQueueStore(queue) : undefined);
+  if (!chosen) throw new Error("system.tasks needs its queue: a store, or sql");
+  const store: QueueStore = chosen;
   const P = TASKS_PROJECT;
-  const own: QueueReader = { id: TASKS_PRINCIPAL, destinations: [], admin: true };
-  const api = queueApi(queue, own);
+  const own: QueueReaderData = { id: TASKS_PRINCIPAL, destinations: [], admin: true };
+  const api = store.api(own);
   const runners = new Map<string, AbortController>();
   // The running tasks of this host: a cancel makes each one's runner renew at once, so the
   // queue's "cancelled" reaches its handler without waiting for the next renew.
   const running = new Map<string, () => void>();
 
-  function cancelTask(task: string, by: string, admin: boolean): void {
-    queue.cancel(P, task, by, { admin });
+  async function cancelTask(task: string, by: string, admin: boolean): Promise<void> {
+    await store.cancel(P, task, by, { admin });
     running.get(task)?.();
   }
 
   /** Ends a task for good with an error: its reply (when it asks for one), then a cancel. */
-  function refuse(task: string, replyTo: string | undefined, job: string, error: unknown): void {
+  async function refuse(
+    task: string,
+    replyTo: string | undefined,
+    job: string,
+    error: unknown,
+  ): Promise<void> {
     const message = String((error as Error)?.message ?? error);
     try {
-      if (replyTo) queue.reply(P, task, TASKS_PRINCIPAL, { payload: { job, error: message } });
-      cancelTask(task, TASKS_PRINCIPAL, true);
+      if (replyTo)
+        await store.reply(P, task, TASKS_PRINCIPAL, { payload: { job, error: message } });
+      await cancelTask(task, TASKS_PRINCIPAL, true);
     } catch (e) {
       onError(e);
     }
@@ -171,7 +188,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           } catch (refusal) {
             // A refusal is final: the publisher gets it now, and the task is not tried again
             // (nor the user asked again for an approval).
-            refuse(lease.task.id, lease.task.reply_to, lease.id, refusal);
+            await refuse(lease.task.id, lease.task.reply_to, lease.id, refusal);
             throw refusal;
           }
         }
@@ -190,10 +207,10 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     };
   }
 
-  function serve(entry: CommandEntry): void {
+  async function serve(entry: CommandEntry, stop: AbortController): Promise<void> {
     const name = subscriptionName(entry.id);
-    if (!queue.listSubscriptions(P).some((s) => s.name === name))
-      queue.subscribe(
+    if (!(await store.listSubscriptions(P)).some((s) => s.name === name))
+      await store.subscribe(
         P,
         {
           name,
@@ -203,16 +220,15 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
         },
         TASKS_PRINCIPAL,
       );
-    const stop = new AbortController();
-    runners.set(entry.id, stop);
-    serveSubscription(api, {
+    if (stop.signal.aborted) return;
+    await serveSubscription(api, {
       project: P,
       subscription: name,
       processor: processorOf(entry.id),
       signal: stop.signal,
       waitMs,
       onError,
-    }).catch(onError);
+    });
   }
 
   /** Serve exactly the live task-exposed commands; a runner stops, its subscription stays. */
@@ -225,11 +241,14 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     }
     for (const [id, entry] of live) {
       if (runners.has(id)) continue;
-      try {
-        serve(entry);
-      } catch (error) {
+      const stop = new AbortController();
+      runners.set(id, stop);
+      serve(entry, stop).catch((error: unknown) => {
+        // A runner that could not start (its store unreachable) is started again by the next
+        // change of the commands, not left registered as running.
+        if (runners.get(id) === stop) runners.delete(id);
         onError(error);
-      }
+      });
     }
   }
 
@@ -237,16 +256,16 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
    * A removed fragment's subscriptions go with it. Their waiting tasks are done for them: each
    * one asking for a reply gets an error, so no publisher waits for a command that is gone.
    */
-  function removed(fragment: string): void {
-    for (const sub of queue.listSubscriptions(P)) {
+  async function removed(fragment: string): Promise<void> {
+    for (const sub of await store.listSubscriptions(P)) {
       if (sub.inbox || sub.owner !== TASKS_PRINCIPAL || fragmentOf(sub.name) !== fragment) continue;
       for (;;) {
-        const waiting = queue.take(P, sub.name, own, { limit: 100 });
+        const waiting = await store.take(P, sub.name, own, { limit: 100 });
         if (!waiting.length) break;
         for (const task of waiting) {
           if (!task.reply_to) continue;
           try {
-            queue.reply(P, task.id, TASKS_PRINCIPAL, {
+            await store.reply(P, task.id, TASKS_PRINCIPAL, {
               payload: { error: `${fragment} was removed: ${sub.name} serves no more tasks` },
             });
           } catch (error) {
@@ -254,7 +273,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           }
         }
       }
-      queue.unsubscribe(P, sub.name);
+      await store.unsubscribe(P, sub.name);
     }
   }
 
@@ -262,16 +281,16 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     async publish({ subject, payload, wait }, context) {
       const sender = principalOf(context.caller);
       const task = { subject, ...(payload !== undefined ? { payload } : {}) };
-      if (wait === false) return { task: queue.publish(P, task, sender).id };
+      if (wait === false) return { task: (await store.publish(P, task, sender)).id };
       // Nobody would answer: a waited publish no subscription serves is refused at once.
-      const served = queue
-        .listSubscriptions(P)
-        .some((s) => !s.inbox && subjectMatches(s.filter.subject, subject));
+      const served = (await store.listSubscriptions(P)).some(
+        (s) => !s.inbox && subjectMatches(s.filter.subject, subject),
+      );
       if (!served) throw new Error(`no subscription serves '${subject}'`);
-      const inbox = queue.createInbox(P, sender);
-      const reader: QueueReader = { id: sender, destinations: [] };
+      const inbox = await store.createInbox(P, sender);
+      const reader: QueueReaderData = { id: sender, destinations: [] };
       try {
-        const published = queue.publish(
+        const published = await store.publish(
           P,
           {
             ...task,
@@ -284,34 +303,34 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           if (context.signal.aborted) resolve();
           else context.signal.addEventListener("abort", () => resolve(), { once: true });
         });
-        let seq = queue.changeSeq(P);
+        let seq = await store.changeSeq(P);
         for (;;) {
           if (context.signal.aborted) {
             // The caller gave up: the task is cancelled, a running handler stops.
             try {
-              cancelTask(published.id, TASKS_PRINCIPAL, true);
+              await cancelTask(published.id, TASKS_PRINCIPAL, true);
             } catch (error) {
               onError(error);
             }
             throw context.signal.reason;
           }
-          const [reply] = queue.take(P, inbox.name, reader);
+          const [reply] = await store.take(P, inbox.name, reader);
           if (reply) return { task: published.id, ...(reply.payload as Record<string, unknown>) };
-          seq = await Promise.race([queue.waitChange(P, seq, waitMs), aborted.then(() => seq)]);
+          seq = await Promise.race([store.waitChange(P, seq, waitMs), aborted.then(() => seq)]);
         }
       } finally {
-        queue.unsubscribe(P, inbox.name);
+        await store.unsubscribe(P, inbox.name).catch(onError);
       }
     },
-    cancel({ task }, context) {
+    async cancel({ task }, context) {
       // The user cancels any task; a gated caller only its own.
-      cancelTask(task, principalOf(context.caller), isUser(context.caller));
+      await cancelTask(task, principalOf(context.caller), isUser(context.caller));
       return { cancelled: true };
     },
     job({ job, after, wait_ms }, context) {
       // The user reads any job (as its holder); a gated caller those of its own tasks.
       const reader = isUser(context.caller) ? TASKS_PRINCIPAL : principalOf(context.caller);
-      return queue.waitJob(P, job, reader, {
+      return store.waitJob(P, job, reader, {
         ...(after !== undefined ? { after } : {}),
         wait_ms: Math.min(Math.max(Number(wait_ms ?? 0), 0), MAX_WAIT_MS),
       });
@@ -320,6 +339,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
 
   return {
     queue,
+    store,
     module,
     activate() {
       const stopCommands = commands.observe(sync);
@@ -328,11 +348,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
         const now = new Set(entries.keys());
         for (const id of installed) {
           if (now.has(id)) continue;
-          try {
-            removed(id);
-          } catch (error) {
-            onError(error);
-          }
+          removed(id).catch(onError);
         }
         installed = now;
       });
