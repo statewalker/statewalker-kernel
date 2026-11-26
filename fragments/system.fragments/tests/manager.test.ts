@@ -214,7 +214,9 @@ describe("inspect: what the user consents to", () => {
       "org.example.nowhere",
     );
     await expect(manager.install(summary)).rejects.toMatchObject({
-      refusals: expect.arrayContaining([expect.objectContaining({ code: "incompatible-platform" })]),
+      refusals: expect.arrayContaining([
+        expect.objectContaining({ code: "incompatible-platform" }),
+      ]),
     });
     expect(kernel.slots.getSnapshot(installedFragmentsSlot).has("org.example.future")).toBe(false);
   });

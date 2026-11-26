@@ -9,18 +9,18 @@
 //   list()                      the app's fragments: state, failures with their error, dependents
 //   enable / disable / retry / remove(id, { withData })
 import {
+  activeFragmentsSlot,
   archiveHash,
   type ExtensionDeclaration,
   enabledFragmentsSlot,
-  FragmentInstallError,
   type FragmentFiles,
+  FragmentInstallError,
   type FragmentManifest,
   failedFragmentsSlot,
   type InstalledFragment,
   installedFragmentsSlot,
   type Kernel,
   type PlatformInfo,
-  activeFragmentsSlot,
   type Refusal,
   readAspectFiles,
   readManifest,
@@ -300,8 +300,7 @@ export function createFragmentManager(options: {
         if (failure)
           failures.push({
             aspect,
-            message:
-              failure.error instanceof Error ? failure.error.message : String(failure.error),
+            message: failure.error instanceof Error ? failure.error.message : String(failure.error),
           });
         if (kernel.slots.getSnapshot(activeFragmentsSlot(aspect)).has(fragment.id)) active = true;
       }
