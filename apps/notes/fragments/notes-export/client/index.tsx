@@ -209,52 +209,50 @@ async function follow(current: Run): Promise<void> {
 
 /** One step of following a run: its latest job, then its log after the last stamp. */
 async function step(current: Run): Promise<void> {
-  {
-    const { jobs } = await commands.call<{ jobs: { job: string; reply?: unknown }[] }>(
-      "system.tasks/jobs",
-      { task: current.task },
-    );
-    const latest = jobs.at(-1);
-    if (!latest) {
-      await new Promise((r) => setTimeout(r, 300));
-      return;
-    }
-    if (current.job !== latest.job) {
-      // A new attempt (the last one's runner gone with its page): its log starts afresh.
-      if (current.job !== undefined) current.log.push("attempt restarted");
-      current.job = latest.job;
-      delete current.after;
-    }
-    const log = await commands.call<{
-      entries: { at: number; progress: unknown; outcome?: string }[];
-    }>("system.tasks/job", {
-      job: current.job,
-      ...(current.after !== undefined ? { after: current.after } : {}),
-      wait_ms: 5_000,
-    });
-    for (const entry of log.entries) {
-      current.after = entry.at;
-      const p = entry.progress as { done?: number; total?: number } | null;
-      if (p && typeof p.done === "number" && typeof p.total === "number") {
-        current.state = "running";
-        current.log.push(`${p.done} of ${p.total} notes`);
-      }
-      if (entry.outcome === "done" || entry.outcome === "error" || entry.outcome === "cancelled")
-        current.state = entry.outcome;
-    }
-    if (ended(current)) {
-      // The reply: the job index has it once the runner has recorded it.
-      for (let i = 0; i < 20 && current.reply === undefined; i++) {
-        const { jobs: now } = await commands.call<{
-          jobs: { job: string; reply?: unknown }[];
-        }>("system.tasks/jobs", { task: current.task });
-        current.reply = replyText(now.find((j) => j.job === current.job)?.reply);
-        if (current.reply === undefined) await new Promise((r) => setTimeout(r, 200));
-      }
-      if (current.state === "done") await refresh();
-    }
-    saveRun();
+  const { jobs } = await commands.call<{ jobs: { job: string; reply?: unknown }[] }>(
+    "system.tasks/jobs",
+    { task: current.task },
+  );
+  const latest = jobs.at(-1);
+  if (!latest) {
+    await new Promise((r) => setTimeout(r, 300));
+    return;
   }
+  if (current.job !== latest.job) {
+    // A new attempt (the last one's runner gone with its page): its log starts afresh.
+    if (current.job !== undefined) current.log.push("attempt restarted");
+    current.job = latest.job;
+    delete current.after;
+  }
+  const log = await commands.call<{
+    entries: { at: number; progress: unknown; outcome?: string }[];
+  }>("system.tasks/job", {
+    job: current.job,
+    ...(current.after !== undefined ? { after: current.after } : {}),
+    wait_ms: 5_000,
+  });
+  for (const entry of log.entries) {
+    current.after = entry.at;
+    const p = entry.progress as { done?: number; total?: number } | null;
+    if (p && typeof p.done === "number" && typeof p.total === "number") {
+      current.state = "running";
+      current.log.push(`${p.done} of ${p.total} notes`);
+    }
+    if (entry.outcome === "done" || entry.outcome === "error" || entry.outcome === "cancelled")
+      current.state = entry.outcome;
+  }
+  if (ended(current)) {
+    // The reply: the job index has it once the runner has recorded it.
+    for (let i = 0; i < 20 && current.reply === undefined; i++) {
+      const { jobs: now } = await commands.call<{
+        jobs: { job: string; reply?: unknown }[];
+      }>("system.tasks/jobs", { task: current.task });
+      current.reply = replyText(now.find((j) => j.job === current.job)?.reply);
+      if (current.reply === undefined) await new Promise((r) => setTimeout(r, 200));
+    }
+    if (current.state === "done") await refresh();
+  }
+  saveRun();
 }
 
 /** Start `export-slowly` from the queue, and follow it. */

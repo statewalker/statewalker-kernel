@@ -9,11 +9,14 @@ The notes demo of the platform (spec statewalker/statewalker-root#215, user stor
 
 Notes also opens an extension point in its client aspect, `org.statewalker.notes/actions`. Each extension's `{ title }` becomes a button in the notes view. The button calls the extension's reference with `{ notes: [{ text }] }` and shows the `{ message }` it answers. The view reads the point through the client API's `points`, which the shell backs with the kernel's owner context while notes' client aspect is active. Notes also has a `list-notes` command.
 
+Where server halves run, the shell also installs `system.tasks` as a core fragment, its queue in its own fragment DO (statewalker/statewalker-root#409). `scripts/core-fragments.mjs` lists the core fragments with a server half. `build.mjs` bundles them for the shard pool, and `launch.mjs` runs them on Node and wrangler beside the app's own. The page's runners hold 10 s leases, so a task whose page was closed or reloaded runs again within seconds.
+
 `notes-export` is not in the baseline. The user installs it from the app's catalog (`archives/index.json`) in system.fragments' Fragments view, after the consent screen (statewalker/statewalker-root#261). It requires notes, and contributes:
 - an "Export" action on notes' `actions` point;
 - an `export-notes` command, offered to agents as a write;
 - an entry in the Notes menu;
-- an Exports view with its activity bar entry.
+- an Exports view with its activity bar entry;
+- `export-slowly`, exposed as a task: the notes one by one (`delay_ms` each, 500 ms by default) with progress after each, deduplicated by the task's id in its DO. The Exports view starts it ("Export as a task"), follows its job log after the last stamp it showed (kept over reloads), shows the reply, and cancels it.
 
 Its server half is a fragment DO that keeps every export. In the `browser` launch configuration, an app fragment with a server half is activated only once that half loads in the shard pool. If it cannot load, the fragment is failed with the reason, and a retry tries again, starting the pool afresh when its start failed (`BootOptions.serverHalf`). The pool starts before client activation (`BootOptions.started`), and the wait is limited to 30 s.
 
@@ -106,6 +109,12 @@ From the repository root, after `pnpm install`:
 | A note's Copy button puts its text on the clipboard (read back with `navigator.clipboard.readText`); `host.provider("clipboard")` is `undefined` | A fragment's view reaches the clipboard through the client API's `host`; no fragment contributes one, so the host's own (the browser's) answers |
 | Opening the surfaces view writes `#?views=...` with both views; after a reload both are open again, in that order | The shell keeps the open views in the URL state (`src/url-layout.ts`) and restores them from it |
 | Loading `#?views=org.statewalker.surfaces%2Fsurfaces` opens only that view, not the default layout; changing the hash to name the notes view opens it and closes the other | A link restores a view; a navigation to another URL state reaches the layout |
+
+`tests/tasks.e2e.test.ts` (seam 2, on browser, node and wrangler) covers #409:
+- the task, started from the Exports view, is followed over a reload with no log entry read twice, and its reply shows;
+- its export is made once;
+- a cancelled run ends as cancelled;
+- a task waiting while its fragment is disabled is processed after a restart of the host (Node and wrangler: the same data and port; browser: every tab closed).
 
 `tests/notes-export.e2e.test.ts` (seam 2, launch `browser`) covers #261's acceptance criteria for notes-export:
 - the consent screen lists everything it asks for, and declining installs nothing;
