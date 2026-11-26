@@ -26,7 +26,7 @@ pnpm add @statewalker/kernel.core
 | `installedFragmentsSlot`, `enabledFragmentsSlot`, `resolvedFragmentsSlot`, `activeFragmentsSlot(aspect)`, `failedFragmentsSlot(aspect)`, `FragmentFailure`, `waitingFragmentsSlot(aspect)`, `FragmentWaiting` | The keyed slots `system:fragments:installed`, `:enabled`, `:resolved`, `:active:<aspect>`, `:failed:<aspect>`, `:waiting:<aspect>`. |
 | `FragmentInstallError`, `Refusal`, `RefusalCode`, `FragmentLifecycleError`, `FragmentCascadeError`, `FragmentRollbackError`, `FragmentDeletesClassesError`, `FragmentMigrationError`, `FragmentMigrationsPendingError` | Why an install, an upgrade or a lifecycle step was refused; a cascade refused for want of confirmation lists the dependents, an upgrade deleting classes lists them, a rollback after migrations lists those, a fragment whose data lacks migrations lists them. |
 | `fragmentManifestSchemaV1`, `FragmentManifest`, `ASPECTS`, `MANIFEST_FILE`, `parseJsonc` | The manifest, its schema and its parser. |
-| `fragmentAspectSchemaV1`, `AspectManifest`, `aspectFileOf` | The aspect files (`fragment.<aspect>.jsonc`) and their schema. |
+| `fragmentAspectSchemaV1`, `AspectManifest`, `aspectFileOf` | The aspect files (`fragment.<aspect>.jsonc`) and their schema. A module reference, like an aspect's `dir`, must be a path inside the fragment (`RELATIVE_PATH`: no URL, no absolute path, no `..`), so a host never loads an archive's code from elsewhere. |
 | `isFragmentId`, `isSystemId`, `workerNameOf`, `SYSTEM_PREFIX` | Fragment ids and the server half's Worker name. |
 | `@statewalker/kernel.core/schemas/fragment.v1.schema.json`, `.../fragment-aspect.v1.schema.json` | The schema files, for `$schema`. |
 

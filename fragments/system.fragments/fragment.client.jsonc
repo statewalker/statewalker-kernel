@@ -1,0 +1,27 @@
+// The client aspect of system.fragments: the fragment manager's view with its activity bar entry,
+// on system.workbench's points. Kept equal to src/archive.ts by tests/manager.test.ts.
+{
+  "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "views",
+      "data": {
+        "id": "fragments",
+        "title": "Fragments"
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "FragmentsView"
+      }
+    },
+    {
+      "point": "activitybar",
+      "data": {
+        "id": "fragments",
+        "title": "Fragments",
+        "order": 900,
+        "view": "system.fragments/fragments"
+      }
+    }
+  ]
+}

@@ -9,7 +9,7 @@ The core fragment that manages the app's fragments while the app runs. Its model
 - it lists the installed fragments with their states;
 - it enables, disables, retries and removes them.
 
-The kernel does the work; the manager says what will happen and why the kernel would refuse. It is a private workspace package, `@statewalker/system.fragments`, written without React. Its client half (the consent dialog and the manager view) comes in a later slice of statewalker/statewalker-root#261.
+The kernel does the work; the manager says what will happen and why the kernel would refuse. Its client half is the manager view: the installed fragments with their actions, the catalog's fragments, an archive from a file, and the consent dialog every install passes through. It is a private workspace package, `@statewalker/system.fragments`, in two halves: `src/` (React-free, tested in Node) and `client/` (React).
 
 ## Why it exists
 
@@ -33,7 +33,11 @@ manager.list(); // [{ id, version, state: "active", failures: [], dependents: []
 | `FragmentManager.inspect(files, { source })` → `ConsentSummary` | What the user agrees to. It gives the archive's identity, its `archive` hash, `platform { range, fits }`, `bindings` (offered or not), `requires`, `server`, `agentPlugins`, `secrets` and `exposures`. Each entry of `requires` is installed (with `enabled`), proposed from the catalog, or missing. `refusals` holds every reason the kernel would refuse the batch (`kernel.check`), and `installable` is true when there are none. `proposed` holds a full summary for each proposed requirement, listed after its own requirements. `files` is a frozen copy of the archive's files. |
 | `FragmentManager.install(summary)` | Inspects again and installs what was shown, all or nothing, then enables it, requirements first. If an archive is not the one inspected (`archive` hashes differ, or the catalog now offers another), it throws `ConsentMismatchError`. If the kernel refuses, it throws the kernel's `FragmentInstallError`. Either way, nothing is installed. |
 | `FragmentManager.list()` → `FragmentEntry[]` | The app's fragments (no core fragment), each with its `state`, its `failures` (aspect and error message) and its enabled `dependents`. `state` is one of `active`, `failed`, `unresolved`, `disabled` or `installed`. |
-| `enable(id)`, `disable(id, { cascade? })`, `retry(id)`, `remove(id, { withData? })` | The kernel's operations. A cascading disable leaves dependents enabled but unresolved. Core fragments are refused. |
+| `enable(id)`, `disable(id, { cascade? })`, `retry(id)`, `remove(id, { withData?, cascade? })` | The kernel's operations. A cascading disable leaves dependents enabled but unresolved. Core fragments are refused. |
+| `available()`, `observe(listener)` | The catalog's fragments not installed (`catalog.list`), and a listener called on every lifecycle change. |
+| `ConsentMismatchError` | `install` was given a summary whose archives are not the ones inspected. |
+| `./client`: `FragmentsView({ manager })`, `fragmentsModule(manager)`, `readArchiveFile(text)` | The manager view (`data-testid="fragments-view"`). Each installed fragment shows its state and failures, with retry, enable or disable, remove, and remove with data. Dependents are listed before a cascade, and a removal is confirmed. It also lists the catalog's fragments and offers "Install from a file", where an archive is a JSON object of file names to texts. Every install opens the consent dialog (`consent-dialog`), whose rows include `consent-source`, `consent-content-hash` and `consent-requires`. Refused installs show their reasons, and declining changes nothing. |
+| `./client.css` | The view's styles, plain CSS over the shadcn tokens. |
 
 ## Examples
 

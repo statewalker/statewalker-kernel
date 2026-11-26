@@ -2,7 +2,7 @@
 // localStorage; system.commands; system.workbench, its chrome running commands on system.commands'
 // bus and keeping its layouts per device mode in the profile; system.a2ui; system.appearance;
 // system.host with the browser's host services as defaults; system.settings, every fragment's
-// settings in one view, the values in the profile), the client API (commands, dialogs,
+// settings in one view, the values in the profile; system.fragments, the fragment manager), the client API (commands, dialogs,
 // notifications, host services, settings) and the A2UI model installed, the vault (system.profile:
 // secrets encrypted in the profile, a remembered key in IndexedDB, passkeys through WebAuthn PRF)
 // loaded, and the app's fragments fetched,
@@ -46,6 +46,13 @@ import {
   SYSTEM_COMMANDS_ID,
   systemCommandsArchive,
 } from "@statewalker/system.commands";
+import {
+  createFragmentManager,
+  type FragmentCatalog,
+  type FragmentManager,
+  SYSTEM_FRAGMENTS_ID,
+  systemFragmentsArchive,
+} from "@statewalker/system.fragments";
 import {
   createSystemHost,
   SYSTEM_HOST_ID,
@@ -103,6 +110,8 @@ export interface Platform {
   readonly settings: Settings;
   /** The interface language and every fragment's texts in it (system.l10n). */
   readonly l10n: L10n;
+  /** system.fragments: the app's fragments installed with the user's consent, and their lifecycle. */
+  readonly fragments: FragmentManager;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
   /** Whether this run started from a fresh profile (and installed the baseline). */
@@ -158,6 +167,11 @@ export interface BootOptions {
    * the client API's `servers`. None: no server halves, the client halves keep their own state.
    */
   readonly servers?: ClientServersHost;
+  /**
+   * "Remove with data" for a fragment's server half: its DO storage deleted where the launch
+   * configuration runs it. None: server halves keep their data (a server host's own concern).
+   */
+  readonly removeServerData?: (id: string) => Promise<void>;
 }
 
 /** `load` run once, its promise shared. */
@@ -296,7 +310,34 @@ export function applicationLayouts(definition: ApplicationDefinition): LayoutCon
   return [{ zones: { center: [...definition.layout.open] } }];
 }
 
-export async function boot({ base, locale, profile, servers }: BootOptions): Promise<Platform> {
+/** The app's installable archives: `archives/index.json`, each fetched as the boot fetches it. */
+function archiveCatalog(base: URL): FragmentCatalog {
+  return {
+    async list() {
+      const response = await fetch(new URL("archives/index.json", base));
+      if (!response.ok) return [];
+      return ((await response.json()) as { fragments?: string[] }).fragments ?? [];
+    },
+    async load(id) {
+      try {
+        return {
+          files: await fetchArchive(base, id),
+          source: new URL(`archives/${id}/`, base).href,
+        };
+      } catch {
+        return undefined;
+      }
+    },
+  };
+}
+
+export async function boot({
+  base,
+  locale,
+  profile,
+  servers,
+  removeServerData,
+}: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
   const system = createSystemProfile({
     ...(profile ? {} : { storage: localStorage, prefix: `${definition.id}:` }),
@@ -345,6 +386,11 @@ export async function boot({ base, locale, profile, servers }: BootOptions): Pro
       const client = await import("@statewalker/system.settings/client");
       return client.settingsModule(settings.settings);
     }),
+    // The manager view is React: its module loads with the view, bound to the manager.
+    [SYSTEM_FRAGMENTS_ID]: once(async () => {
+      const client = await import("@statewalker/system.fragments/client");
+      return client.fragmentsModule(fragments);
+    }),
   };
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
@@ -357,19 +403,30 @@ export async function boot({ base, locale, profile, servers }: BootOptions): Pro
       systemHostArchive,
       systemSettingsArchive,
       systemL10nArchive,
+      systemFragmentsArchive,
     ],
     profile: userProfile,
     baseline: definition.baseline,
     onError: (id, aspect, error) => console.error(`[kernel] ${id} (${aspect}):`, error),
     // "Remove with data": the fragment's settings values leave the profile. A plain removal
     // keeps them, so a reinstall finds them.
-    removeData: (fragment) => settings.removeData(fragment.id),
+    removeData: async (fragment) => {
+      settings.removeData(fragment.id);
+      if (fragment.manifest.aspects.server) await removeServerData?.(fragment.id);
+    },
     resolvers: {
       // A client module export, from the fragment's client folder.
       module: async (ref, { contributor }) => {
         const core = coreModules[contributor.id];
         if (core) return (await core())[ref.export ?? "default"];
-        const url = new URL(ref.module, aspectUrl(base, contributor, "client")).href;
+        const folder = aspectUrl(base, contributor, "client").href;
+        const url = new URL(ref.module, folder).href;
+        // The kernel refuses references that are not paths inside the aspect folder; the shell
+        // loads nothing from anywhere else whatever reaches it (an archive is not this origin's).
+        if (!url.startsWith(folder) || !url.startsWith(new URL("archives/", base).href))
+          throw new Error(
+            `${contributor.id}: "${ref.module}" is not a module of its client folder`,
+          );
         const module = (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
         return module[ref.export ?? "default"];
       },
@@ -385,6 +442,8 @@ export async function boot({ base, locale, profile, servers }: BootOptions): Pro
         if (fragment.id === SYSTEM_HOST_ID) return host.activate(context);
         if (fragment.id === SYSTEM_SETTINGS_ID) return settings.activate(context);
         if (fragment.id === SYSTEM_L10N_ID) return l10n.activate(context);
+        // Its view is all it brings; the stylesheet is the shell's (main.tsx).
+        if (fragment.id === SYSTEM_FRAGMENTS_ID) return () => {};
         return activateClient(base, fragment);
       },
     },
@@ -397,6 +456,11 @@ export async function boot({ base, locale, profile, servers }: BootOptions): Pro
     settings: settings.settings,
     l10n: l10n.l10n,
     ...(servers ? { servers } : {}),
+  });
+  const fragments = createFragmentManager({
+    kernel,
+    platform: { version: platform.version, bindings: [] },
+    catalog: archiveCatalog(base),
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();
@@ -415,6 +479,7 @@ export async function boot({ base, locale, profile, servers }: BootOptions): Pro
     appearance: appearance.appearance,
     settings: settings.settings,
     l10n: l10n.l10n,
+    fragments,
     application: definition,
     firstRun,
     slots: {

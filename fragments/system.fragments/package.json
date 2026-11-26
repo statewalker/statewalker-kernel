@@ -24,15 +24,24 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
-    }
+    },
+    "./client": {
+      "source": "./client/index.ts",
+      "types": "./dist/client/index.d.ts",
+      "import": "./dist/client/index.js",
+      "default": "./dist/client/index.js"
+    },
+    "./client.css": "./dist/client.css"
   },
   "files": [
     "dist",
     "src",
-    "fragment.jsonc"
+    "client",
+    "fragment.jsonc",
+    "fragment.client.jsonc"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && tailwindcss -i client/styles.css -o dist/client.css --minify",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
@@ -42,14 +51,28 @@
   },
   "dependencies": {
     "@statewalker/kernel.core": "workspace:^",
-    "semver": "catalog:"
+    "semver": "catalog:",
+    "@statewalker/ui.view.shadcn": "workspace:^"
   },
   "devDependencies": {
+    "@statewalker/system.workbench": "workspace:^",
+    "@tailwindcss/cli": "catalog:",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "@types/semver": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "rimraf": "catalog:",
+    "tailwindcss": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
-  }
+  },
+  "peerDependencies": {
+    "react": "catalog:peers"
+  },
+  "sideEffects": [
+    "**/*.css"
+  ]
 }

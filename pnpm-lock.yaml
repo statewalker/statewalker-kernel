@@ -61,8 +61,8 @@ catalogs:
       specifier: ^3.54.1-build1
       version: 3.54.1-build1
     '@statewalker/cellb':
-      specifier: ^0.14.0
-      version: 0.14.0
+      specifier: ^0.15.0
+      version: 0.15.0
     '@statewalker/shared-adapters':
       specifier: ^0.1.0
       version: 0.1.4
@@ -301,7 +301,7 @@ importers:
         version: 3.54.1-build1
       '@statewalker/cellb':
         specifier: 'catalog:'
-        version: 0.14.0(@statewalker/webrun-modules@0.4.0)(@statewalker/webrun-site-builder@0.3.0(@statewalker/webrun-files@0.12.0))(esbuild@0.28.2)
+        version: 0.15.0(@statewalker/webrun-modules@0.4.0)(@statewalker/webrun-site-builder@0.3.0(@statewalker/webrun-files@0.12.0))(esbuild@0.28.2)
       '@statewalker/client.core':
         specifier: workspace:^
         version: link:../../packages/client.core
@@ -320,6 +320,9 @@ importers:
       '@statewalker/system.commands':
         specifier: workspace:^
         version: link:../../fragments/system.commands
+      '@statewalker/system.fragments':
+        specifier: workspace:^
+        version: link:../../fragments/system.fragments
       '@statewalker/system.host':
         specifier: workspace:^
         version: link:../../fragments/system.host
@@ -540,19 +543,43 @@ importers:
       '@statewalker/kernel.core':
         specifier: workspace:^
         version: link:../../packages/kernel.core
+      '@statewalker/ui.view.shadcn':
+        specifier: workspace:^
+        version: link:../../packages-react/ui.view.shadcn
       semver:
         specifier: 'catalog:'
         version: 7.8.6
     devDependencies:
+      '@statewalker/system.workbench':
+        specifier: workspace:^
+        version: link:../system.workbench
+      '@tailwindcss/cli':
+        specifier: 'catalog:'
+        version: 4.3.5
       '@types/node':
         specifier: 'catalog:'
         version: 26.6.4
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.3.0
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.3.0(@types/react@19.3.0)
       '@types/semver':
         specifier: 'catalog:'
         version: 7.8.0
+      react:
+        specifier: 'catalog:'
+        version: 19.3.1
+      react-dom:
+        specifier: 'catalog:'
+        version: 19.3.1(react@19.3.1)
       rimraf:
         specifier: 'catalog:'
         version: 6.1.3
+      tailwindcss:
+        specifier: 'catalog:'
+        version: 4.3.5
       tsdown:
         specifier: 'catalog:'
         version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
@@ -3482,8 +3509,8 @@ packages:
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
 
-  '@statewalker/cellb@0.14.0':
-    resolution: {integrity: sha512-7sJ5OMqGjQitRJ+EcUP8+EpNQz3sCPVtgLTE7LXGw0rzYNWuHbsQ4FdEfotf4WwBP6BciQZuIti8X5JUImbQsg==}
+  '@statewalker/cellb@0.15.0':
+    resolution: {integrity: sha512-azEAjzTvqeRLLNxZ90mLq6iTbF8xgker4pU4SHywwdnitM4mMKOkBn44MTQXqoFnM7+t6ddLYWo/ndnCs418cQ==}
     engines: {node: '>=22.13'}
     hasBin: true
     peerDependencies:
@@ -7106,7 +7133,7 @@ snapshots:
 
   '@standard-schema/spec@1.1.0': {}
 
-  '@statewalker/cellb@0.14.0(@statewalker/webrun-modules@0.4.0)(@statewalker/webrun-site-builder@0.3.0(@statewalker/webrun-files@0.12.0))(esbuild@0.28.2)':
+  '@statewalker/cellb@0.15.0(@statewalker/webrun-modules@0.4.0)(@statewalker/webrun-site-builder@0.3.0(@statewalker/webrun-files@0.12.0))(esbuild@0.28.2)':
     dependencies:
       '@noble/hashes': 2.4.0
       '@sqlite.org/sqlite-wasm': 3.54.1-build1
@@ -7697,7 +7724,7 @@ snapshots:
 
   acorn-walk@8.3.5:
     dependencies:
-      acorn: 8.18.0
+      acorn: 8.19.0
 
   acorn@8.18.0: {}
 
