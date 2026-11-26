@@ -23,7 +23,13 @@ const base = new URL(".", document.baseURI);
 const launch = await readLaunchConfig(base);
 window.launch = launch;
 let serversReady!: () => void;
-const ready = new Promise<void>((resolve) => (serversReady = resolve));
+let serversFailed!: (error: Error) => void;
+const ready = new Promise<void>((resolve, reject) => {
+  serversReady = resolve;
+  serversFailed = reject;
+});
+// Handled by each request that waits on it; not an unhandled rejection of its own.
+ready.catch(() => {});
 if (launch.fragments !== "browser") serversReady();
 const platform = await boot({
   base,
@@ -52,9 +58,16 @@ if (launch.fragments === "browser") {
       window.fragmentServers = servers;
       serversReady();
     })
-    .catch((error: unknown) =>
-      console.error("[fragments] the server halves did not start:", error),
-    );
+    .catch((error: unknown) => {
+      console.error("[fragments] the server halves did not start:", error);
+      // Requests to them fail with the reason instead of waiting forever.
+      serversFailed(
+        new Error(
+          `the server halves did not start: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        ),
+      );
+    });
 }
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);

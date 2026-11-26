@@ -360,13 +360,18 @@ function inside(base: string, path: string): URL {
   // Relative paths only: no scheme, no `/` or `\` first (an absolute or protocol-relative URL).
   if (/^[a-z][a-z0-9+.-]*:/i.test(path) || /^[/\\]/.test(path)) throw new ServerPathError(path);
   const url = new URL(path, base);
-  // `..`, also escaped (`%2e%2e`): the resolved URL must stay under the base.
-  const decoded = decodeURIComponent(url.pathname);
-  if (
-    url.origin !== new URL(base).origin ||
-    !url.href.startsWith(base) ||
-    /(^|\/)\.\.(\/|$)/.test(decoded)
-  )
+  // `..`, also escaped (`%2e%2e`): the resolved URL must stay under the base. Each segment is
+  // decoded alone; one the URL parser kept with a bare `%` (`50%`) stays as it is.
+  const climbs = url.pathname.split("/").some((segment) => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // not an escape: a literal `%`
+    }
+    return decoded.split(/[\\/]/).includes("..");
+  });
+  if (url.origin !== new URL(base).origin || !url.href.startsWith(base) || climbs)
     throw new ServerPathError(path);
   return url;
 }

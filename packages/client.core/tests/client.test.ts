@@ -336,6 +336,20 @@ describe("servers", () => {
     expect(fake.requests).toEqual([]);
   });
 
+  it("sends a path the URL parser takes, even with a bare %, and refuses none of those", async () => {
+    const fake = fakeServers();
+    uninstall = installClient({ commands: fakeBus(), servers: fake.api });
+    const own = servers.of("org.example.notes");
+    await own.fetch("notes/50%");
+    await own.fetch("notes/caf%C3%A9");
+    expect(fake.requests.map((r) => new URL(r.url).pathname)).toEqual([
+      "/notes/fragments/org.example.notes/notes/50%",
+      "/notes/fragments/org.example.notes/notes/caf%C3%A9",
+    ]);
+    // A bare % beside an escaped climb is still refused.
+    await expect(own.fetch("%2e%2e/50%/x")).rejects.toBeInstanceOf(ServerPathError);
+  });
+
   it("refuses an id that is not a fragment id", () => {
     uninstall = installClient({ commands: fakeBus(), servers: fakeServers().api });
     expect(() => servers.of("../x")).toThrow(ServerPathError);

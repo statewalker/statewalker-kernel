@@ -328,6 +328,36 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
   });
 }
 
+// Merge gate pass 1 on statewalker/statewalker-kernel#69 (H1): the browser server halves that cannot
+// start are an error in the notes view, not a view waiting forever.
+describe("launch configuration: browser, its server halves unable to start", () => {
+  let app: Launched;
+  beforeAll(async () => {
+    app = await launch("browser");
+  }, 60_000);
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it("shows the failure in the notes view", async () => {
+    const context = await browser.newContext();
+    // No router ServiceWorker: the server halves cannot start.
+    await context.route("**/fragments-sw.js", (route) => route.abort());
+    const page = await context.newPage();
+    page.setDefaultTimeout(20_000);
+    await page.goto(app.url);
+    const view = page.getByTestId("notes-view");
+    await view.getByRole("alert").waitFor();
+    expect(await view.getByRole("alert").innerText()).toMatch(/server halves did not start/i);
+    await view.getByRole("textbox", { name: "Note" }).fill("no server");
+    await view.getByRole("button", { name: "Add note" }).click();
+    await expect
+      .poll(() => view.getByRole("alert").innerText())
+      .toMatch(/server halves did not start/i);
+    await context.close();
+  }, 120_000);
+});
+
 // H3: a wrangler launch that fails after starting `wrangler dev` leaves no process behind.
 describe.skipIf(!HAS_WRANGLER)("a wrangler launch that fails", () => {
   it("stops the wrangler dev it started", async () => {
