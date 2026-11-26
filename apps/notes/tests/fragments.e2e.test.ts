@@ -9,7 +9,9 @@
 // The built app (`pnpm run build`) is served by each; the page saves and reads notes through the
 // fragment DO. Unknown fragments answer 404 and disabled ones 503 without waking a DO, and
 // `/peers/<self>/fragments/…` answers as `/fragments/…`.
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Browser, chromium, type Page } from "playwright";
@@ -154,5 +156,126 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
       },
       120_000,
     );
+
+    // The merge gate's pass 1 on statewalker/statewalker-kernel#67 (H2): a body sent chunked (or
+    // with `Expect: 100-continue`) reaches the DO, through every server.
+    it.skipIf(mode === "browser")(
+      "takes a chunked request body",
+      async () => {
+        const url = new URL(`fragments/${NOTES}/notes`, app.url);
+        const status = await new Promise<number>((done, fail) => {
+          const req = httpRequest(
+            url,
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "transfer-encoding": "chunked",
+                expect: "100-continue",
+              },
+            },
+            (res) => {
+              res.resume();
+              done(res.statusCode ?? 0);
+            },
+          );
+          req.on("error", fail);
+          req.on("continue", () => {
+            req.write('{"text":');
+            req.end('"chunked"}');
+          });
+        });
+        expect(status).toBe(201);
+      },
+      60_000,
+    );
+
+    // H1: a fragment whose server half cannot load does not stop the pool following the others,
+    // and an upgrade loads the upgraded archive's server half.
+    it.skipIf(mode !== "browser")(
+      "keeps following the kernel past a server half that cannot load, and reloads an upgraded one",
+      async () => {
+        const page = await open(app);
+        const loaded = await page.evaluate(async (id) => {
+          const { kernel, slots } = window.platform;
+          // A fragment with a server aspect the build has no bundle for.
+          await kernel.install([
+            {
+              "fragment.jsonc": JSON.stringify({
+                $schema: "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+                id: "org.example.broken",
+                version: "0.1.0",
+                engines: { platform: "^0.1.0" },
+                aspects: { server: {} },
+              }),
+              "wrangler.jsonc": JSON.stringify({
+                name: "org-example-broken",
+                main: "server/index.js",
+                compatibility_date: "2025-06-01",
+                durable_objects: { bindings: [{ name: "FRAGMENT", class_name: "F" }] },
+              }),
+            },
+          ]);
+          await kernel.enable("org.example.broken");
+          await window.fragmentServers?.settled();
+          // notes upgraded to a new archive: it now comes after the broken fragment.
+          const notes = kernel.slots.getSnapshot(slots.installed).get(id);
+          if (!notes) throw new Error("notes is not installed");
+          const manifest = JSON.parse(
+            (notes.files["fragment.jsonc"] ?? "").replace(/^\s*\/\/.*$/gm, ""),
+          );
+          const upgraded = await kernel.upgrade(id, {
+            ...notes.files,
+            "fragment.jsonc": JSON.stringify({ ...manifest, version: "0.1.1" }),
+          });
+          await window.fragmentServers?.settled();
+          return {
+            archive: upgraded.archive,
+            loaded: window.fragmentServers?.loadedArchive(id),
+            broken: window.fragmentServers?.loadedArchive("org.example.broken"),
+          };
+        }, NOTES);
+        expect(loaded.loaded).toBe(loaded.archive);
+        expect(loaded.broken).toBeUndefined();
+        expect((await call(page, `fragments/${NOTES}/notes`)).status).toBe(200);
+        // The broken fragment comes first now: notes still follows the kernel.
+        await page.evaluate(async (id) => {
+          await window.platform.kernel.disable(id);
+          await window.fragmentServers?.settled();
+        }, NOTES);
+        expect((await call(page, `fragments/${NOTES}/notes`)).status).toBe(503);
+        await page.context().close();
+      },
+      120_000,
+    );
   });
 }
+
+// H3: a wrangler launch that fails after starting `wrangler dev` leaves no process behind.
+describe.skipIf(!HAS_WRANGLER)("a wrangler launch that fails", () => {
+  it("stops the wrangler dev it started", async () => {
+    const workerd = () => {
+      try {
+        return execFileSync("pgrep", ["-f", "workerd"], { encoding: "utf8" })
+          .trim()
+          .split("\n")
+          .filter(Boolean).length;
+      } catch {
+        return 0;
+      }
+    };
+    const before = workerd();
+    // The app's port is taken: the launch fails once its wrangler dev runs.
+    const taken = createHttpServer();
+    await new Promise<void>((done) => taken.listen(0, "127.0.0.1", done));
+    const port = (taken.address() as { port: number }).port;
+    try {
+      await expect(launch("wrangler", { port })).rejects.toThrow(/EADDRINUSE/);
+    } finally {
+      await new Promise((done) => taken.close(done));
+    }
+    for (let i = 0; i < 100 && workerd() > before; i++)
+      await new Promise((r) => setTimeout(r, 100));
+    expect(workerd()).toBe(before);
+  }, 180_000);
+});

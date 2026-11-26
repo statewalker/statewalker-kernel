@@ -76,7 +76,13 @@ export async function serveStatic(root, port = 0, options = {}) {
         return response.end(String(error?.stack ?? error));
       }
     }
-    const path = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+    let path;
+    try {
+      path = decodeURIComponent(new URL(request.url ?? "/", "http://localhost").pathname);
+    } catch {
+      response.writeHead(400, { "content-type": "text/plain" }).end("bad path");
+      return;
+    }
     if (options.launch && path === "/launch.json") {
       const body = JSON.stringify(options.launch);
       response.writeHead(200, {
@@ -104,7 +110,14 @@ export async function serveStatic(root, port = 0, options = {}) {
       response.writeHead(404, { "content-type": "text/plain" }).end("not found");
     }
   });
-  await new Promise((done) => server.listen(port, "127.0.0.1", () => done(undefined)));
+  // A port in use (EADDRINUSE) rejects, instead of leaving the caller waiting.
+  await new Promise((done, fail) => {
+    server.once("error", fail);
+    server.listen(port, "127.0.0.1", () => {
+      server.off("error", fail);
+      done(undefined);
+    });
+  });
   const address = server.address();
   const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : port}/`;
   return {

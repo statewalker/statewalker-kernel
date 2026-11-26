@@ -20,6 +20,20 @@ import { parseJsonc } from "@statewalker/kernel.core";
 import { serveStatic } from "./static-server.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
+/** Headers of one connection, never forwarded to the next (RFC 9110 §7.6.1), and `host`. */
+const HOP_BY_HOP = [
+  "connection",
+  "keep-alive",
+  "transfer-encoding",
+  "te",
+  "trailer",
+  "upgrade",
+  "expect",
+  "proxy-authenticate",
+  "proxy-authorization",
+  "proxy-connection",
+  "host",
+];
 const DIST = join(ROOT, "dist");
 
 /** The app's fragments that have a server half: their id and source folder. */
@@ -74,11 +88,24 @@ async function wranglerDev({ id, dir }, { persistTo }) {
     "127.0.0.1",
   ];
   if (persistTo) args.push("--persist-to", join(persistTo, id));
+  // Its own process group (wrangler starts workerd as its children): stopped as a whole, and
+  // whenever this process exits, however it exits.
   const child = spawn(bin, args, {
     cwd: dir,
     env: { ...process.env, WRANGLER_SEND_METRICS: "false", CI: "1" },
     stdio: ["ignore", "pipe", "pipe"],
+    detached: true,
   });
+  const killGroup = (signal) => {
+    try {
+      process.kill(-(/** @type {number} */ (child.pid)), signal);
+    } catch {
+      // gone already
+    }
+  };
+  const onExit = () => killGroup("SIGKILL");
+  process.once("exit", onExit);
+  child.once("exit", () => process.off("exit", onExit));
   let log = "";
   child.stdout.on("data", (d) => (log += d));
   child.stderr.on("data", (d) => (log += d));
@@ -91,7 +118,7 @@ async function wranglerDev({ id, dir }, { persistTo }) {
       break;
     } catch {
       if (i > 600) {
-        child.kill("SIGKILL");
+        killGroup("SIGKILL");
         throw new Error(`wrangler dev for ${id} did not start:\n${log.slice(-2000)}`);
       }
       await new Promise((done) => setTimeout(done, 100));
@@ -101,10 +128,16 @@ async function wranglerDev({ id, dir }, { persistTo }) {
     base,
     close: () =>
       new Promise((done) => {
-        if (child.exitCode !== null) return done(undefined);
-        child.once("exit", () => done(undefined));
-        child.kill("SIGTERM");
-        setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+        if (child.exitCode !== null || child.signalCode !== null) {
+          killGroup("SIGKILL"); // workerd may outlive wrangler
+          return done(undefined);
+        }
+        child.once("exit", () => {
+          killGroup("SIGKILL");
+          done(undefined);
+        });
+        killGroup("SIGTERM");
+        setTimeout(() => killGroup("SIGKILL"), 5_000).unref();
       }),
   };
 }
@@ -147,49 +180,56 @@ export async function launch(mode, options = {}) {
   }
   if (mode === "wrangler") {
     const workers = new Map();
+    const stopWorkers = async () => {
+      for (const w of workers.values()) await w.close();
+    };
+    let server;
     try {
       for (const fragment of serverFragments())
         workers.set(fragment.id, await wranglerDev(fragment, { persistTo: data }));
+      server = await serveStatic(DIST, port, {
+        launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
+        handle: async (request) => {
+          const url = new URL(request.url);
+          const target = fragmentOf(url.pathname, peerId);
+          if (!target) return undefined;
+          const worker = workers.get(target.id);
+          if (!worker)
+            return new Response(`no fragment "${target.id}" on this host`, {
+              status: 404,
+              headers: { "content-type": "text/plain" },
+            });
+          // Hop-by-hop headers are this connection's, not the next one's (fetch refuses some).
+          const forwarded = new Headers(request.headers);
+          for (const name of HOP_BY_HOP) forwarded.delete(name);
+          const answer = await fetch(`${worker.base}${target.path}${url.search}`, {
+            method: request.method,
+            headers: forwarded,
+            body: request.body,
+            duplex: "half",
+            redirect: "manual",
+          });
+          // fetch has decoded the body already: its encoding and length no longer describe it.
+          const headers = new Headers(answer.headers);
+          headers.delete("content-encoding");
+          headers.delete("content-length");
+          return new Response(answer.body, {
+            status: answer.status,
+            statusText: answer.statusText,
+            headers,
+          });
+        },
+      });
     } catch (error) {
-      for (const w of workers.values()) await w.close();
+      await stopWorkers();
       throw error;
     }
-    const server = await serveStatic(DIST, port, {
-      launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
-      handle: async (request) => {
-        const url = new URL(request.url);
-        const target = fragmentOf(url.pathname, peerId);
-        if (!target) return undefined;
-        const worker = workers.get(target.id);
-        if (!worker)
-          return new Response(`no fragment "${target.id}" on this host`, {
-            status: 404,
-            headers: { "content-type": "text/plain" },
-          });
-        const answer = await fetch(`${worker.base}${target.path}${url.search}`, {
-          method: request.method,
-          headers: request.headers,
-          body: request.body,
-          duplex: "half",
-          redirect: "manual",
-        });
-        // fetch has decoded the body already: its encoding and length no longer describe it.
-        const headers = new Headers(answer.headers);
-        headers.delete("content-encoding");
-        headers.delete("content-length");
-        return new Response(answer.body, {
-          status: answer.status,
-          statusText: answer.statusText,
-          headers,
-        });
-      },
-    });
     return {
       mode,
       url: server.url,
       async close() {
         await server.close();
-        for (const w of workers.values()) await w.close();
+        await stopWorkers();
       },
     };
   }

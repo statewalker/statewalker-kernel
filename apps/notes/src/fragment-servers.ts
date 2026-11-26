@@ -48,6 +48,8 @@ export async function readLaunchConfig(base: URL): Promise<LaunchConfig> {
 
 export interface FragmentServers {
   readonly pool: FragmentTabs;
+  /** The archive whose server half the pool runs for `id`, or undefined. */
+  loadedArchive(id: string): string | undefined;
   /** Settles once the pool has followed the kernel's latest change. */
   settled(): Promise<void>;
   close(): Promise<void>;
@@ -99,25 +101,57 @@ export async function startFragmentServers(
         };
       })();
       archives.set(fragment.archive, archive);
+      // A fetch that failed is tried again on the next pass, not remembered.
+      archive.catch(() => {
+        if (archives.get(fragment.archive) === archive) archives.delete(fragment.archive);
+      });
     }
     return archive;
   };
 
-  /** One pass: the pool made to match the kernel's fragments with a server aspect. */
+  /** The archive each fragment's loaded server half came from. */
+  const loaded = new Map<string, string>();
+
+  /** One fragment made to match the kernel: loaded, reloaded on a new archive, enabled or disabled. */
+  const follow = async (fragment: InstalledFragment, want: "enabled" | "disabled") => {
+    let state = pool.state(fragment.id);
+    // An upgrade (or a rollback) brought another archive: its server half is loaded afresh.
+    if (state !== undefined && loaded.get(fragment.id) !== fragment.archive) {
+      await pool.remove(fragment.id);
+      loaded.delete(fragment.id);
+      state = undefined;
+    }
+    if (state === want) return;
+    if (state === undefined) {
+      await pool.add(fragment.id, await archiveOf(fragment));
+      loaded.set(fragment.id, fragment.archive);
+      if (want === "disabled") await pool.disable(fragment.id);
+    } else if (want === "disabled") await pool.disable(fragment.id);
+    else await pool.enable(fragment.id);
+  };
+
+  /**
+   * One pass: the pool made to match the kernel's fragments with a server aspect. A fragment that
+   * fails (its server half cannot load) is reported and left; the others still follow.
+   */
   const sync = async () => {
     const installed = kernel.slots.getSnapshot(installedFragmentsSlot);
     const resolved = kernel.slots.getSnapshot(resolvedFragmentsSlot);
-    for (const id of pool.ids()) if (!installed.has(id)) await pool.remove(id);
+    for (const id of pool.ids())
+      if (!installed.get(id)?.manifest.aspects.server) {
+        await pool.remove(id);
+        loaded.delete(id);
+      }
     for (const fragment of installed.values()) {
       if (!fragment.manifest.aspects.server) continue;
-      const want = resolved.has(fragment.id) ? "enabled" : "disabled";
-      const state = pool.state(fragment.id);
-      if (state === want) continue;
-      if (state === undefined) {
-        await pool.add(fragment.id, await archiveOf(fragment));
-        if (want === "disabled") await pool.disable(fragment.id);
-      } else if (want === "disabled") await pool.disable(fragment.id);
-      else await pool.enable(fragment.id);
+      try {
+        await follow(fragment, resolved.has(fragment.id) ? "enabled" : "disabled");
+      } catch (error) {
+        console.error(
+          `[fragments] ${fragment.id}: its server half did not follow the kernel:`,
+          error,
+        );
+      }
     }
   };
   // Passes run one after another; a change during one runs another after it.
@@ -133,6 +167,7 @@ export async function startFragmentServers(
   await schedule();
   return {
     pool,
+    loadedArchive: (id) => loaded.get(id),
     settled: () => queue,
     async close() {
       stopInstalled();
