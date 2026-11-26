@@ -78,9 +78,11 @@
       "additionalProperties": false,
       "properties": {
         "dir": {
-          "description": "The aspect's folder, when not the default (server/, client/, agent/).",
+          "description": "The aspect's folder, when not the default (server/, client/, agent/): a path relative to the archive, never a URL, an absolute path or a way out (`..`).",
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^(\\./)?[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*(/[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*)*/?$"
         }
       }
     }

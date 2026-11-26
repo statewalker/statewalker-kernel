@@ -7,6 +7,15 @@
  * (`fragment.v<N>.schema.json`), not from a fixed URL: the URL stays neutral and each
  * distribution may host the file where it likes.
  */
+/**
+ * A path inside a fragment's archive: segments of letters, digits and `_ @ + - .`, none starting
+ * with `.` (so no `.` or `..`), joined by `/`, a leading `./` allowed. No scheme (`data:`,
+ * `https:`), no leading `/` or `\\`, no `//`: the host resolves it under the fragment's own folder,
+ * never elsewhere, so an archive cannot have the host load code from anywhere else.
+ */
+export const RELATIVE_PATH =
+  "^(\\./)?[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*(/[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*)*/?$";
+
 export const fragmentManifestSchemaV1 = {
   $schema: "https://json-schema.org/draft/2020-12/schema",
   title: "Fragment manifest (fragment.jsonc), version 1",
@@ -69,9 +78,12 @@ export const fragmentManifestSchemaV1 = {
       additionalProperties: false,
       properties: {
         dir: {
-          description: "The aspect's folder, when not the default (server/, client/, agent/).",
+          description:
+            "The aspect's folder, when not the default (server/, client/, agent/): a path relative to the archive, never a URL, an absolute path or a way out (`..`).",
           type: "string",
           minLength: 1,
+          maxLength: 512,
+          pattern: RELATIVE_PATH,
         },
       },
     },
@@ -155,9 +167,12 @@ export const fragmentAspectSchemaV1 = {
           additionalProperties: false,
           properties: {
             module: {
-              description: "A module of the contributor's aspect folder.",
+              description:
+                "A module of the contributor's aspect folder: a path relative to it, never a URL, an absolute path or a way out (`..`).",
               type: "string",
               minLength: 1,
+              maxLength: 512,
+              pattern: RELATIVE_PATH,
             },
             export: {
               description: "The export's name; default when absent.",

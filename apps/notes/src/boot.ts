@@ -419,7 +419,14 @@ export async function boot({
       module: async (ref, { contributor }) => {
         const core = coreModules[contributor.id];
         if (core) return (await core())[ref.export ?? "default"];
-        const url = new URL(ref.module, aspectUrl(base, contributor, "client")).href;
+        const folder = aspectUrl(base, contributor, "client").href;
+        const url = new URL(ref.module, folder).href;
+        // The kernel refuses references that are not paths inside the aspect folder; the shell
+        // loads nothing from anywhere else whatever reaches it (an archive is not this origin's).
+        if (!url.startsWith(folder) || !url.startsWith(new URL("archives/", base).href))
+          throw new Error(
+            `${contributor.id}: "${ref.module}" is not a module of its client folder`,
+          );
         const module = (await import(/* @vite-ignore */ url)) as Record<string, unknown>;
         return module[ref.export ?? "default"];
       },

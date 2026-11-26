@@ -154,3 +154,52 @@ describe("check", () => {
     expect(ids(slots.getSnapshot(installedFragmentsSlot))).toEqual([]);
   });
 });
+
+describe("code references stay inside the fragment (statewalker/statewalker-kernel#72)", () => {
+  const withModule = (module: string) =>
+    archive({
+      ...base,
+      aspects: {
+        client: {
+          extensions: [{ point: "views", data: { id: "v" }, reference: { module } }],
+        },
+      },
+    });
+
+  it.each([
+    "data:text/javascript,export default 1",
+    "https://attacker.example/x.js",
+    "//attacker.example/x.js",
+    "/x.js",
+    "\\x.js",
+    "../x.js",
+    "./../x.js",
+    "a/../../x.js",
+    "a//x.js",
+    ".hidden.js",
+    "%2e%2e/x.js",
+  ])("refuses a module reference %s", async (module) => {
+    const { kernel, slots } = newKernel();
+    const refused = await kernel.check([withModule(module)]);
+    expect(refused).toHaveLength(1);
+    await expect(kernel.install([withModule(module)])).rejects.toBeInstanceOf(FragmentInstallError);
+    expect(ids(slots.getSnapshot(installedFragmentsSlot))).toEqual([]);
+  });
+
+  it.each(["../client", "/srv", "https://x/", "a/../b"])(
+    "refuses an aspect dir %s",
+    async (dir) => {
+      const { kernel } = newKernel();
+      const refused = await kernel.check([archive({ ...base, aspects: { client: { dir } } })]);
+      expect(refused.map((r) => r.code)).toEqual(["invalid-manifest"]);
+    },
+  );
+
+  it.each(["./index.js", "index.js", "chunks/view-1.2.js", "@scope/x.js"])(
+    "accepts a module reference %s",
+    async (module) => {
+      const { kernel } = newKernel();
+      expect(await kernel.check([withModule(module)])).toEqual([]);
+    },
+  );
+});

@@ -377,7 +377,8 @@ function ConsentDialog({
   onDecline: () => void;
 }) {
   return (
-    <Dialog open onOpenChange={(open) => !open && onDecline()}>
+    // While an accepted install runs, the dialog stays: closing it would not stop the install.
+    <Dialog open onOpenChange={(open) => !open && !busy && onDecline()}>
       <DialogContent
         data-testid="consent-dialog"
         className="max-h-[90vh] overflow-auto sm:max-w-2xl"
@@ -416,7 +417,7 @@ function ConsentDialog({
           </ul>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={onDecline}>
+          <Button variant="outline" disabled={busy} onClick={onDecline}>
             Decline
           </Button>
           <Button disabled={busy || !summary.installable} onClick={onAccept}>

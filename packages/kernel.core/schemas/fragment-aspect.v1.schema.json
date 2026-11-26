@@ -78,9 +78,11 @@
           "additionalProperties": false,
           "properties": {
             "module": {
-              "description": "A module of the contributor's aspect folder.",
+              "description": "A module of the contributor's aspect folder: a path relative to it, never a URL, an absolute path or a way out (`..`).",
               "type": "string",
-              "minLength": 1
+              "minLength": 1,
+              "maxLength": 512,
+              "pattern": "^(\\./)?[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*(/[A-Za-z0-9_@+-][A-Za-z0-9_.@+-]*)*/?$"
             },
             "export": {
               "description": "The export's name; default when absent.",

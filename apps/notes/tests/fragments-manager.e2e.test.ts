@@ -192,6 +192,37 @@ describe("the fragment manager view", () => {
     });
   });
 
+  it("refuses an archive whose code would come from elsewhere than its own folder", async () => {
+    await withPage(async (page) => {
+      await openFragments(page);
+      // Code from a data: URL (or another host) would run in this origin with the vault's reach.
+      await upload(
+        page,
+        archiveFile({ id: "org.example.evil", name: "Evil" }, [
+          {
+            point: "views",
+            data: { id: "evil", title: "Evil" },
+            reference: {
+              module:
+                "data:text/javascript,export default function V(){ window.__pwned = 1; return null; }",
+            },
+          },
+          {
+            point: "activitybar",
+            data: { id: "evil", title: "Evil", view: "org.example.evil/evil" },
+          },
+        ]),
+      );
+      await consent(page).getByTestId("consent-refusal").first().waitFor();
+      await expect(
+        consent(page).getByRole("button", { name: "Install" }).isDisabled(),
+      ).resolves.toBe(true);
+      await consent(page).getByRole("button", { name: "Decline" }).click();
+      await expect(installed(page, "org.example.evil")).resolves.toBe(false);
+      await expect(page.evaluate(() => "__pwned" in window)).resolves.toBe(false);
+    });
+  });
+
   it("lists the dependents before a cascading disable, and enables again", async () => {
     await withPage(async (page) => {
       await openFragments(page);
