@@ -24,15 +24,36 @@ const base = new URL(".", document.baseURI);
 // CellB (`browser`), or by the server the page came from (`server`), or none.
 const launch = await readLaunchConfig(base);
 window.launch = launch;
-let serversReady!: () => void;
-let serversFailed!: (error: Error) => void;
-const ready = new Promise<void>((resolve, reject) => {
-  serversReady = resolve;
-  serversFailed = reject;
+/** The kernel, once boot has installed the app's fragments: the server halves start then. */
+let kernelKnown!: (kernel: Kernel) => void;
+const kernel = new Promise<Kernel>((resolve) => {
+  kernelKnown = resolve;
 });
-// Handled by each request that waits on it; not an unhandled rejection of its own.
-ready.catch(() => {});
-if (launch.fragments !== "browser") serversReady();
+/** The current attempt to start the server halves in this origin; none after a failed one. */
+let attempt: Promise<void> | undefined;
+
+/**
+ * Settles once requests can reach the server halves. In this origin it starts them, once the
+ * kernel is known; a start that failed is tried again by the next caller (a request, a fragment's
+ * activation or its retry), not remembered.
+ */
+function ready(): Promise<void> {
+  if (launch.fragments !== "browser") return Promise.resolve();
+  attempt ??= kernel
+    .then(async (k) => {
+      const { startFragmentServers } = await import("./fragment-servers.js");
+      window.fragmentServers = await startFragmentServers(k, base, launch);
+    })
+    .catch((error: unknown) => {
+      attempt = undefined;
+      console.error("[fragments] the server halves did not start:", error);
+      throw new Error(
+        `the server halves did not start: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    });
+  return attempt;
+}
 /** How long a fragment's activation waits for its server half: then it fails, retryable. */
 const SERVER_HALF_TIMEOUT = 30_000;
 
@@ -45,25 +66,6 @@ function within<T>(ms: number, promise: Promise<T>, message: string): Promise<T>
   return Promise.race([promise, late]).finally(() => clearTimeout(timer));
 }
 
-/** Starts the server halves in this origin; their client halves' requests wait for them. */
-function startServers(kernel: Kernel) {
-  void import("./fragment-servers.js")
-    .then(({ startFragmentServers }) => startFragmentServers(kernel, base, launch))
-    .then((servers) => {
-      window.fragmentServers = servers;
-      serversReady();
-    })
-    .catch((error: unknown) => {
-      console.error("[fragments] the server halves did not start:", error);
-      // Requests to them fail with the reason instead of waiting forever.
-      serversFailed(
-        new Error(
-          `the server halves did not start: ${error instanceof Error ? error.message : String(error)}`,
-          { cause: error },
-        ),
-      );
-    });
-}
 const platform = await boot({
   base,
   locale: navigator.language,
@@ -76,7 +78,7 @@ const platform = await boot({
           available: (id) =>
             platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
               .server !== undefined,
-          ready: () => ready,
+          ready,
           fetch: (request) => fetch(request),
         },
         // In this origin, the server halves start once the kernel has the app's fragments,
@@ -85,15 +87,19 @@ const platform = await boot({
         // server host keeps its own.
         ...(launch.fragments === "browser"
           ? {
-              started: startServers,
+              started: (k: Kernel) => {
+                kernelKnown(k);
+                // Started beside the shell; each activation waiting on it reports a failure.
+                ready().catch(() => {});
+              },
               serverHalf: (id: string) =>
                 within(
                   SERVER_HALF_TIMEOUT,
-                  ready.then(() => window.fragmentServers?.ensure(id)),
+                  ready().then(() => window.fragmentServers?.ensure(id)),
                   `${id}: its server half did not start within ${SERVER_HALF_TIMEOUT / 1000} s`,
                 ),
               removeServerData: async (id: string) => {
-                await ready;
+                await ready();
                 await window.fragmentServers?.removeData(id);
               },
             }

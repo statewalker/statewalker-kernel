@@ -15,7 +15,7 @@ Notes also opens an extension point in its client aspect, `org.statewalker.notes
 - an entry in the Notes menu;
 - an Exports view with its activity bar entry.
 
-Its server half is a fragment DO that keeps every export. In the `browser` launch configuration, an app fragment with a server half is activated only once that half loads in the shard pool. If it cannot load, the fragment is failed with the reason, and a retry tries again (`BootOptions.serverHalf`). The pool starts before client activation (`BootOptions.started`), and the wait is limited to 30 s.
+Its server half is a fragment DO that keeps every export. In the `browser` launch configuration, an app fragment with a server half is activated only once that half loads in the shard pool. If it cannot load, the fragment is failed with the reason, and a retry tries again, starting the pool afresh when its start failed (`BootOptions.serverHalf`). The pool starts before client activation (`BootOptions.started`), and the wait is limited to 30 s.
 
 The application's default layout (`application.json`'s `layout.open`, given to the workbench as the host's default layout by `applicationLayouts` in `src/boot.ts`) opens the notes view in the centre, in every device mode. The workbench shows the device mode of the window's width and keeps each mode's layout in the profile once the user changes it. Which layout shows: the views the URL names (`#?views=`), else the current mode's saved layout, else the default layout.
 

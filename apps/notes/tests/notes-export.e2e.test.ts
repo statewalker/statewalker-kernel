@@ -33,8 +33,10 @@ afterAll(async () => {
 async function withPage(
   body: (page: Page, context: BrowserContext) => Promise<void>,
   expected: RegExp[] = [],
+  before?: (context: BrowserContext) => Promise<void>,
 ) {
   const context = await browser.newContext();
+  await before?.(context);
   const page = await context.newPage();
   page.setDefaultTimeout(20_000);
   const errors: string[] = [];
@@ -48,7 +50,7 @@ async function withPage(
   try {
     await page.goto(app.url);
     await page.getByTestId("workbench").waitFor();
-    await page.waitForFunction(() => window.fragmentServers !== undefined);
+    if (!before) await page.waitForFunction(() => window.fragmentServers !== undefined);
     await body(page, context);
     expect(errors).toEqual([]);
   } finally {
@@ -117,7 +119,10 @@ async function exportsShown(page: Page) {
   const view = page.getByTestId("exports-view");
   await view.waitFor();
   // The count shows once the view has read the DO.
-  return view.getByTestId("exports-count").innerText();
+  const count = await view.getByTestId("exports-count").innerText();
+  // Read from the DO, not left from before: the read raised no error.
+  expect(await view.getByRole("alert").count()).toBe(0);
+  return count;
 }
 
 describe("notes-export, installed live", () => {
@@ -255,6 +260,42 @@ describe("notes-export, installed live", () => {
         );
       },
       [/server half did not follow the kernel/, /no server bundle \(500\)/, /status of 500/],
+    );
+  });
+
+  it("retries the server halves' start: a failed start fails their fragments, retryable", async () => {
+    await withPage(
+      async (page) => {
+        await activity(page, "Fragments").click();
+        await page.waitForSelector(`[data-fragment="${NOTES}"][data-state="failed"]`);
+        await expect(
+          entry(page, NOTES).getByTestId("fragment-failure").innerText(),
+        ).resolves.toContain("the server halves did not start");
+        // The ServiceWorker registers again: a retry starts the server halves afresh.
+        await page.evaluate(() => {
+          (window as unknown as { failRegister: boolean }).failRegister = false;
+        });
+        await entry(page, NOTES).getByRole("button", { name: "Retry" }).click();
+        await page.waitForSelector(`[data-fragment="${NOTES}"][data-state="active"]`);
+        await addNotes(page, "after the retry");
+        await show(page, `${NOTES}/notes`);
+        await expect(page.getByTestId("notes-count").innerText()).resolves.toContain("1");
+      },
+      [/server halves did not start/],
+      async (context) => {
+        // The ServiceWorker cannot register (an insecure context, a refusing browser) until the
+        // test says otherwise.
+        await context.addInitScript(() => {
+          const flag = window as unknown as { failRegister: boolean };
+          flag.failRegister = true;
+          const container = navigator.serviceWorker;
+          const register = container.register.bind(container);
+          container.register = (...args: Parameters<typeof register>) =>
+            flag.failRegister
+              ? Promise.reject(new Error("no ServiceWorker here"))
+              : register(...args);
+        });
+      },
     );
   });
 });
