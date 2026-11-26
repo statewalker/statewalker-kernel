@@ -5,6 +5,7 @@ import "@statewalker/system.workbench/client.css";
 import "@statewalker/system.a2ui/client.css";
 import "@statewalker/system.appearance/client.css";
 import "@statewalker/system.settings/client.css";
+import "@statewalker/system.fragments/client.css";
 import "@statewalker/system.profile/client.css";
 import "@statewalker/system.l10n/client.css";
 import "./app.css";
@@ -46,6 +47,15 @@ const platform = await boot({
           ready: () => ready,
           fetch: (request) => fetch(request),
         },
+        // In this origin the DOs' storage is the shard pool's; a server host keeps its own.
+        ...(launch.fragments === "browser"
+          ? {
+              removeServerData: async (id: string) => {
+                await ready;
+                await window.fragmentServers?.removeData(id);
+              },
+            }
+          : {}),
       }),
 });
 window.platform = platform;

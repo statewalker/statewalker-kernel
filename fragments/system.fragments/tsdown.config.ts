@@ -1,8 +1,8 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  // The headless half (React-free), one module.
-  entry: { index: "src/index.ts" },
+  // The headless half (React-free) and the client half (React), each one module.
+  entry: { index: "src/index.ts", "client/index": "client/index.ts" },
   format: ["esm"],
   dts: true,
   sourcemap: true,

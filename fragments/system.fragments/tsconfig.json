@@ -26,6 +26,6 @@
     "noEmit": true,
     "customConditions": ["source"]
   },
-  "include": ["./src", "./tests"],
+  "include": ["./src", "./client", "./tests"],
   "exclude": ["node_modules", "dist"]
 }

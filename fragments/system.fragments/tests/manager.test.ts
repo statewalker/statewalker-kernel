@@ -151,6 +151,8 @@ describe("the system.fragments fragment", () => {
     const root = join(import.meta.dirname, "..");
     const onDisk = parseJsonc(readFileSync(join(root, "fragment.jsonc"), "utf8")).value;
     expect(onDisk).toEqual(JSON.parse(systemFragmentsArchive["fragment.jsonc"] ?? "null"));
+    const client = parseJsonc(readFileSync(join(root, "fragment.client.jsonc"), "utf8")).value;
+    expect(client).toEqual(JSON.parse(systemFragmentsArchive["fragment.client.jsonc"] ?? "null"));
     expect(SYSTEM_FRAGMENTS_ID).toBe("system.fragments");
   });
 });
@@ -506,5 +508,29 @@ describe("review regressions (statewalker/statewalker-kernel#71)", () => {
       "proposed",
     );
     expect(loads).toBe(2);
+  });
+});
+
+describe("the manager view's model", () => {
+  it("offers the catalog's fragments not installed, and tells observers of every change", async () => {
+    const { kernel, platform, failOnce } = await start([NOTES]);
+    const offered = catalog(NOTES, MARKDOWN);
+    const manager = createFragmentManager({
+      kernel,
+      platform,
+      catalog: { ...offered, list: async () => ["org.example.notes", "org.example.markdown"] },
+    });
+    expect((await manager.available()).map((a) => a.id)).toEqual(["org.example.markdown"]);
+    let changes = 0;
+    const stop = manager.observe(() => changes++);
+    failOnce.add("org.example.markdown");
+    await manager.install(await manager.inspect(MARKDOWN, { source: "file" }));
+    await kernel.activate("client");
+    expect(changes).toBeGreaterThan(0);
+    expect(await manager.available()).toEqual([]);
+    const seen = changes;
+    stop();
+    await manager.disable("org.example.markdown");
+    expect(changes).toBe(seen);
   });
 });

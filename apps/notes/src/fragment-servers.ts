@@ -52,6 +52,12 @@ export interface FragmentServers {
   loadedArchive(id: string): string | undefined;
   /** Settles once the pool has followed the kernel's latest change. */
   settled(): Promise<void>;
+  /**
+   * "Remove with data": the fragment's DO storage deleted in every shard this tab runs (its
+   * SQLite pool and files), after the passes queued before it. The kernel calls it while removing
+   * the fragment, so the next pass finds it gone and leaves it.
+   */
+  removeData(id: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -169,6 +175,17 @@ export async function startFragmentServers(
     pool,
     loadedArchive: (id) => loaded.get(id),
     settled: () => queue,
+    removeData(id) {
+      const removed = queue.then(async () => {
+        await pool.remove(id, { withData: true });
+        loaded.delete(id);
+      });
+      // The queue goes on whatever this removal does; the caller gets its outcome.
+      queue = removed.catch((error: unknown) => {
+        console.error(`[fragments] ${id}: its data was not removed:`, error);
+      });
+      return removed;
+    },
     async close() {
       stopInstalled();
       stopResolved();

@@ -32,6 +32,8 @@ import semver from "semver";
 export interface FragmentCatalog {
   /** The archive of `id`, or undefined when the catalog has none. */
   load(id: string): Promise<{ files: FragmentFiles; source: string } | undefined>;
+  /** The ids the catalog offers, for the manager view's list of installable fragments. */
+  list?(): Promise<readonly string[]>;
 }
 
 /** A requirement of the archive: met by an installed fragment, proposed from the catalog, or missing. */
@@ -124,7 +126,11 @@ export interface FragmentManager {
   /** Activate again the aspects that failed. */
   retry(id: string): Promise<void>;
   /** Keep the fragment's data, unless `withData`. */
-  remove(id: string, options?: { withData?: boolean }): Promise<void>;
+  remove(id: string, options?: { withData?: boolean; cascade?: boolean }): Promise<void>;
+  /** The catalog's fragments that are not installed: what the view offers to install. */
+  available(): Promise<{ id: string; source: string; files: FragmentFiles }[]>;
+  /** Called whenever `list()` may answer differently; returns the disposer. */
+  observe(listener: () => void): () => void;
 }
 
 const ASPECTS = ["server", "client", "agent"] as const;
@@ -395,6 +401,30 @@ export function createFragmentManager(options: {
     async remove(id, options) {
       own(id);
       await kernel.remove(id, options);
+    },
+    async available() {
+      const ids = (await catalog?.list?.()) ?? [];
+      const out: { id: string; source: string; files: FragmentFiles }[] = [];
+      for (const id of ids) {
+        if (installed().has(id)) continue;
+        const loaded = await catalog?.load(id);
+        if (loaded) out.push({ id, ...loaded });
+      }
+      return out;
+    },
+    observe(listener) {
+      const stops = [
+        kernel.slots.observe(installedFragmentsSlot, () => listener()),
+        kernel.slots.observe(enabledFragmentsSlot, () => listener()),
+        kernel.slots.observe(resolvedFragmentsSlot, () => listener()),
+        ...ASPECTS.flatMap((a) => [
+          kernel.slots.observe(failedFragmentsSlot(a), () => listener()),
+          kernel.slots.observe(activeFragmentsSlot(a), () => listener()),
+        ]),
+      ];
+      return () => {
+        for (const stop of stops) stop();
+      };
     },
   };
 }
