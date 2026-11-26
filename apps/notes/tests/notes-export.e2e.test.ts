@@ -145,7 +145,7 @@ describe("notes-export, installed live", () => {
       );
       await expect(dialog.getByTestId("consent-server-half").innerText()).resolves.toBe("yes");
       await expect(dialog.getByTestId("consent-exposures").innerText()).resolves.toBe(
-        `${EXPORT}/export-notes (agent)`,
+        `${EXPORT}/export-notes (agent); ${EXPORT}/export-slowly (task)`,
       );
       await expect(dialog.getByTestId("consent-bindings").innerText()).resolves.toBe("none");
       await expect(dialog.getByTestId("consent-agent-plugins").innerText()).resolves.toBe("none");
