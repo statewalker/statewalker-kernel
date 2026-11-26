@@ -10,7 +10,7 @@
 // system.appearance its brand and the kernel its baseline fragments: installed on a fresh profile,
 // restored from the profile afterwards; its default layout is the workbench's default layout for
 // every device mode. React-free; main.tsx renders the result.
-import { installClient } from "@statewalker/client.core";
+import { type ClientServersHost, installClient } from "@statewalker/client.core";
 import {
   activeFragmentsSlot,
   createKernel,
@@ -153,6 +153,11 @@ export interface BootOptions {
   readonly locale?: string;
   /** The user's profile; localStorage under `<application id>:` by default. */
   readonly profile?: ProfileStore;
+  /**
+   * The fragments' server halves, as the launch configuration runs them (statewalker-root#436):
+   * the client API's `servers`. None: no server halves, the client halves keep their own state.
+   */
+  readonly servers?: ClientServersHost;
 }
 
 /** `load` run once, its promise shared. */
@@ -291,7 +296,7 @@ export function applicationLayouts(definition: ApplicationDefinition): LayoutCon
   return [{ zones: { center: [...definition.layout.open] } }];
 }
 
-export async function boot({ base, locale, profile }: BootOptions): Promise<Platform> {
+export async function boot({ base, locale, profile, servers }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
   const system = createSystemProfile({
     ...(profile ? {} : { storage: localStorage, prefix: `${definition.id}:` }),
@@ -391,6 +396,7 @@ export async function boot({ base, locale, profile }: BootOptions): Promise<Plat
     host: host.services,
     settings: settings.settings,
     l10n: l10n.l10n,
+    ...(servers ? { servers } : {}),
   });
   installA2ui(a2ui.a2ui);
   await kernel.start();

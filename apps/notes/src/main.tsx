@@ -18,21 +18,56 @@ import { readLaunchConfig } from "./fragment-servers.js";
 import { bindLayoutToUrl } from "./url-layout.js";
 
 const base = new URL(".", document.baseURI);
-const platform = await boot({ base, locale: navigator.language });
-window.platform = platform;
 // The fragments' server halves, as the launch configuration says (launch.json): in this origin on
-// CellB (`browser`), or by the server the page came from. Loaded beside the shell, not before it.
+// CellB (`browser`), or by the server the page came from (`server`), or none.
 const launch = await readLaunchConfig(base);
 window.launch = launch;
+let serversReady!: () => void;
+let serversFailed!: (error: Error) => void;
+const ready = new Promise<void>((resolve, reject) => {
+  serversReady = resolve;
+  serversFailed = reject;
+});
+// Handled by each request that waits on it; not an unhandled rejection of its own.
+ready.catch(() => {});
+if (launch.fragments !== "browser") serversReady();
+const platform = await boot({
+  base,
+  locale: navigator.language,
+  ...(launch.fragments === "none"
+    ? {}
+    : {
+        servers: {
+          base: base.href,
+          // A fragment with a server aspect, while the kernel has it installed.
+          available: (id) =>
+            platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
+              .server !== undefined,
+          ready: () => ready,
+          fetch: (request) => fetch(request),
+        },
+      }),
+});
+window.platform = platform;
+// In this origin, the server halves start beside the shell, not before it; the client halves'
+// requests wait for them (`ready`).
 if (launch.fragments === "browser") {
   void import("./fragment-servers.js")
     .then(({ startFragmentServers }) => startFragmentServers(platform.kernel, base, launch))
     .then((servers) => {
       window.fragmentServers = servers;
+      serversReady();
     })
-    .catch((error: unknown) =>
-      console.error("[fragments] the server halves did not start:", error),
-    );
+    .catch((error: unknown) => {
+      console.error("[fragments] the server halves did not start:", error);
+      // Requests to them fail with the reason instead of waiting forever.
+      serversFailed(
+        new Error(
+          `the server halves did not start: ${error instanceof Error ? error.message : String(error)}`,
+          { cause: error },
+        ),
+      );
+    });
 }
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);

@@ -8,6 +8,7 @@ import {
   host,
   l10n,
   notifications,
+  servers,
   settings,
   translator,
 } from "@statewalker/client.core";
@@ -38,8 +39,18 @@ function useLanguage(): string {
   return locale;
 }
 
-// The notes, in memory while the page lives (storage comes with system.profile).
-let notes: readonly string[] = [];
+/** A note: its text, and its id in the server half's DO when it is kept there. */
+interface Note {
+  readonly id?: number;
+  readonly text: string;
+}
+
+// The notes. With a server half (statewalker-root#436), kept in its fragment DO and mirrored here;
+// without one (launch configuration `none`), in memory while the page lives.
+const server = servers.of(NOTES);
+let notes: readonly Note[] = [];
+/** Why the server half could not be read or written, shown in the view. */
+let serverError: string | undefined;
 const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void) {
@@ -53,11 +64,58 @@ function changed() {
   for (const listener of [...listeners]) listener();
 }
 
+/** A server half's answer, or an error naming its status (503 when it is disabled). */
+async function call(path: string, init?: RequestInit): Promise<unknown> {
+  const res = await server.fetch(path, init);
+  const body = await res.text();
+  if (!res.ok) throw new Error(`notes server half: ${res.status} ${body || res.statusText}`.trim());
+  return body ? JSON.parse(body) : undefined;
+}
+
+/** Read the notes from the server half, once its view opens. */
+let loading: Promise<void> | undefined;
+function load(): Promise<void> {
+  if (!server.available()) return Promise.resolve();
+  loading ??= call("notes")
+    .then((answer) => {
+      notes = (answer as { notes: Note[] }).notes.map(({ id, text }) => ({ id, text }));
+      serverError = undefined;
+    })
+    .catch((failure: unknown) => {
+      loading = undefined; // tried again on the next open
+      serverError = failure instanceof Error ? failure.message : String(failure);
+    })
+    .finally(changed);
+  return loading;
+}
+
 /** The `add-note` command: add a note, answer how many there are. */
-export function addNote({ text }: { text: string }): { count: number } {
-  notes = [...notes, text];
+export async function addNote({ text }: { text: string }): Promise<{ count: number }> {
+  if (!server.available()) {
+    notes = [...notes, { text }];
+    changed();
+    return { count: notes.length };
+  }
+  await load();
+  const saved = (await call("notes", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text }),
+  })) as { id: number; count: number };
+  notes = [...notes, { id: saved.id, text }];
+  serverError = undefined;
   changed();
-  return { count: notes.length };
+  return { count: saved.count };
+}
+
+/** Undo: remove the last note with `text`, in the server half too. */
+async function removeNote(text: string): Promise<void> {
+  const index = notes.map((n) => n.text).lastIndexOf(text);
+  const note = notes[index];
+  if (!note) return;
+  if (note.id !== undefined) await call(`notes/${note.id}`, { method: "DELETE" });
+  notes = notes.filter((n) => n !== note);
+  changed();
 }
 
 /**
@@ -71,12 +129,22 @@ export async function newNote(): Promise<{ added: boolean }> {
   await commands.call(ADD_NOTE, { text });
   void notifications.show(NOTE_ADDED, { text }).then(({ action }) => {
     if (action !== "undo") return;
-    const index = notes.lastIndexOf(text);
-    if (index < 0) return;
-    notes = notes.filter((_, i) => i !== index);
-    changed();
+    removeNote(text).catch((failure: unknown) => {
+      serverError = failure instanceof Error ? failure.message : String(failure);
+      changed();
+    });
   });
   return { added: true };
+}
+
+/** An error's message, with its causes (the bus wraps a handler's error as `cause`). */
+function describe(failure: unknown): string {
+  const parts: string[] = [];
+  for (let e: unknown = failure; e !== undefined && parts.length < 4; ) {
+    parts.push(e instanceof Error ? e.message : String(e));
+    e = e instanceof Error ? e.cause : undefined;
+  }
+  return parts.join(": ");
 }
 
 /** This fragment's settings (its page in fragment.client.jsonc), followed as they change. */
@@ -91,7 +159,11 @@ function useSettings(): ClientSettingsValues {
  * `add-note` on the command bus; each note's Copy button while `copyButtons` is on.
  */
 export function NotesView() {
-  const added = useSyncExternalStore(subscribe, () => notes);
+  const added = useSyncExternalStore(subscribe, () => notes).map((n) => n.text);
+  const loadError = useSyncExternalStore(subscribe, () => serverError);
+  useEffect(() => {
+    void load();
+  }, []);
   const { sort, copyButtons } = useSettings();
   const all = sort === "alphabetical" ? [...added].sort((a, b) => a.localeCompare(b)) : added;
   const locale = useLanguage();
@@ -115,7 +187,7 @@ export function NotesView() {
       setText("");
       setError(undefined);
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : String(failure));
+      setError(describe(failure));
     }
   }
 
@@ -134,9 +206,9 @@ export function NotesView() {
           />
           <Button type="submit">{t("view.add", {}, "Add note")}</Button>
         </form>
-        {error && (
+        {(error ?? loadError) && (
           <p role="alert" className="text-sm text-destructive">
-            {error}
+            {error ?? loadError}
           </p>
         )}
         <p data-testid="notes-count" className="m-0 text-xs text-muted-foreground">

@@ -125,6 +125,82 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
       await page.context().close();
     }, 120_000);
 
+    // statewalker/statewalker-root#436: the notes view keeps its notes in its fragment DO.
+    it("the notes view adds, lists after a reload, and undoes through the fragment DO", async () => {
+      const page = await open(app);
+      const view = page.getByTestId("notes-view");
+      await view.waitFor();
+      const text = `from the view ${Date.now().toString(36)}`;
+      await page.keyboard.press("Control+Alt+KeyN");
+      const dialog = page.getByRole("dialog", { name: "New note" });
+      await dialog.getByRole("textbox", { name: "Note" }).fill(text);
+      await page.keyboard.press("Enter");
+      await view.getByRole("listitem").filter({ hasText: text }).waitFor();
+      // In the DO, not only on the page.
+      expect(await notesOf(page)).toContain(text);
+      await page.reload();
+      await page
+        .getByTestId("notes-view")
+        .getByRole("listitem")
+        .filter({ hasText: text })
+        .waitFor();
+      // Undo, from a second note's notification: gone from the view and from the DO.
+      const undone = `${text} (undone)`;
+      await page.keyboard.press("Control+Alt+KeyN");
+      await dialog.getByRole("textbox", { name: "Note" }).fill(undone);
+      await page.keyboard.press("Enter");
+      const toast = page.getByTestId("notification").filter({ hasText: undone });
+      await toast.getByRole("button", { name: "Undo" }).click();
+      await page
+        .getByTestId("notes-view")
+        .getByRole("listitem")
+        .filter({ hasText: undone })
+        .waitFor({
+          state: "detached",
+        });
+      expect(await notesOf(page)).not.toContain(undone);
+      expect(await notesOf(page)).toContain(text);
+      await page.context().close();
+    }, 120_000);
+
+    it.skipIf(mode === "wrangler")(
+      "a disabled server half shows as an error in the notes view, and the shell keeps working",
+      async () => {
+        const page = await open(app);
+        const view = page.getByTestId("notes-view");
+        await view.waitFor();
+        const setServer = (on: boolean) =>
+          mode === "browser"
+            ? page.evaluate(
+                async ([id, enable]) => {
+                  // The pool alone, so the kernel keeps the view: only the server half is off.
+                  if (enable) await window.fragmentServers?.pool.enable(id);
+                  else await window.fragmentServers?.pool.disable(id);
+                },
+                [NOTES, on] as const,
+              )
+            : on
+              ? app.host?.enable(NOTES)
+              : app.host?.disable(NOTES);
+        await setServer(false);
+        try {
+          await view.getByRole("textbox", { name: "Note" }).fill("while the server is off");
+          await view.getByRole("button", { name: "Add note" }).click();
+          await view.getByRole("alert").waitFor();
+          const message = await view.getByRole("alert").innerText();
+          expect(message).toMatch(/503|disabled/i);
+          // The shell still runs commands.
+          await expect(
+            page.evaluate(() => window.platform.commands.list().length),
+          ).resolves.toBeGreaterThan(0);
+        } finally {
+          await setServer(true);
+        }
+        await page.context().close();
+      },
+      120_000,
+    );
+
     it.skipIf(mode === "wrangler")(
       "answers 503 for a disabled fragment without waking its DO; enabled again, it serves",
       async () => {
@@ -251,6 +327,36 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
     );
   });
 }
+
+// Merge gate pass 1 on statewalker/statewalker-kernel#69 (H1): the browser server halves that cannot
+// start are an error in the notes view, not a view waiting forever.
+describe("launch configuration: browser, its server halves unable to start", () => {
+  let app: Launched;
+  beforeAll(async () => {
+    app = await launch("browser");
+  }, 60_000);
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it("shows the failure in the notes view", async () => {
+    const context = await browser.newContext();
+    // No router ServiceWorker: the server halves cannot start.
+    await context.route("**/fragments-sw.js", (route) => route.abort());
+    const page = await context.newPage();
+    page.setDefaultTimeout(20_000);
+    await page.goto(app.url);
+    const view = page.getByTestId("notes-view");
+    await view.getByRole("alert").waitFor();
+    expect(await view.getByRole("alert").innerText()).toMatch(/server halves did not start/i);
+    await view.getByRole("textbox", { name: "Note" }).fill("no server");
+    await view.getByRole("button", { name: "Add note" }).click();
+    await expect
+      .poll(() => view.getByRole("alert").innerText())
+      .toMatch(/server halves did not start/i);
+    await context.close();
+  }, 120_000);
+});
 
 // H3: a wrangler launch that fails after starting `wrangler dev` leaves no process behind.
 describe.skipIf(!HAS_WRANGLER)("a wrangler launch that fails", () => {

@@ -151,6 +151,39 @@ export interface ClientL10n {
   observe(listener: (state: ClientL10nState) => void): () => void;
 }
 
+/**
+ * The fragments' server halves, as the host runs them (statewalker-root#259, #436): each fragment's
+ * at `<base>fragments/<id>/`, when the page's launch configuration runs server halves at all.
+ */
+export interface ClientServersHost {
+  /** The app's base URL, ending with `/`. */
+  readonly base: string;
+  /** Whether fragment `id`'s server half runs (the launch configuration says so, and it has one). */
+  available(id: string): boolean;
+  /** Settles once requests can reach the server halves (in a browser: the router and the pool). */
+  ready(): Promise<void>;
+  /** Sends a request to a server half. */
+  fetch(request: Request): Promise<Response>;
+}
+
+/** A fragment's own server half, as its client half reaches it. */
+export interface ClientServer {
+  /** Its base URL: `<app base>fragments/<id>/`. */
+  readonly base: string;
+  /** Whether it runs here; without it the client half keeps its state itself. */
+  available(): boolean;
+  /**
+   * A request to `path`, relative to `base`. A path that leaves `base` (absolute, `/…`, `//…`,
+   * `..`) is refused with a `ServerPathError`, sent nowhere.
+   */
+  fetch(path: string, init?: RequestInit): Promise<Response>;
+}
+
+/** The server halves, by fragment: a fragment asks for its own. */
+export interface ClientServers {
+  of(fragment: string): ClientServer;
+}
+
 /** What the host installs. */
 export interface ClientApi {
   readonly commands: ClientCommands;
@@ -164,6 +197,8 @@ export interface ClientApi {
   readonly notifications?: ClientRequests;
   /** system.settings' values; a host without it refuses `settings`' calls (`not-installed`). */
   readonly settings?: ClientSettings;
+  /** The server halves; a host without them refuses `servers`' requests (`not-installed`). */
+  readonly servers?: ClientServersHost;
 }
 
 /** Why the client API refused: no host installed it, or a second host tried to. */
@@ -302,3 +337,67 @@ export function translator(
       ...(fallback !== undefined ? { fallback } : {}),
     });
 }
+
+/** A server path, or a fragment id, that would reach outside the fragment's own server half. */
+export class ServerPathError extends Error {
+  override readonly name = "ServerPathError";
+  constructor(readonly path: string) {
+    super(`"${path}" is not a path inside the fragment's own server half`);
+  }
+}
+
+/** A fragment id: lowercase letters, digits, `.`, `_` and `-` (as the fragment hosts take it). */
+const FRAGMENT_ID = /^[a-z0-9][a-z0-9._-]{0,127}$/;
+
+function currentServers(): ClientServersHost {
+  const found = current().servers;
+  if (!found) throw new ClientApiError("not-installed");
+  return found;
+}
+
+/** The URL `path` names under `base`, or a `ServerPathError` when it leaves `base`. */
+function inside(base: string, path: string): URL {
+  // Relative paths only: no scheme, no `/` or `\` first (an absolute or protocol-relative URL).
+  if (/^[a-z][a-z0-9+.-]*:/i.test(path) || /^[/\\]/.test(path)) throw new ServerPathError(path);
+  const url = new URL(path, base);
+  // `..`, also escaped (`%2e%2e`): the resolved URL must stay under the base. Each segment is
+  // decoded alone; one the URL parser kept with a bare `%` (`50%`) stays as it is.
+  const climbs = url.pathname.split("/").some((segment) => {
+    let decoded = segment;
+    try {
+      decoded = decodeURIComponent(segment);
+    } catch {
+      // not an escape: a literal `%`
+    }
+    return decoded.split(/[\\/]/).includes("..");
+  });
+  if (url.origin !== new URL(base).origin || !url.href.startsWith(base) || climbs)
+    throw new ServerPathError(path);
+  return url;
+}
+
+/**
+ * The server halves: `servers.of("<this fragment's id>")` is the fragment's own, its `fetch`
+ * bound to it. Every request rejects a `ClientApiError` before the install.
+ */
+export const servers: ClientServers = {
+  of(fragment) {
+    if (!FRAGMENT_ID.test(fragment)) throw new ServerPathError(fragment);
+    const baseOf = () => new URL(`fragments/${fragment}/`, currentServers().base).href;
+    return {
+      get base() {
+        return baseOf();
+      },
+      available: () => {
+        const found = current().servers;
+        return found ? found.available(fragment) : false;
+      },
+      async fetch(path, init) {
+        const host = currentServers();
+        const url = inside(baseOf(), path);
+        await host.ready();
+        return host.fetch(new Request(url, init));
+      },
+    };
+  },
+};
