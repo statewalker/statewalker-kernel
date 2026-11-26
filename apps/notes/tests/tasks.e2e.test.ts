@@ -76,6 +76,21 @@ const run = (page: Page) => page.getByTestId("export-run");
 const runLog = (page: Page) =>
   run(page).getByTestId("export-run-log").locator("li").allInnerTexts();
 
+/** Waits until the task's job index has its result (polled from here, every 500 ms, 30 s). */
+async function answered(page: Page, task: string): Promise<void> {
+  for (let i = 0; i < 60; i++) {
+    const done = await page.evaluate(async (t) => {
+      const { jobs } = await window.platform.commands.call<{
+        jobs: { reply?: { result?: unknown } }[];
+      }>("system.tasks/jobs", { task: t });
+      return jobs.some((j) => j.reply?.result !== undefined);
+    }, task);
+    if (done) return;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  throw new Error(`task ${task} has no result after 30 s`);
+}
+
 const exportsCount = (page: Page) =>
   page.evaluate(async (id) => {
     const res = await fetch(`fragments/${id}/exports`);
@@ -195,16 +210,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
             (id) => window.platform.kernel.slots.getSnapshot(window.platform.slots.active).has(id),
             EXPORT,
           );
-          await page.waitForFunction(
-            async (t) => {
-              const { jobs } = await window.platform.commands.call<{
-                jobs: { reply?: { result?: unknown } }[];
-              }>("system.tasks/jobs", { task: t });
-              return jobs.some((j) => j.reply?.result !== undefined);
-            },
-            task,
-            { polling: 500, timeout: 30_000 },
-          );
+          await answered(page, task);
           await expect(exportsCount(page)).resolves.toBe(made + 1);
         } finally {
           await context.close();
@@ -221,6 +227,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           let page = await open(context, app);
           await addNotes(page, "kept");
           await installExport(page);
+          const made = await exportsCount(page);
           await page.evaluate((id) => window.platform.fragments.disable(id), EXPORT);
           const task = await page.evaluate(
             (subject) =>
@@ -241,17 +248,8 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
             (id) => window.platform.kernel.slots.getSnapshot(window.platform.slots.active).has(id),
             EXPORT,
           );
-          await page.waitForFunction(
-            async (t) => {
-              const { jobs } = await window.platform.commands.call<{
-                jobs: { reply?: { result?: unknown } }[];
-              }>("system.tasks/jobs", { task: t });
-              return jobs.some((j) => j.reply?.result !== undefined);
-            },
-            task,
-            { polling: 500, timeout: 30_000 },
-          );
-          await expect(exportsCount(page)).resolves.toBe(1);
+          await answered(page, task);
+          await expect(exportsCount(page)).resolves.toBe(made + 1);
         } finally {
           await context.close();
         }
