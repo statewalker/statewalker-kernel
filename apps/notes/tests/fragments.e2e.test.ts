@@ -202,7 +202,8 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           await kernel.install([
             {
               "fragment.jsonc": JSON.stringify({
-                $schema: "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+                $schema:
+                  "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
                 id: "org.example.broken",
                 version: "0.1.0",
                 engines: { platform: "^0.1.0" },
