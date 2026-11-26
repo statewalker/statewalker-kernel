@@ -12,6 +12,7 @@
 // every device mode. React-free; main.tsx renders the result.
 import { type ClientServersHost, installClient } from "@statewalker/client.core";
 import {
+  type ActivationContext,
   activeFragmentsSlot,
   createKernel,
   enabledFragmentsSlot,
@@ -90,6 +91,7 @@ import {
 } from "@statewalker/system.workbench";
 import application from "../application.json" with { type: "json" };
 import platform from "../platform.json" with { type: "json" };
+import { type AppPoints, createAppPoints } from "./app-points.js";
 
 /** What the shell runs: also `window.platform`, for tests and the console. */
 export interface Platform {
@@ -172,6 +174,16 @@ export interface BootOptions {
    * configuration runs it. None: server halves keep their data (a server host's own concern).
    */
   readonly removeServerData?: (id: string) => Promise<void>;
+  /**
+   * Settles once fragment `id`'s server half runs, rejecting with why it cannot: a fragment with
+   * a server half is activated only then. None: its client half does not wait.
+   */
+  readonly serverHalf?: (id: string) => Promise<void>;
+  /**
+   * Called once the kernel has installed the app's fragments, before their client aspects are
+   * activated: what runs the server halves starts here (their activations wait for it).
+   */
+  readonly started?: (kernel: Kernel) => void;
 }
 
 /** `load` run once, its promise shared. */
@@ -212,9 +224,20 @@ async function fetchArchive(base: URL, id: string): Promise<FragmentFiles> {
 
 /**
  * The client half of an app fragment: its prebuilt stylesheet (`<client dir>/index.css`) is
- * linked while the aspect is active. Its code loads lazily, through its extensions' references.
+ * linked while the aspect is active, and the points it opens reach its code (the client API's
+ * `points`). Its code loads lazily, through its extensions' references. A fragment with a server
+ * half is active once that half runs (`serverHalf`): one that cannot load fails the activation,
+ * with its reason, and a retry tries again.
  */
-async function activateClient(base: URL, fragment: InstalledFragment): Promise<() => void> {
+async function activateClient(
+  base: URL,
+  fragment: InstalledFragment,
+  context: ActivationContext,
+  appPoints: AppPoints,
+  serverHalf?: (id: string) => Promise<void>,
+): Promise<() => void> {
+  if (fragment.manifest.aspects.server && serverHalf) await serverHalf(fragment.id);
+  const release = appPoints.attach(fragment.id, context.extensions);
   const link = document.createElement("link");
   link.rel = "stylesheet";
   link.href = new URL("index.css", aspectUrl(base, fragment, "client")).href;
@@ -227,7 +250,10 @@ async function activateClient(base: URL, fragment: InstalledFragment): Promise<(
     };
     document.head.append(link);
   });
-  return () => link.remove();
+  return () => {
+    link.remove();
+    release();
+  };
 }
 
 /**
@@ -337,6 +363,8 @@ export async function boot({
   profile,
   servers,
   removeServerData,
+  serverHalf,
+  started,
 }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
   const system = createSystemProfile({
@@ -392,6 +420,8 @@ export async function boot({
       return client.fragmentsModule(fragments);
     }),
   };
+  /** The points app fragments open, for their client code (the client API's `points`). */
+  const appPoints = createAppPoints();
   const kernel = createKernel({
     platform: { version: platform.version, bindings: [] },
     core: [
@@ -444,7 +474,7 @@ export async function boot({
         if (fragment.id === SYSTEM_L10N_ID) return l10n.activate(context);
         // Its view is all it brings; the stylesheet is the shell's (main.tsx).
         if (fragment.id === SYSTEM_FRAGMENTS_ID) return () => {};
-        return activateClient(base, fragment);
+        return activateClient(base, fragment, context, appPoints, serverHalf);
       },
     },
   });
@@ -456,6 +486,7 @@ export async function boot({
     settings: settings.settings,
     l10n: l10n.l10n,
     ...(servers ? { servers } : {}),
+    points: appPoints.points,
   });
   const fragments = createFragmentManager({
     kernel,
@@ -466,6 +497,7 @@ export async function boot({
   await kernel.start();
 
   const firstRun = await installFragments(kernel, userProfile, base, definition);
+  started?.(kernel);
   await kernel.activate("client");
   activateWhenResolved(kernel);
   return {

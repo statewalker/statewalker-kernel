@@ -184,6 +184,33 @@ export interface ClientServers {
   of(fragment: string): ClientServer;
 }
 
+/** One extension of a point a fragment opens, as the point's owner reads it. */
+export interface ClientExtension {
+  readonly id: string;
+  /** The contributing fragment. */
+  readonly contributor: string;
+  /** The extension's data, valid against the point's schema. */
+  readonly data: unknown;
+  /** Call the code the extension references (rejects when it carries none, or is gone). */
+  call<T = unknown>(...args: unknown[]): Promise<T>;
+}
+
+/**
+ * The extension points the app's fragments open in their client aspect, as their owners read
+ * them: the host has them while the owner's client aspect is active.
+ */
+export interface ClientPoints {
+  /**
+   * Follow the point `name` of fragment `owner`: `listener` gets its live extensions at once
+   * (none while the owner is not active) and on every change. Returns a disposer.
+   */
+  observe(
+    owner: string,
+    name: string,
+    listener: (extensions: readonly ClientExtension[]) => void,
+  ): () => void;
+}
+
 /** What the host installs. */
 export interface ClientApi {
   readonly commands: ClientCommands;
@@ -199,6 +226,8 @@ export interface ClientApi {
   readonly settings?: ClientSettings;
   /** The server halves; a host without them refuses `servers`' requests (`not-installed`). */
   readonly servers?: ClientServersHost;
+  /** The app fragments' own extension points; a host without them refuses (`not-installed`). */
+  readonly points?: ClientPoints;
 }
 
 /** Why the client API refused: no host installed it, or a second host tried to. */
@@ -399,5 +428,18 @@ export const servers: ClientServers = {
         return host.fetch(new Request(url, init));
       },
     };
+  },
+};
+
+/**
+ * The extension points a fragment opens: `points.observe("<this fragment's id>", "<name>", ...)`
+ * follows the extensions other fragments contribute to it. Throws a `ClientApiError` before the
+ * install, or on a host without them.
+ */
+export const points: ClientPoints = {
+  observe(owner, name, listener) {
+    const found = current().points;
+    if (!found) throw new ClientApiError("not-installed");
+    return found.observe(owner, name, listener);
   },
 };

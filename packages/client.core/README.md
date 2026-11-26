@@ -13,7 +13,7 @@ ADR `2026-11-18-react-only-shell-with-shared-modules` (statewalker-root) shares 
 In a fragment's client code (bundled with `@statewalker/client.core` external):
 
 ```ts
-import { commands, dialogs, host, l10n, notifications, settings, translator } from "@statewalker/client.core";
+import { commands, dialogs, host, l10n, notifications, points, settings, translator } from "@statewalker/client.core";
 
 await commands.call("org.statewalker.notes/add-note", { text: "Buy milk" });
 const stop = commands.observe((all) => console.log(all.map((c) => c.id)));
@@ -36,6 +36,12 @@ const unfollow = host.urlState.observe((state) => console.log(state.query));
 const own = settings.of("org.statewalker.notes");
 own.get("sort"); // "added"
 const unwatch = own.observe((values) => render(values.sort));
+
+// The extension points this fragment opens in its client aspect (`extensionPoints` in its
+// fragment.client.jsonc): the extensions other fragments contribute, live, each callable.
+const unfollowActions = points.observe("org.statewalker.notes", "actions", (actions) =>
+  render(actions.map((a) => ({ title: (a.data as { title: string }).title, run: () => a.call(notes) }))),
+);
 
 // system.l10n: this fragment's texts in the interface language, from its bundles on the `l10n`
 // point; the inline text is the default language's, used when no bundle has the key.
@@ -70,6 +76,7 @@ const uninstall = installClient({
 | `ClientSettings`, `ClientFragmentSettings`, `ClientSettingsValues`, `ClientSettingValue` | The settings' shapes the host installs (system.settings' model is one). `settings` is optional, for a host without system.settings. |
 | `l10n` | `locale()`, `locales()`, `setLocale(locale)`, `text(namespace, key, { params?, fallback? })`, `format(text, params?)`, `observe(listener)`: system.l10n's model. |
 | `servers` | `of(fragmentId)` → `base`, `available()`, `fetch(path, init?)`: the fragment's own server half at `<app base>fragments/<id>/` (statewalker-root#436). `fetch` takes a path relative to `base` and waits for the host's `ready()`; a path leaving `base` (absolute, `/…`, `//…`, `..`, escaped or not) rejects a `ServerPathError` and is sent nowhere. `available()` is false when the page runs no server halves, so the client half keeps its own state. |
+| `points` | `observe(owner, name, listener)`: the extensions contributed to the point `name` that fragment `owner` opens in its client aspect, as `{ id, contributor, data, call(...args) }`. The listener is called at once (with none while the owner is not active) and on every change (statewalker-root#261). |
 | `ClientServersHost`, `ClientServers`, `ClientServer`, `ServerPathError` | What the host installs as `servers` (`base`, `available(id)`, `ready()`, `fetch(request)`) and what a fragment gets. `servers` is optional, for a host that runs no server halves. |
 | `translator(namespace)` | `t(key, params?, fallback?)`: `l10n.text` in one fragment's namespace. |
 | `installClient(api)` | Install the host's bindings; returns the uninstaller. |

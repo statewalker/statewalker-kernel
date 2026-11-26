@@ -117,6 +117,7 @@ describe("the interface language", () => {
         expect.stringMatching(/^New note…\s*Ctrl\+Alt\+N$/),
       ]);
       await expect(paletteEntries(page)).resolves.toEqual([
+        "List the notes",
         expect.stringMatching(/^New note…\s*Ctrl\+Alt\+N$/),
       ]);
 
@@ -138,6 +139,7 @@ describe("the interface language", () => {
         expect.stringMatching(/^Nouvelle note…\s*Ctrl\+Alt\+N$/),
       ]);
       await expect(paletteEntries(page)).resolves.toEqual([
+        "Lister les notes",
         expect.stringMatching(/^Nouvelle note…\s*Ctrl\+Alt\+N$/),
       ]);
       await page.keyboard.press("Control+Shift+P");
@@ -157,6 +159,7 @@ describe("the interface language", () => {
       await menubar(page).getByRole("menuitem", { name: "Notes" }).waitFor();
       await expect(shown(page)).resolves.toEqual({ ...ENGLISH, count: "Notes: 1", lang: "en" });
       await expect(paletteEntries(page)).resolves.toEqual([
+        "List the notes",
         expect.stringMatching(/^New note…\s*Ctrl\+Alt\+N$/),
       ]);
       // The note written in French is still there: the page was never reloaded.

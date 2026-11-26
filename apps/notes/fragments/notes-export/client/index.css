@@ -1,0 +1,10 @@
+/*
+ * The notes-export fragment's prebuilt CSS: only the utilities it uses (its own sources and the shadcn
+ * primitives it renders), against the shared shadcn tokens, without preflight.
+ */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "@statewalker/system.workbench/tokens.css";
+
+@source "./";
+@source "../../../node_modules/@statewalker/ui.view.shadcn/src";

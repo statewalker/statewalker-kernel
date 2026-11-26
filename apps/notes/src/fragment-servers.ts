@@ -58,6 +58,12 @@ export interface FragmentServers {
    * the fragment, so the next pass finds it gone and leaves it.
    */
   removeData(id: string): Promise<void>;
+  /**
+   * Settles once a pass after this call has the fragment's server half loaded, or rejects with
+   * why it could not load (its archive's bundle missing, the shard refusing it). A failed load
+   * is tried again by the next call: the shell's activation of the fragment, and its retry.
+   */
+  ensure(id: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -117,6 +123,8 @@ export async function startFragmentServers(
 
   /** The archive each fragment's loaded server half came from. */
   const loaded = new Map<string, string>();
+  /** Why each fragment's server half did not follow the kernel on the last pass. */
+  const failures = new Map<string, unknown>();
 
   /** One fragment made to match the kernel: loaded, reloaded on a new archive, enabled or disabled. */
   const follow = async (fragment: InstalledFragment, want: "enabled" | "disabled") => {
@@ -152,7 +160,9 @@ export async function startFragmentServers(
       if (!fragment.manifest.aspects.server) continue;
       try {
         await follow(fragment, resolved.has(fragment.id) ? "enabled" : "disabled");
+        failures.delete(fragment.id);
       } catch (error) {
+        failures.set(fragment.id, error);
         console.error(
           `[fragments] ${fragment.id}: its server half did not follow the kernel:`,
           error,
@@ -175,6 +185,12 @@ export async function startFragmentServers(
     pool,
     loadedArchive: (id) => loaded.get(id),
     settled: () => queue,
+    async ensure(id) {
+      await schedule();
+      if (failures.has(id)) throw failures.get(id);
+      if (!loaded.has(id))
+        throw new Error(`${id}: its server half is not loaded (not installed with one)`);
+    },
     removeData(id) {
       const removed = queue.then(async () => {
         await pool.remove(id, { withData: true });

@@ -2,12 +2,14 @@
 // new-note). React, the shadcn primitives and the client API come from the shell's import map,
 // never bundled here.
 import {
+  type ClientExtension,
   type ClientSettingsValues,
   commands,
   dialogs,
   host,
   l10n,
   notifications,
+  points,
   servers,
   settings,
   translator,
@@ -108,6 +110,12 @@ export async function addNote({ text }: { text: string }): Promise<{ count: numb
   return { count: saved.count };
 }
 
+/** The `list-notes` command: the notes, oldest first (what other fragments act on). */
+export async function listNotes(): Promise<{ notes: { text: string }[] }> {
+  await load();
+  return { notes: notes.map(({ text }) => ({ text })) };
+}
+
 /** Undo: remove the last note with `text`, in the server half too. */
 async function removeNote(text: string): Promise<void> {
   const index = notes.map((n) => n.text).lastIndexOf(text);
@@ -147,6 +155,39 @@ function describe(failure: unknown): string {
   return parts.join(": ");
 }
 
+/** An action on the notes, as another fragment contributes it to this fragment's `actions` point. */
+interface NoteAction {
+  readonly id: string;
+  readonly title: string;
+  readonly order: number;
+  readonly run: (input: { notes: readonly { text: string }[] }) => Promise<unknown>;
+}
+
+const actionOf = (extension: ClientExtension): NoteAction => {
+  const data = extension.data as { title: string; order?: number };
+  return {
+    id: extension.id,
+    title: data.title,
+    order: data.order ?? 0,
+    run: (input) => extension.call(input),
+  };
+};
+
+/** The actions on the notes (the `actions` point), live: they come and go with their fragments. */
+function useActions(): readonly NoteAction[] {
+  const [actions, setActions] = useState<readonly NoteAction[]>([]);
+  useEffect(
+    () =>
+      points.observe(NOTES, "actions", (all) =>
+        setActions(
+          all.map(actionOf).sort((a, b) => a.order - b.order || a.title.localeCompare(b.title)),
+        ),
+      ),
+    [],
+  );
+  return actions;
+}
+
 /** This fragment's settings (its page in fragment.client.jsonc), followed as they change. */
 function useSettings(): ClientSettingsValues {
   const [values, setValues] = useState(() => own.values());
@@ -169,6 +210,22 @@ export function NotesView() {
   const locale = useLanguage();
   const [text, setText] = useState("");
   const [error, setError] = useState<string>();
+  const actions = useActions();
+  const [result, setResult] = useState<string>();
+
+  /** Run an action on the notes as shown; its `message` answer is shown under the field. */
+  async function act(action: NoteAction) {
+    try {
+      const answer = (await action.run({ notes: all.map((text) => ({ text })) })) as
+        | { message?: unknown }
+        | undefined;
+      setResult(typeof answer?.message === "string" ? answer.message : undefined);
+      setError(undefined);
+    } catch (failure) {
+      setResult(undefined);
+      setError(describe(failure));
+    }
+  }
 
   /** Copy a note through system.host's clipboard service (on the user's click: a user gesture). */
   async function copy(note: string) {
@@ -206,6 +263,26 @@ export function NotesView() {
           />
           <Button type="submit">{t("view.add", {}, "Add note")}</Button>
         </form>
+        {actions.length > 0 && (
+          <div data-testid="notes-actions" className="flex flex-wrap gap-2">
+            {actions.map((action) => (
+              <Button
+                key={action.id}
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => act(action)}
+              >
+                {action.title}
+              </Button>
+            ))}
+          </div>
+        )}
+        {result && (
+          <p data-testid="notes-action-result" className="m-0 text-sm">
+            {result}
+          </p>
+        )}
         {(error ?? loadError) && (
           <p role="alert" className="text-sm text-destructive">
             {error ?? loadError}

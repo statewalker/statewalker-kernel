@@ -112,6 +112,7 @@ describe("the workbench chrome runs notes' command", () => {
       await palette.waitFor();
       // add-note needs a text, which the palette cannot give: it is not offered.
       await expect(palette.getByRole("option").allInnerTexts()).resolves.toEqual([
+        "List the notes",
         expect.stringMatching(/^New note…\s*Ctrl\+Alt\+N$/),
       ]);
       await palette.getByRole("combobox").fill("new");

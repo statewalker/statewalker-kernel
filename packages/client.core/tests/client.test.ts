@@ -12,6 +12,7 @@ import {
   installClient,
   l10n,
   notifications,
+  points,
   ServerPathError,
   servers,
   settings,
@@ -353,5 +354,41 @@ describe("servers", () => {
   it("refuses an id that is not a fragment id", () => {
     uninstall = installClient({ commands: fakeBus(), servers: fakeServers().api });
     expect(() => servers.of("../x")).toThrow(ServerPathError);
+  });
+});
+
+describe("points", () => {
+  it("refuses before the install, and on a host without them", () => {
+    expect(() => points.observe("org.example.notes", "actions", () => {})).toThrow(ClientApiError);
+    uninstall = installClient({ commands: fakeBus() });
+    expect(() => points.observe("org.example.notes", "actions", () => {})).toThrow(ClientApiError);
+  });
+
+  it("passes the owner's point and listener to the host", () => {
+    const asked: string[] = [];
+    uninstall = installClient({
+      commands: fakeBus(),
+      points: {
+        observe(owner, name, listener) {
+          asked.push(`${owner}/${name}`);
+          listener([
+            {
+              id: "x#0",
+              contributor: "org.example.x",
+              data: { title: "X" },
+              call: async <T>() => 1 as T,
+            },
+          ]);
+          return () => asked.push("stopped");
+        },
+      },
+    });
+    const seen: unknown[] = [];
+    const stop = points.observe("org.example.notes", "actions", (all) =>
+      seen.push(all.map((e) => e.data)),
+    );
+    stop();
+    expect(asked).toEqual(["org.example.notes/actions", "stopped"]);
+    expect(seen).toEqual([[{ title: "X" }]]);
   });
 });
