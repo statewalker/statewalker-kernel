@@ -25,8 +25,8 @@ import { dirname, join, resolve } from "node:path";
 import { bundleWorkerForBrowser } from "@statewalker/cellb/node";
 import { parseJsonc } from "@statewalker/kernel.core";
 import semver from "semver";
-import { coreServerFragments } from "./core-fragments.mjs";
 import { build } from "vite";
+import { coreServerFragments } from "./core-fragments.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DIST = join(ROOT, "dist");
