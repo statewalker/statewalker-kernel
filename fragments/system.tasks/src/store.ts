@@ -238,11 +238,13 @@ function memoryJobIndex(now: () => number): JobIndex {
         found.reply = JSON.parse(JSON.stringify(reply ?? null));
     },
     jobsOf(project, task) {
-      return [...jobs.values()]
-        .filter((j) => j.project === project && j.task === task)
-        // Stable: jobs of one millisecond stay in the order they started.
-        .sort((x, y) => x.at - y.at)
-        .map(({ job, at, reply }) => ({ job, at, ...(reply !== undefined ? { reply } : {}) }));
+      return (
+        [...jobs.values()]
+          .filter((j) => j.project === project && j.task === task)
+          // Stable: jobs of one millisecond stay in the order they started.
+          .sort((x, y) => x.at - y.at)
+          .map(({ job, at, reply }) => ({ job, at, ...(reply !== undefined ? { reply } : {}) }))
+      );
     },
   };
 }
