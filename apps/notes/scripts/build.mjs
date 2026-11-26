@@ -6,8 +6,14 @@
 //                                      client API), one ES module each, importing one another by
 //                                      bare specifier
 //   dist/main.js, dist/main.css        the shell: the kernel, the core fragments, the workbench
-//   dist/fragments/<id>/               each app fragment: its root files and its client half
-//                                      (client/index.js, client/index.css)
+//   dist/archives/<id>/                each app fragment: its root files, its client half
+//                                      (client/index.js, client/index.css) and its server half
+//                                      bundled for CellB in a browser (server/bundle.js)
+//   dist/fragments-sw.js,              the launch configuration `browser`: CellB's router (a
+//   dist/fragment-shard.js             ServiceWorker) and the shard worker running the server
+//                                      halves (statewalker/statewalker-root#259)
+//   dist/launch.json                   who serves `/fragments/{id}/…`: `none` here; the launch
+//                                      scripts serve their own (scripts/launch.mjs)
 //
 // The shell and every fragment bundle leave the shared modules external, as bare specifiers the
 // import map resolves, so each one loads once. Fragment CSS is prebuilt with Tailwind per fragment,
@@ -16,6 +22,7 @@ import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
+import { bundleWorkerForBrowser } from "@statewalker/cellb/node";
 import { parseJsonc } from "@statewalker/kernel.core";
 import semver from "semver";
 import { build } from "vite";
@@ -155,12 +162,23 @@ async function buildFragments() {
     if (!folder.isDirectory()) continue;
     const source = join(fragments, folder.name);
     const manifest = parseJsonc(readFileSync(join(source, "fragment.jsonc"), "utf8")).value;
-    const out = join(DIST, "fragments", manifest.id);
+    const out = join(DIST, "archives", manifest.id);
     for (const file of readdirSync(source)) {
       if (/^(fragment(\.[a-z]+)?|wrangler)\.jsonc$/.test(file)) {
         mkdirSync(out, { recursive: true });
         copyFileSync(join(source, file), join(out, file));
       }
+    }
+    if (manifest.aspects?.server) {
+      // The server half for CellB in a browser: its wrangler.jsonc's main, bundled with the
+      // Workers globals and nodejs_compat as a shard worker loads it.
+      const dir = manifest.aspects.server.dir ?? "server";
+      const wrangler = parseJsonc(readFileSync(join(source, "wrangler.jsonc"), "utf8")).value;
+      mkdirSync(join(out, dir), { recursive: true });
+      writeFileSync(
+        join(out, dir, "bundle.js"),
+        await bundleWorkerForBrowser(join(source, wrangler.main)),
+      );
     }
     if (manifest.aspects?.client) {
       const dir = manifest.aspects.client.dir ?? "client";
@@ -197,9 +215,41 @@ ${JSON.stringify({ imports }, null, 2)}
 `;
   writeFileSync(join(DIST, "index.html"), html);
   writeFileSync(
-    join(DIST, "fragments", "index.json"),
+    join(DIST, "archives", "index.json"),
     `${JSON.stringify({ fragments }, null, 2)}\n`,
   );
+}
+
+/**
+ * The launch configuration `browser`: CellB's router as the app's ServiceWorker and its shard
+ * worker, each one ES module with everything it uses (SQLite WASM's file beside it, in assets/).
+ */
+async function buildFragmentHost() {
+  await build({
+    root: ROOT,
+    configFile: false,
+    logLevel: "warn",
+    publicDir: false,
+    worker: { format: "es" },
+    build: {
+      outDir: DIST,
+      emptyOutDir: false,
+      minify: true,
+      sourcemap: true,
+      target: "es2022",
+      rolldownOptions: {
+        input: {
+          "fragments-sw": join(ROOT, "src", "fragments-sw.ts"),
+          "fragment-shard": join(ROOT, "src", "fragment-shard.ts"),
+        },
+        output: {
+          entryFileNames: "[name].js",
+          chunkFileNames: "assets/[name]-[hash].js",
+          assetFileNames: "assets/[name]-[hash][extname]",
+        },
+      },
+    },
+  });
 }
 
 checkSharedVersions();
@@ -209,4 +259,6 @@ await bundle({ entry: { main: join(ROOT, "src", "main.tsx") }, outDir: DIST, css
 await bundle({ entry: writeShims(), outDir: join(DIST, "shared") });
 const fragments = await buildFragments();
 writeIndex(fragments);
+await buildFragmentHost();
+writeFileSync(join(DIST, "launch.json"), `${JSON.stringify({ fragments: "none" }, null, 2)}\n`);
 console.log(`apps/notes built in ${DIST} (fragments: ${fragments.join(", ")})`);

@@ -144,7 +144,10 @@ declare global {
 }
 
 export interface BootOptions {
-  /** Where the app's fragments are served: `<base>fragments/<id>/...`. */
+  /**
+   * Where the app's fragment archives are served: `<base>archives/<id>/...`. (`<base>fragments/<id>/`
+   * is the fragments' server halves, statewalker/statewalker-root#259.)
+   */
   readonly base: URL;
   /** The interface language at start (`navigator.language`); system.l10n's default otherwise. */
   readonly locale?: string;
@@ -164,7 +167,7 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
 /** The folder of a fragment's aspect, relative to the page. */
 function aspectUrl(base: URL, fragment: InstalledFragment, aspect: "client"): URL {
   const dir = fragment.manifest.aspects[aspect]?.dir ?? aspect;
-  return new URL(`fragments/${fragment.id}/${dir}/`, base);
+  return new URL(`archives/${fragment.id}/${dir}/`, base);
 }
 
 async function text(url: URL): Promise<string> {
@@ -175,7 +178,7 @@ async function text(url: URL): Promise<string> {
 
 /** A fragment's root files, as the kernel installs them: `fragment.jsonc` and its aspect files. */
 async function fetchArchive(base: URL, id: string): Promise<FragmentFiles> {
-  const root = new URL(`fragments/${id}/`, base);
+  const root = new URL(`archives/${id}/`, base);
   const manifest = await text(new URL("fragment.jsonc", root));
   const aspects = Object.keys(
     (parseJsonc(manifest).value as { aspects?: Record<string, unknown> })?.aspects ?? {},

@@ -1,0 +1,13 @@
+// The server half of the notes fragment (statewalker/statewalker-root#259): one fragment DO,
+// `FRAGMENT`, at `idFromName("org.statewalker.notes")`. The fragment hosts (CellB in a browser, CellB
+// on Node) route `/fragments/org.statewalker.notes/<path>` to it with the path `/<path>`; under
+// `wrangler dev`, the Worker's own fetch does the same. Its Worker name is the fragment id with dots
+// as dashes, as the kernel checks.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "org-statewalker-notes",
+  "main": "server/index.js",
+  "compatibility_date": "2025-06-01",
+  "durable_objects": { "bindings": [{ "name": "FRAGMENT", "class_name": "NotesFragment" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["NotesFragment"] }]
+}

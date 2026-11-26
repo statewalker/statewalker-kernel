@@ -7,12 +7,17 @@
   "license": "MIT",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "start": "node scripts/serve.mjs",
+    "start": "node scripts/launch.mjs browser",
+    "start:browser": "node scripts/launch.mjs browser",
+    "start:node": "node scripts/launch.mjs node",
+    "start:wrangler": "node scripts/launch.mjs wrangler",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@codemirror/commands": "catalog:",
+    "@sqlite.org/sqlite-wasm": "catalog:",
+    "@statewalker/cellb": "catalog:",
     "@codemirror/state": "catalog:",
     "@codemirror/view": "catalog:",
     "@statewalker/client.core": "workspace:^",
@@ -43,6 +48,7 @@
     "tailwindcss": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
   }
 }

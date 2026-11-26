@@ -11,7 +11,7 @@ import { type StaticServer, serveStatic } from "../scripts/static-server.mjs";
 
 const DIST = resolve(import.meta.dirname, "..", "dist");
 const NOTES = "org.statewalker.notes";
-const BUNDLE = `**/fragments/${NOTES}/client/index.js`;
+const BUNDLE = `**/archives/${NOTES}/client/index.js`;
 
 let server: StaticServer;
 let browser: Browser;

@@ -14,10 +14,26 @@ import { LanguagePicker } from "@statewalker/system.l10n/client";
 import { WorkbenchView } from "@statewalker/system.workbench/client";
 import { createRoot } from "react-dom/client";
 import { boot } from "./boot.js";
+import { readLaunchConfig } from "./fragment-servers.js";
 import { bindLayoutToUrl } from "./url-layout.js";
 
-const platform = await boot({ base: new URL(".", document.baseURI), locale: navigator.language });
+const base = new URL(".", document.baseURI);
+const platform = await boot({ base, locale: navigator.language });
 window.platform = platform;
+// The fragments' server halves, as the launch configuration says (launch.json): in this origin on
+// CellB (`browser`), or by the server the page came from. Loaded beside the shell, not before it.
+const launch = await readLaunchConfig(base);
+window.launch = launch;
+if (launch.fragments === "browser") {
+  void import("./fragment-servers.js")
+    .then(({ startFragmentServers }) => startFragmentServers(platform.kernel, base, launch))
+    .then((servers) => {
+      window.fragmentServers = servers;
+    })
+    .catch((error: unknown) =>
+      console.error("[fragments] the server halves did not start:", error),
+    );
+}
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);
 // Surfaces popped out (by the user, or by system.workbench/open-surface) show in the dock.
