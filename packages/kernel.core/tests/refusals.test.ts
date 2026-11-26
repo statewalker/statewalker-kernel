@@ -134,3 +134,23 @@ describe("install refusals", () => {
     expect(refusal).toMatchObject({ id: "org.example.notes", code: "already-installed" });
   });
 });
+
+describe("check", () => {
+  it("gives the refusals an install would raise, installing nothing", async () => {
+    const { kernel, slots } = newKernel();
+    const archives = [
+      archive({ ...base, id: "system.evil" }),
+      archive({ ...base, requires: { "org.example.base": "^1.0.0" } }),
+    ];
+    const checked = await kernel.check(archives);
+    expect(checked.map((r) => r.code).sort()).toEqual(["reserved-id", "unmet-requirement"]);
+    expect(ids(slots.getSnapshot(installedFragmentsSlot))).toEqual([]);
+    expect(await refusals(kernel.install(archives))).toEqual(checked);
+  });
+
+  it("is empty when the install would go through", async () => {
+    const { kernel, slots } = newKernel();
+    expect(await kernel.check([archive(base)])).toEqual([]);
+    expect(ids(slots.getSnapshot(installedFragmentsSlot))).toEqual([]);
+  });
+});

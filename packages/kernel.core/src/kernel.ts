@@ -165,6 +165,11 @@ export interface Kernel {
    * listing every reason, and nothing is installed.
    */
   install(archives: readonly FragmentFiles[]): Promise<InstalledFragment[]>;
+  /**
+   * Every reason `install(archives)` would refuse them now, without installing anything:
+   * the same checks, an empty list when the install would go through.
+   */
+  check(archives: readonly FragmentFiles[]): Promise<Refusal[]>;
   /** Enable an installed fragment; it resolves once everything it requires has. */
   enable(id: string): Promise<void>;
   /**
@@ -619,7 +624,8 @@ export function createKernel(options: KernelOptions): Kernel {
     return refusals;
   }
 
-  async function install(archives: readonly FragmentFiles[], core: boolean) {
+  /** The archives as an install reads them, and every reason it would refuse them. */
+  async function prepareInstall(archives: readonly FragmentFiles[], core: boolean) {
     const refusals: Refusal[] = [];
     const read: {
       manifest: FragmentManifest;
@@ -656,6 +662,11 @@ export function createKernel(options: KernelOptions): Kernel {
         });
       }
     }
+    return { read, refusals };
+  }
+
+  async function install(archives: readonly FragmentFiles[], core: boolean) {
+    const { read, refusals } = await prepareInstall(archives, core);
     if (refusals.length > 0) throw new FragmentInstallError(refusals);
     const result: InstalledFragment[] = [];
     for (const { manifest, files, aspects } of read) {
@@ -841,6 +852,10 @@ export function createKernel(options: KernelOptions): Kernel {
       for (const fragment of core) await enable(fragment.id);
     }),
     install: serial((archives: readonly FragmentFiles[]) => install(archives, false)),
+    check: serial(
+      async (archives: readonly FragmentFiles[]) =>
+        (await prepareInstall(archives, false)).refusals,
+    ),
     enable: serial(enable),
     disable: serial(async (id: string, { cascade = false }: { cascade?: boolean } = {}) => {
       if (installed(id)?.core && !DISABLEABLE_CORE.includes(id)) {

@@ -17,7 +17,7 @@ export * from "./ids.js";
 export * from "./kernel.js";
 export * from "./manifest.js";
 export * from "./migrations.js";
-export { MANIFEST_FILE, parseJsonc } from "./parse-manifest.js";
+export { MANIFEST_FILE, parseJsonc, readAspectFiles, readManifest } from "./parse-manifest.js";
 export * from "./profile.js";
 export * from "./schema.js";
 export * from "./slots.js";
