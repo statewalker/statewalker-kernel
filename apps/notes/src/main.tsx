@@ -18,17 +18,39 @@ import { readLaunchConfig } from "./fragment-servers.js";
 import { bindLayoutToUrl } from "./url-layout.js";
 
 const base = new URL(".", document.baseURI);
-const platform = await boot({ base, locale: navigator.language });
-window.platform = platform;
 // The fragments' server halves, as the launch configuration says (launch.json): in this origin on
-// CellB (`browser`), or by the server the page came from. Loaded beside the shell, not before it.
+// CellB (`browser`), or by the server the page came from (`server`), or none.
 const launch = await readLaunchConfig(base);
 window.launch = launch;
+let serversReady!: () => void;
+const ready = new Promise<void>((resolve) => (serversReady = resolve));
+if (launch.fragments !== "browser") serversReady();
+const platform = await boot({
+  base,
+  locale: navigator.language,
+  ...(launch.fragments === "none"
+    ? {}
+    : {
+        servers: {
+          base: base.href,
+          // A fragment with a server aspect, while the kernel has it installed.
+          available: (id) =>
+            platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
+              .server !== undefined,
+          ready: () => ready,
+          fetch: (request) => fetch(request),
+        },
+      }),
+});
+window.platform = platform;
+// In this origin, the server halves start beside the shell, not before it; the client halves'
+// requests wait for them (`ready`).
 if (launch.fragments === "browser") {
   void import("./fragment-servers.js")
     .then(({ startFragmentServers }) => startFragmentServers(platform.kernel, base, launch))
     .then((servers) => {
       window.fragmentServers = servers;
+      serversReady();
     })
     .catch((error: unknown) =>
       console.error("[fragments] the server halves did not start:", error),

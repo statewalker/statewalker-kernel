@@ -3,6 +3,7 @@
 //
 //   GET  /notes          → 200 { notes: [{ id, text, at }] }, oldest first
 //   POST /notes { text } → 201 { id, text, at, count }
+//   DELETE /notes/<id>   → 200 { id }, or 404
 //
 // The fragment hosts route `/fragments/org.statewalker.notes/<path>` to the object at
 // `idFromName("org.statewalker.notes")` themselves; the Worker's own fetch does the same, so that
@@ -30,6 +31,15 @@ export class NotesFragment extends DurableObject {
 
   async fetch(request) {
     const { pathname } = new URL(request.url);
+    const one = /^\/notes\/(\d+)$/.exec(pathname);
+    if (one) {
+      if (request.method !== "DELETE") return json({ error: "method not allowed" }, 405);
+      const id = Number(one[1]);
+      const removed = this.ctx.storage.sql
+        .exec("DELETE FROM notes WHERE id = ? RETURNING id", id)
+        .toArray();
+      return removed.length ? json({ id }) : json({ error: "no such note" }, 404);
+    }
     if (pathname !== "/notes") return json({ error: "not found" }, 404);
     if (request.method === "GET") {
       const notes = this.ctx.storage.sql

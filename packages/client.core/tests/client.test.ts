@@ -12,6 +12,8 @@ import {
   installClient,
   l10n,
   notifications,
+  ServerPathError,
+  servers,
   settings,
   translator,
   type UrlState,
@@ -277,5 +279,65 @@ describe("the client API's l10n", () => {
     expect(l10n.format("{a}", { a: 1 })).toBe("1");
     stop();
     expect(seen).toEqual(["en", "fr"]);
+  });
+});
+
+// statewalker/statewalker-root#436: a fragment's client half reaches its own server half.
+describe("servers", () => {
+  function fakeServers(available = true) {
+    const requests: Request[] = [];
+    return {
+      requests,
+      api: {
+        base: "http://app.test/notes/",
+        available: (id: string) => available && id === "org.example.notes",
+        ready: () => Promise.resolve(),
+        async fetch(request: Request) {
+          requests.push(request);
+          return new Response("ok");
+        },
+      },
+    };
+  }
+
+  it("refuses before the install", async () => {
+    await expect(servers.of("org.example.notes").fetch("notes")).rejects.toBeInstanceOf(
+      ClientApiError,
+    );
+  });
+
+  it("gives a fragment its own server half's base and a fetch bound to it", async () => {
+    const fake = fakeServers();
+    uninstall = installClient({ commands: fakeBus(), servers: fake.api });
+    const own = servers.of("org.example.notes");
+    expect(own.base).toBe("http://app.test/notes/fragments/org.example.notes/");
+    expect(own.available()).toBe(true);
+    expect(servers.of("org.example.other").available()).toBe(false);
+    const res = await own.fetch("notes/1?x=2", { method: "DELETE" });
+    expect(await res.text()).toBe("ok");
+    expect(fake.requests.map((r) => [r.method, r.url])).toEqual([
+      ["DELETE", "http://app.test/notes/fragments/org.example.notes/notes/1?x=2"],
+    ]);
+  });
+
+  it("refuses paths that leave the fragment's own base", async () => {
+    const fake = fakeServers();
+    uninstall = installClient({ commands: fakeBus(), servers: fake.api });
+    const own = servers.of("org.example.notes");
+    for (const path of [
+      "../org.example.other/notes",
+      "notes/../../org.example.other/x",
+      "/fragments/org.example.other/x",
+      "//evil.example/x",
+      "http://evil.example/x",
+      "%2e%2e/org.example.other/x",
+    ])
+      await expect(own.fetch(path), path).rejects.toBeInstanceOf(ServerPathError);
+    expect(fake.requests).toEqual([]);
+  });
+
+  it("refuses an id that is not a fragment id", () => {
+    uninstall = installClient({ commands: fakeBus(), servers: fakeServers().api });
+    expect(() => servers.of("../x")).toThrow(ServerPathError);
   });
 });
