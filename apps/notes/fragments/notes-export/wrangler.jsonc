@@ -1,0 +1,10 @@
+// The server half of notes-export: one fragment DO, `FRAGMENT`, at
+// `idFromName("org.statewalker.notes-export")`, reached at `/fragments/org.statewalker.notes-export/`.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "org-statewalker-notes-export",
+  "main": "server/index.js",
+  "compatibility_date": "2025-06-01",
+  "durable_objects": { "bindings": [{ "name": "FRAGMENT", "class_name": "ExportsFragment" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["ExportsFragment"] }]
+}

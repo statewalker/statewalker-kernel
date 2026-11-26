@@ -9,6 +9,28 @@
 // import map; its CSS is client/index.css.
 {
   "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensionPoints": {
+    "actions": {
+      "description": "Actions on the notes: a button in the notes view each, calling the extension's reference with { notes: [{ text }] } and showing the { message } it answers.",
+      "schema": {
+        "type": "object",
+        "required": ["title"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "description": "The button's label.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "order": {
+            "description": "Buttons are sorted by order (0 by default), then title.",
+            "type": "number"
+          }
+        }
+      }
+    }
+  },
   "extensions": [
     {
       "point": "views",
@@ -72,6 +94,51 @@
       "reference": {
         "module": "./index.js",
         "export": "addNote"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "list-notes",
+          "summary": "List the notes",
+          "responses": {
+            "200": {
+              "description": "The notes, oldest first",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["notes"],
+                    "properties": {
+                      "notes": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["text"],
+                          "properties": {
+                            "text": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "labels": {
+          "fr": {
+            "title": "Lister les notes"
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "listNotes"
       }
     },
     {

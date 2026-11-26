@@ -9,6 +9,7 @@ import "@statewalker/system.fragments/client.css";
 import "@statewalker/system.profile/client.css";
 import "@statewalker/system.l10n/client.css";
 import "./app.css";
+import type { Kernel } from "@statewalker/kernel.core";
 import { createSurfaceDock } from "@statewalker/system.a2ui/client";
 import { applyAppearance, BrandMark } from "@statewalker/system.appearance/client";
 import { LanguagePicker } from "@statewalker/system.l10n/client";
@@ -32,38 +33,22 @@ const ready = new Promise<void>((resolve, reject) => {
 // Handled by each request that waits on it; not an unhandled rejection of its own.
 ready.catch(() => {});
 if (launch.fragments !== "browser") serversReady();
-const platform = await boot({
-  base,
-  locale: navigator.language,
-  ...(launch.fragments === "none"
-    ? {}
-    : {
-        servers: {
-          base: base.href,
-          // A fragment with a server aspect, while the kernel has it installed.
-          available: (id) =>
-            platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
-              .server !== undefined,
-          ready: () => ready,
-          fetch: (request) => fetch(request),
-        },
-        // In this origin the DOs' storage is the shard pool's; a server host keeps its own.
-        ...(launch.fragments === "browser"
-          ? {
-              removeServerData: async (id: string) => {
-                await ready;
-                await window.fragmentServers?.removeData(id);
-              },
-            }
-          : {}),
-      }),
-});
-window.platform = platform;
-// In this origin, the server halves start beside the shell, not before it; the client halves'
-// requests wait for them (`ready`).
-if (launch.fragments === "browser") {
+/** How long a fragment's activation waits for its server half: then it fails, retryable. */
+const SERVER_HALF_TIMEOUT = 30_000;
+
+/** `promise`, or a rejection with `message` once `ms` have passed. */
+function within<T>(ms: number, promise: Promise<T>, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, late]).finally(() => clearTimeout(timer));
+}
+
+/** Starts the server halves in this origin; their client halves' requests wait for them. */
+function startServers(kernel: Kernel) {
   void import("./fragment-servers.js")
-    .then(({ startFragmentServers }) => startFragmentServers(platform.kernel, base, launch))
+    .then(({ startFragmentServers }) => startFragmentServers(kernel, base, launch))
     .then((servers) => {
       window.fragmentServers = servers;
       serversReady();
@@ -79,6 +64,43 @@ if (launch.fragments === "browser") {
       );
     });
 }
+const platform = await boot({
+  base,
+  locale: navigator.language,
+  ...(launch.fragments === "none"
+    ? {}
+    : {
+        servers: {
+          base: base.href,
+          // A fragment with a server aspect, while the kernel has it installed.
+          available: (id) =>
+            platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
+              .server !== undefined,
+          ready: () => ready,
+          fetch: (request) => fetch(request),
+        },
+        // In this origin, the server halves start once the kernel has the app's fragments,
+        // before their client halves activate: a fragment is active once its server half runs,
+        // failed (and retryable) when it cannot load. The DOs' storage is the shard pool's; a
+        // server host keeps its own.
+        ...(launch.fragments === "browser"
+          ? {
+              started: startServers,
+              serverHalf: (id: string) =>
+                within(
+                  SERVER_HALF_TIMEOUT,
+                  ready.then(() => window.fragmentServers?.ensure(id)),
+                  `${id}: its server half did not start within ${SERVER_HALF_TIMEOUT / 1000} s`,
+                ),
+              removeServerData: async (id: string) => {
+                await ready;
+                await window.fragmentServers?.removeData(id);
+              },
+            }
+          : {}),
+      }),
+});
+window.platform = platform;
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);
 // Surfaces popped out (by the user, or by system.workbench/open-surface) show in the dock.

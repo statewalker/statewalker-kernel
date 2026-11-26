@@ -1,0 +1,78 @@
+// The client aspect of notes-export: its action on the notes fragment's `actions` point, the
+// `export-notes` command (offered to agents as a write), its entry in the notes menu, and the Exports
+// view with its activity bar entry.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "org.statewalker.notes/actions",
+      "data": {
+        "title": "Export"
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "exportAction"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "export-notes",
+          "summary": "Export the notes",
+          "description": "Export the notes as a Markdown list, kept in the exports.",
+          "responses": {
+            "200": {
+              "description": "The export",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["id", "count"],
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "count": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "agent": { "action": "write" }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "exportNotes"
+      }
+    },
+    {
+      "point": "menus",
+      "data": {
+        "menu": "notes",
+        "command": "org.statewalker.notes-export/export-notes"
+      }
+    },
+    {
+      "point": "views",
+      "data": {
+        "id": "exports",
+        "title": "Exports"
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "ExportsView"
+      }
+    },
+    {
+      "point": "activitybar",
+      "data": {
+        "id": "exports",
+        "title": "Exports",
+        "view": "org.statewalker.notes-export/exports"
+      }
+    }
+  ]
+}

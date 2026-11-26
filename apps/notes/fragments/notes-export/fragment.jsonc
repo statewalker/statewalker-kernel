@@ -1,0 +1,21 @@
+// The notes-export fragment (statewalker/statewalker-root#261): not in the app's baseline, installed
+// live from the app's catalog through system.fragments' consent screen. It contributes an "Export"
+// action to the notes fragment's `actions` point, an `export-notes` command (offered to agents), a
+// menu entry and an Exports view; its server half keeps the exports in its fragment DO.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "org.statewalker.notes-export",
+  "version": "0.1.0",
+  "name": "Notes export",
+  "description": "Export the notes, and keep every export.",
+  "engines": {
+    "platform": "^0.1.0"
+  },
+  "requires": {
+    "org.statewalker.notes": "^0.1.0"
+  },
+  "aspects": {
+    "server": {},
+    "client": {}
+  }
+}
