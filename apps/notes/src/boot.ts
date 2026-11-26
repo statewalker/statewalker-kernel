@@ -531,6 +531,9 @@ export async function boot({
       callAs: commands.callAs,
       slots: kernel.slots,
       store: tasksStore(servers),
+      // The runners are this page's: a lease outlives a closed or reloaded page by at most 10 s,
+      // then the task runs again (at least once; handlers deduplicate by the task's id).
+      leaseMs: 10_000,
       onError: (error) => console.warn("[system.tasks]", error),
     });
   const fragments = createFragmentManager({
