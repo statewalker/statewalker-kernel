@@ -3,6 +3,7 @@
 // their places through JSON.
 import { describe, expect, it } from "vitest";
 import {
+  JOB_INDEX_KEEP_MS,
   QueueOperationError,
   remoteQueueStore,
   serveQueueStore,
@@ -56,5 +57,23 @@ describe("serveQueueStore", () => {
     expect((await store.listSubscriptions(P)).find((s) => s.name === "s")?.counts).toMatchObject({
       waiting: 0,
     });
+  });
+});
+
+describe("the job index", () => {
+  it("forgets jobs past the queue's memory of their tasks", async () => {
+    let now = 1_000_000;
+    const store = sqlQueueStore(sqlite().sql, { now: () => now });
+    await store.recordJob(TASKS_PROJECT, "old-task", "old-job");
+    now += JOB_INDEX_KEEP_MS + 1;
+    await store.recordJob(TASKS_PROJECT, "new-task", "new-job");
+    expect(await store.jobsOf(TASKS_PROJECT, "old-task")).toEqual([]);
+    expect((await store.jobsOf(TASKS_PROJECT, "new-task")).map((j) => j.job)).toEqual(["new-job"]);
+  });
+
+  it("keeps one task's attempts in the order they started, also within one millisecond", async () => {
+    const store = sqlQueueStore(sqlite().sql, { now: () => 5 });
+    for (const job of ["z", "a", "m"]) await store.recordJob(TASKS_PROJECT, "t", job);
+    expect((await store.jobsOf(TASKS_PROJECT, "t")).map((j) => j.job)).toEqual(["z", "a", "m"]);
   });
 });

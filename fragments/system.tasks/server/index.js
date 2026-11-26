@@ -47,6 +47,15 @@ export class TasksFragment extends DurableObject {
     const { pathname } = new URL(request.url);
     if (pathname !== "/queue") return json({ error: "not found" }, 404);
     if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
+    // Only the app's own pages: a JSON body (a cross-origin page cannot send one without a
+    // preflight, which is never answered), and no request a browser marks as from another site.
+    // An operation names its principal, so a request from elsewhere could publish as the user.
+    const type = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (type !== "application/json")
+      return json({ error: "an operation is sent as application/json" }, 415);
+    const site = request.headers.get("sec-fetch-site");
+    if (site && site !== "same-origin" && site !== "none")
+      return json({ error: "only the app's own pages reach the queue" }, 403);
     const length = Number(request.headers.get("content-length") ?? "0");
     if (length > MAX_BODY) return json({ error: "the operation is too large" }, 413);
     const text = await request.text();

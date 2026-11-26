@@ -208,13 +208,20 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
         } catch (error) {
           // An error the queue retries is not the task's answer yet: `retry` says another attempt
           // follows (a viewer waits for its job), as the runner replies only after the last one.
-          const reply = context.signal.aborted
+          // Cancelled only when the queue says so (ECANCELED): a lost lease or a stopped runner
+          // aborts the signal too, and the queue then runs the task again.
+          const cancelled =
+            (context.signal.reason as { code?: unknown } | undefined)?.code === "ECANCELED";
+          const lost = context.signal.aborted && !cancelled;
+          const reply = cancelled
             ? { job: lease.id, cancelled: true }
-            : {
-                job: lease.id,
-                error: String((error as Error)?.message ?? error),
-                ...(lease.attempt < lease.max_attempts ? { retry: true } : {}),
-              };
+            : lost
+              ? { job: lease.id, error: "the attempt stopped", retry: true }
+              : {
+                  job: lease.id,
+                  error: String((error as Error)?.message ?? error),
+                  ...(lease.attempt < lease.max_attempts ? { retry: true } : {}),
+                };
           await store.recordReply(P, lease.id, reply).catch(onError);
           throw error;
         } finally {

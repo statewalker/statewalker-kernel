@@ -73,6 +73,13 @@ export interface TaskJob {
 
 /** The most jobs one task's index keeps (its attempts): the oldest go first. */
 const MAX_JOBS_PER_TASK = 20;
+/**
+ * How long the index keeps a job: past a task's longest life (30 days) and its dead letters'
+ * (14 days), when the queue has forgotten the task.
+ */
+export const JOB_INDEX_KEEP_MS = 45 * 24 * 60 * 60 * 1000;
+/** The most jobs the index keeps in all: the oldest go first. */
+export const MAX_INDEXED_JOBS = 10_000;
 /** A reply's cap in the index, as JSON: a larger one is kept as its error. */
 const MAX_REPLY_BYTES = 64 * 1024;
 
@@ -108,6 +115,12 @@ function sqlJobIndex(sql: SqlLike, now: () => number): JobIndex {
         task,
         MAX_JOBS_PER_TASK,
       );
+      // Bounded in all: jobs past the queue's memory of their tasks, and beyond the cap.
+      sql.exec("DELETE FROM system_tasks_jobs WHERE at < ?", now() - JOB_INDEX_KEEP_MS);
+      sql.exec(
+        "DELETE FROM system_tasks_jobs WHERE job NOT IN (SELECT job FROM system_tasks_jobs ORDER BY at DESC LIMIT ?)",
+        MAX_INDEXED_JOBS,
+      );
     },
     recordReply(project, job, reply) {
       let text = JSON.stringify(reply ?? null);
@@ -123,7 +136,7 @@ function sqlJobIndex(sql: SqlLike, now: () => number): JobIndex {
     jobsOf(project, task) {
       return sql
         .exec(
-          "SELECT job, at, reply FROM system_tasks_jobs WHERE project = ? AND task = ? ORDER BY at, job",
+          "SELECT job, at, reply FROM system_tasks_jobs WHERE project = ? AND task = ? ORDER BY at, rowid",
           project,
           task,
         )
@@ -215,6 +228,9 @@ function memoryJobIndex(now: () => number): JobIndex {
         .filter((j) => j.project === project && j.task === task)
         .sort((x, y) => y.at - x.at);
       for (const old of mine.slice(MAX_JOBS_PER_TASK)) jobs.delete(old.job);
+      for (const j of [...jobs.values()]) if (j.at < now() - JOB_INDEX_KEEP_MS) jobs.delete(j.job);
+      const all = [...jobs.values()].sort((x, y) => y.at - x.at);
+      for (const old of all.slice(MAX_INDEXED_JOBS)) jobs.delete(old.job);
     },
     recordReply(project, job, reply) {
       const found = jobs.get(job);
@@ -224,7 +240,8 @@ function memoryJobIndex(now: () => number): JobIndex {
     jobsOf(project, task) {
       return [...jobs.values()]
         .filter((j) => j.project === project && j.task === task)
-        .sort((x, y) => x.at - y.at || x.job.localeCompare(y.job))
+        // Stable: jobs of one millisecond stay in the order they started.
+        .sort((x, y) => x.at - y.at)
         .map(({ job, at, reply }) => ({ job, at, ...(reply !== undefined ? { reply } : {}) }));
     },
   };

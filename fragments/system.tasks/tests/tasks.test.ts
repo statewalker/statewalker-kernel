@@ -403,3 +403,37 @@ describe("a failed attempt the queue retries (statewalker/statewalker-root#409)"
     expect(jobs[1]?.reply?.retry).toBeUndefined();
   });
 });
+
+describe("an attempt stopped without a cancel (statewalker/statewalker-root#409)", () => {
+  it("is recorded as one the queue runs again, not as cancelled", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const { bus, kernel } = await platform([fragment(NOTES, [taskCommand("export")])], {
+      [NOTES]: {
+        export: (_input: unknown, context: CommandContext) => {
+          started();
+          return new Promise((_resolve, reject) => {
+            context.signal.addEventListener("abort", () => reject(context.signal.reason));
+          });
+        },
+      },
+    });
+    const { task } = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      wait: false,
+    });
+    await running;
+    // Its fragment disabled mid-run: the runner stops, the lease goes back to the queue.
+    await kernel.disable(NOTES);
+    type Jobs = { jobs: { job: string; reply?: Record<string, unknown> }[] };
+    let jobs: Jobs["jobs"] = [];
+    await until(async () => {
+      ({ jobs } = await bus.call<Jobs>("system.tasks/jobs", { task }));
+      return jobs[0]?.reply !== undefined;
+    });
+    expect(jobs[0]?.reply).toMatchObject({ retry: true });
+    expect(jobs[0]?.reply?.cancelled).toBeUndefined();
+  });
+});

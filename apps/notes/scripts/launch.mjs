@@ -58,6 +58,21 @@ function appServerFragments() {
   return found;
 }
 
+/**
+ * A request to a server half that a browser says comes from another site (`Sec-Fetch-Site`): a
+ * page elsewhere cannot reach the fragments' DOs through this host (they trust the app's pages).
+ */
+function fromElsewhere(request) {
+  const site = request.headers.get("sec-fetch-site");
+  return site !== null && site !== "same-origin" && site !== "none";
+}
+
+const refusedElsewhere = () =>
+  new Response("the fragments' server halves answer only this app's pages", {
+    status: 403,
+    headers: { "content-type": "text/plain" },
+  });
+
 /** `/fragments/<id>/…`, or `/peers/<peerId>/fragments/<id>/…` naming this host: the fragment's. */
 function fragmentOf(pathname, peerId) {
   let path = pathname;
@@ -174,8 +189,10 @@ export async function launch(mode, options = {}) {
     }
     const server = await serveStatic(DIST, port, {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
-      handle: async (request) =>
-        fragmentOf(new URL(request.url).pathname, peerId) ? host.fetch(request) : undefined,
+      handle: async (request) => {
+        if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
+        return fromElsewhere(request) ? refusedElsewhere() : host.fetch(request);
+      },
     });
     return {
       mode,
@@ -202,6 +219,7 @@ export async function launch(mode, options = {}) {
           const url = new URL(request.url);
           const target = fragmentOf(url.pathname, peerId);
           if (!target) return undefined;
+          if (fromElsewhere(request)) return refusedElsewhere();
           const worker = workers.get(target.id);
           if (!worker)
             return new Response(`no fragment "${target.id}" on this host`, {

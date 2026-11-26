@@ -29,7 +29,16 @@ export class ExportsFragment extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     ctx.storage.sql.exec(
-      "CREATE TABLE IF NOT EXISTS exports (id INTEGER PRIMARY KEY AUTOINCREMENT, count INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL, call TEXT UNIQUE)",
+      "CREATE TABLE IF NOT EXISTS exports (id INTEGER PRIMARY KEY AUTOINCREMENT, count INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL)",
+    );
+    // `call` (a task's id) came after the first version: a table made before gets the column,
+    // its exports kept (null), so an older DO's exports go on working. Rollback: an older version
+    // ignores the column.
+    const columns = ctx.storage.sql.exec("PRAGMA table_info(exports)").toArray();
+    if (!columns.some((c) => c.name === "call"))
+      ctx.storage.sql.exec("ALTER TABLE exports ADD COLUMN call TEXT");
+    ctx.storage.sql.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS exports_call ON exports (call) WHERE call IS NOT NULL",
     );
   }
 

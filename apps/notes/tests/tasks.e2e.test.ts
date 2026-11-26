@@ -154,6 +154,70 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
       }
     }, 120_000);
 
+    it("answers only the app's pages: no other content type, no other site", async () => {
+      const context = await browser.newContext();
+      try {
+        const page = await open(context, app);
+        const operation = JSON.stringify({
+          kind: "queue",
+          method: "publish",
+          args: ["local", { subject: SLOWLY_SUBJECT, payload: {} }, "user"],
+        });
+        // A body a page of another origin could send without a preflight: refused.
+        await expect(
+          page.evaluate(
+            (body) =>
+              fetch("fragments/system.tasks/queue", {
+                method: "POST",
+                headers: { "content-type": "text/plain" },
+                body,
+              }).then((r) => r.status),
+            operation,
+          ),
+        ).resolves.toBe(415);
+        if (mode !== "browser") {
+          // A request a browser marks as from another site never reaches a DO.
+          const res = await fetch(`${app.url}fragments/system.tasks/queue`, {
+            method: "POST",
+            headers: { "content-type": "application/json", "sec-fetch-site": "cross-site" },
+            body: operation,
+          });
+          expect(res.status).toBe(403);
+        }
+      } finally {
+        await context.close();
+      }
+    });
+
+    it("makes an export once per task id, however often it runs", async () => {
+      const context = await browser.newContext();
+      try {
+        const page = await open(context, app);
+        await installExport(page);
+        const made = await exportsCount(page);
+        const call = `e2e-${mode}-${Date.now()}`;
+        const post = () =>
+          page.evaluate(
+            async ([id, c]) => {
+              const res = await fetch(`fragments/${id}/exports`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ notes: [{ text: "once" }], call: c }),
+              });
+              return { status: res.status, id: ((await res.json()) as { id: number }).id };
+            },
+            [EXPORT, call] as const,
+          );
+        const first = await post();
+        const again = await post();
+        expect(first.status).toBe(201);
+        expect(again).toEqual({ status: 200, id: first.id });
+        await expect(exportsCount(page)).resolves.toBe(made + 1);
+      } finally {
+        await context.close();
+      }
+    });
+
     it("cancels a running task: it ends as cancelled", async () => {
       const context = await browser.newContext();
       try {
