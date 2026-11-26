@@ -4,6 +4,7 @@
 // reload, after the last stamp it showed), shows the reply, and cancels it. A task waiting while its
 // fragment is disabled survives a restart of the host and is processed once the fragment returns.
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
@@ -183,6 +184,30 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
             body: operation,
           });
           expect(res.status).toBe(403);
+          // A domain rebound to this host: same-origin to its own page, refused by its name.
+          const rebound = await new Promise<number>((resolve, reject) => {
+            const url = new URL(`${app.url}fragments/system.tasks/queue`);
+            const req = httpRequest(
+              {
+                host: url.hostname,
+                port: url.port,
+                path: url.pathname,
+                method: "POST",
+                headers: {
+                  host: `evil.example:${url.port}`,
+                  "content-type": "application/json",
+                  "sec-fetch-site": "same-origin",
+                },
+              },
+              (r) => {
+                r.resume();
+                resolve(r.statusCode ?? 0);
+              },
+            );
+            req.on("error", reject);
+            req.end(operation);
+          });
+          expect(rebound).toBe(403);
         }
       } finally {
         await context.close();

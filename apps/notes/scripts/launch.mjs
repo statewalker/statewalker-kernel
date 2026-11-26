@@ -58,13 +58,20 @@ function appServerFragments() {
   return found;
 }
 
+/** The names this host answers to: it listens on the loopback address only. */
+const LOCAL_NAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
 /**
- * A request to a server half that a browser says comes from another site (`Sec-Fetch-Site`): a
- * page elsewhere cannot reach the fragments' DOs through this host (they trust the app's pages).
+ * A request to a server half from anywhere but this app's pages: one a browser says comes from
+ * another site (`Sec-Fetch-Site`), or one addressed to another name (`Host`: a page of a domain
+ * rebound to 127.0.0.1 is same-origin to itself). The fragments' DOs trust the app's pages only.
  */
 function fromElsewhere(request) {
   const site = request.headers.get("sec-fetch-site");
-  return site !== null && site !== "same-origin" && site !== "none";
+  if (site !== null && site !== "same-origin" && site !== "none") return true;
+  const host = request.headers.get("host") ?? "";
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return !LOCAL_NAMES.has((name ?? "").toLowerCase());
 }
 
 const refusedElsewhere = () =>
