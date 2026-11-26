@@ -16,7 +16,7 @@ pnpm add @statewalker/kernel.core
 
 | Import | Provides |
 | --- | --- |
-| `createKernel`, `Kernel`, `KernelOptions`, `RemoveOptions`, `UpgradeOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `enable`, `disable`, `dependentsOf`, `remove`, `activate`, `retry`, `deactivate`, `upgrade`, `rollback`, `stop`. |
+| `createKernel`, `Kernel`, `KernelOptions`, `RemoveOptions`, `UpgradeOptions`, `PlatformInfo`, `AspectActivator`, `ActivationContext` | The kernel: `start`, `install`, `check` (the refusals an install would raise, installing nothing), `enable`, `disable`, `dependentsOf`, `remove`, `activate`, `retry`, `deactivate`, `upgrade`, `rollback`, `stop`. |
 | `ArchiveStore`, `createMemoryArchiveStore`, `archiveHash` | The host's content-addressed store of installed archives, and the hash naming each archive. |
 | `KernelProfile`, `createMemoryProfile`, `FragmentRecord`, `ArchiveRef`, `fragmentRecordKey`, `MigrationState`, `appliedMigrationsKey` | What the kernel records in the user's profile: each fragment's version, archive, enabled state and last upgrade, and the migrations of its data (applied, started, failed). |
 | `ClassMigration`, `readMigrations` | The Durable Object class migrations of a server half's `wrangler.jsonc`. |

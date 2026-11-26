@@ -43,6 +43,8 @@ export interface RequirementSummary {
   readonly version?: string;
   /** Where a proposed one comes from. */
   readonly source?: string;
+  /** Whether an installed one is enabled (a disabled one leaves the new fragment unresolved). */
+  readonly enabled?: boolean;
 }
 
 /** A command the archive contributes, with the exposures it opts in to. */
@@ -75,12 +77,20 @@ export interface ConsentSummary {
   readonly secrets: readonly Record<string, unknown>[];
   /** Its commands exposed beyond the bus. */
   readonly exposures: readonly ExposureSummary[];
-  /** Every reason the install would be refused: this archive's, and its proposed requirements'. */
+  /**
+   * Every reason the kernel would refuse the install now (its own checks): this archive's, and
+   * its proposed requirements'.
+   */
   readonly refusals: readonly Refusal[];
   readonly installable: boolean;
-  /** The archive itself, and the proposed requirements' archives, as `install` takes them. */
+  /** The archive itself, a frozen copy of the files inspected. */
   readonly files: FragmentFiles;
-  readonly proposed: readonly { readonly id: string; readonly files: FragmentFiles }[];
+  /**
+   * The requirements proposed from the catalog, installed with it, each after its own
+   * requirements: everything the consent screen shows for them too, their refusals among
+   * `refusals`. Their own `proposed` is empty.
+   */
+  readonly proposed: readonly ConsentSummary[];
 }
 
 /** An installed fragment, as the manager view lists it. */
@@ -139,6 +149,18 @@ const record = (data: unknown): Record<string, unknown> =>
     ? (data as Record<string, unknown>)
     : { value: data };
 
+/**
+ * `install` was given a summary that is not what `inspect` gives for its archives now: an archive
+ * changed (or was forged) after the user consented, or the catalog offers other requirements.
+ * Nothing is installed; inspect again and ask again.
+ */
+export class ConsentMismatchError extends Error {
+  override name = "ConsentMismatchError";
+}
+
+/** The kernel's ranges: a prerelease satisfies a range it falls in. */
+const RANGE = { includePrerelease: true };
+
 export function createFragmentManager(options: {
   kernel: Kernel;
   /** The platform the kernel runs as (the same `platform` its options got): version and bindings. */
@@ -149,103 +171,27 @@ export function createFragmentManager(options: {
   const { kernel, catalog, platform } = options;
   const installed = () => kernel.slots.getSnapshot(installedFragmentsSlot);
 
-  async function inspect(
-    files: FragmentFiles,
-    { source }: { source: string },
-  ): Promise<ConsentSummary> {
+  /** What one archive shows the user, from its own files: a frozen copy of them, and its manifest. */
+  async function describe(input: FragmentFiles, source: string) {
+    const files: FragmentFiles = Object.freeze({ ...input });
     const archive = await archiveHash(files);
     const read = readManifest(files);
-    const empty = {
+    const base = {
       source,
       archive,
-      bindings: [],
-      requires: [],
+      bindings: [] as ConsentSummary["bindings"],
       server: false,
-      agentPlugins: [],
-      secrets: [],
-      exposures: [],
+      agentPlugins: [] as ConsentSummary["agentPlugins"],
+      secrets: [] as ConsentSummary["secrets"],
+      exposures: [] as ConsentSummary["exposures"],
       files,
-      proposed: [],
     };
-    if (!read.manifest) return { ...empty, refusals: [read.refusal], installable: false };
+    if (!read.manifest) return { draft: base, refusal: read.refusal };
     const manifest = read.manifest;
-    const refusals: Refusal[] = [];
     const fits =
-      semver.satisfies(platform.version, manifest.engines.platform, { includePrerelease: true }) ||
-      manifest.engines.platform === "*";
-    if (!fits)
-      refusals.push({
-        id: manifest.id,
-        code: "incompatible-platform",
-        message: `"${manifest.id}" needs the platform ${manifest.engines.platform}; this one is ${platform.version}`,
-      });
+      manifest.engines.platform === "*" ||
+      semver.satisfies(platform.version, manifest.engines.platform, RANGE);
     const offered = new Set(platform.bindings ?? []);
-    const bindings = (manifest.bindings ?? []).map((name) => ({
-      name,
-      offered: offered.has(name),
-    }));
-    for (const b of bindings)
-      if (!b.offered)
-        refusals.push({
-          id: manifest.id,
-          code: "missing-binding",
-          message: `"${manifest.id}" needs the binding "${b.name}", which this host does not offer`,
-        });
-
-    // Requirements: installed, else proposed from the catalog (and its own requirements), else missing.
-    const requires: RequirementSummary[] = [];
-    const proposed: { id: string; files: FragmentFiles }[] = [];
-    const seen = new Set([manifest.id]);
-    const visit = async (owner: FragmentManifest) => {
-      for (const [id, range] of Object.entries(owner.requires ?? {})) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-        const present = installed().get(id);
-        if (present && semver.satisfies(present.manifest.version, range)) {
-          requires.push({ id, range, state: "installed", version: present.manifest.version });
-          continue;
-        }
-        const offeredArchive = present ? undefined : await catalog?.load(id);
-        const offeredManifest = offeredArchive && readManifest(offeredArchive.files).manifest;
-        if (offeredArchive && offeredManifest && semver.satisfies(offeredManifest.version, range)) {
-          requires.push({
-            id,
-            range,
-            state: "proposed",
-            version: offeredManifest.version,
-            source: offeredArchive.source,
-          });
-          proposed.push({ id, files: offeredArchive.files });
-          // A proposed fragment's own reasons count too: all or nothing.
-          const nested = await inspect(offeredArchive.files, { source: offeredArchive.source });
-          refusals.push(...nested.refusals.filter((r) => r.code !== "unmet-requirement"));
-          await visit(offeredManifest);
-          continue;
-        }
-        requires.push({
-          id,
-          range,
-          state: "missing",
-          ...(present ? { version: present.manifest.version } : {}),
-        });
-        refusals.push({
-          id: owner.id,
-          code: "unmet-requirement",
-          message: present
-            ? `"${owner.id}" requires "${id}" ${range}; ${present.manifest.version} is installed`
-            : `"${owner.id}" requires "${id}" ${range}, which is not installed and not offered`,
-        });
-      }
-    };
-    await visit(manifest);
-
-    if (installed().has(manifest.id))
-      refusals.push({
-        id: manifest.id,
-        code: "already-installed",
-        message: `"${manifest.id}" is already installed`,
-      });
-
     const extensions = extensionsOf(files, manifest);
     const exposures: ExposureSummary[] = [];
     for (const { extension } of extensions) {
@@ -257,32 +203,125 @@ export function createFragmentManager(options: {
         exposures.push({ command: `${manifest.id}/${operationId}`, exposures: exposed });
     }
     return {
-      ...empty,
-      id: manifest.id,
-      version: manifest.version,
-      ...(manifest.name ? { name: manifest.name } : {}),
-      ...(manifest.description ? { description: manifest.description } : {}),
-      platform: { range: manifest.engines.platform, fits },
-      bindings,
-      requires,
-      server: manifest.aspects.server !== undefined,
-      agentPlugins: extensions
-        .filter(({ extension }) => pointName(extension.point) === "agent-plugins")
-        .map(({ extension }) => record(extension.data)),
-      secrets: extensions
-        .filter(({ extension }) => pointName(extension.point) === "secrets")
-        .map(({ extension }) => record(extension.data)),
-      exposures,
-      refusals,
-      installable: refusals.length === 0,
-      proposed,
+      manifest,
+      draft: {
+        ...base,
+        id: manifest.id,
+        version: manifest.version,
+        ...(manifest.name ? { name: manifest.name } : {}),
+        ...(manifest.description ? { description: manifest.description } : {}),
+        platform: { range: manifest.engines.platform, fits },
+        bindings: (manifest.bindings ?? []).map((name) => ({ name, offered: offered.has(name) })),
+        server: manifest.aspects.server !== undefined,
+        agentPlugins: extensions
+          .filter(({ extension }) => pointName(extension.point) === "agent-plugins")
+          .map(({ extension }) => record(extension.data)),
+        secrets: extensions
+          .filter(({ extension }) => pointName(extension.point) === "secrets")
+          .map(({ extension }) => record(extension.data)),
+        exposures,
+      },
+    };
+  }
+
+  async function inspect(
+    input: FragmentFiles,
+    { source }: { source: string },
+  ): Promise<ConsentSummary> {
+    const root = await describe(input, source);
+    if (!root.manifest)
+      return {
+        ...root.draft,
+        requires: [],
+        refusals: [root.refusal],
+        installable: false,
+        proposed: [],
+      };
+
+    // Requirements, in one walk: installed, else proposed from the catalog (with its own
+    // requirements), else missing. Each fragment is visited once, so a cycle ends.
+    type Described = Awaited<ReturnType<typeof describe>> & { manifest: FragmentManifest };
+    const known = new Map<string, Described | null>([[root.manifest.id, root as Described]]);
+    const requiresOf = new Map<string, RequirementSummary[]>();
+    /** The proposed fragments, each after its requirements. */
+    const proposed: Described[] = [];
+    const enabled = kernel.slots.getSnapshot(enabledFragmentsSlot);
+    const visit = async (owner: FragmentManifest) => {
+      const list: RequirementSummary[] = [];
+      requiresOf.set(owner.id, list);
+      for (const [id, range] of Object.entries(owner.requires ?? {})) {
+        const present = installed().get(id);
+        if (present) {
+          list.push(
+            semver.satisfies(present.manifest.version, range, RANGE)
+              ? {
+                  id,
+                  range,
+                  state: "installed",
+                  version: present.manifest.version,
+                  enabled: enabled.has(id),
+                }
+              : { id, range, state: "missing", version: present.manifest.version },
+          );
+          continue;
+        }
+        if (!known.has(id)) {
+          const loaded = await catalog?.load(id);
+          const offered = loaded ? await describe(loaded.files, loaded.source) : undefined;
+          if (offered?.manifest?.id === id) {
+            known.set(id, offered as Described);
+            await visit(offered.manifest);
+            proposed.push(offered as Described);
+          } else known.set(id, null);
+        }
+        const offered = known.get(id);
+        if (offered && offered !== root && semver.satisfies(offered.manifest.version, range, RANGE))
+          list.push({
+            id,
+            range,
+            state: "proposed",
+            version: offered.manifest.version,
+            source: offered.draft.source,
+          });
+        else list.push({ id, range, state: "missing" });
+      }
+    };
+    await visit(root.manifest);
+
+    // The kernel's own checks over the batch the install would be: every reason it would refuse.
+    const refusals = await kernel.check([...proposed.map((p) => p.draft.files), root.draft.files]);
+    const summaryOf = (d: Described, own: readonly Refusal[]): ConsentSummary => ({
+      ...d.draft,
+      requires: requiresOf.get(d.manifest.id) ?? [],
+      refusals: own,
+      installable: own.length === 0,
+      proposed: [],
+    });
+    return {
+      ...summaryOf(root as Described, refusals),
+      proposed: proposed.map((p) =>
+        summaryOf(
+          p,
+          refusals.filter((r) => r.id === p.manifest.id),
+        ),
+      ),
     };
   }
 
   async function install(summary: ConsentSummary): Promise<InstalledFragment[]> {
-    if (!summary.installable) throw new FragmentInstallError(summary.refusals);
+    // What gets installed is what the user saw: the same archives, hashed again now.
+    const fresh = await inspect(summary.files, { source: summary.source });
+    const same =
+      fresh.archive === summary.archive &&
+      fresh.proposed.length === summary.proposed.length &&
+      fresh.proposed.every((p, i) => p.archive === summary.proposed[i]?.archive);
+    if (!same)
+      throw new ConsentMismatchError(
+        `the archives of "${summary.id ?? summary.source}" are not the ones the user consented to`,
+      );
+    if (!fresh.installable) throw new FragmentInstallError(fresh.refusals);
     // Requirements first, so each enable finds its requirements enabled.
-    const done = await kernel.install([...summary.proposed.map((p) => p.files), summary.files]);
+    const done = await kernel.install([...fresh.proposed.map((p) => p.files), fresh.files]);
     for (const fragment of done) await kernel.enable(fragment.id);
     return done;
   }

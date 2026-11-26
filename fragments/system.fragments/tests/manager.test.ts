@@ -16,6 +16,7 @@ import {
 } from "@statewalker/kernel.core";
 import { describe, expect, it } from "vitest";
 import {
+  ConsentMismatchError,
   createFragmentManager,
   type FragmentCatalog,
   SYSTEM_FRAGMENTS_ID,
@@ -176,7 +177,13 @@ describe("inspect: what the user consents to", () => {
       installable: true,
     });
     expect(summary.requires).toEqual([
-      { id: "org.example.notes", range: "^1.0.0", state: "installed", version: "1.0.0" },
+      {
+        id: "org.example.notes",
+        range: "^1.0.0",
+        state: "installed",
+        version: "1.0.0",
+        enabled: true,
+      },
       {
         id: "org.example.markdown",
         range: "^1.0.0",
@@ -330,8 +337,174 @@ describe("the installed fragments and their lifecycle", () => {
   });
 
   it("lists no core fragment, and refuses to manage one", async () => {
-    const { kernel, platform } = await start([NOTES]);
+    const platform = { version: "1.0.0", bindings: [] };
+    const kernel = createKernel({ platform, core: [systemFragmentsArchive] });
+    await kernel.start();
+    await kernel.install([NOTES]);
     const manager = createFragmentManager({ kernel, platform });
-    expect(manager.list().every((f) => !f.id.startsWith("system."))).toBe(true);
+    expect(kernel.slots.getSnapshot(installedFragmentsSlot).has(SYSTEM_FRAGMENTS_ID)).toBe(true);
+    expect(manager.list().map((f) => f.id)).toEqual(["org.example.notes"]);
+    for (const act of [
+      () => manager.enable(SYSTEM_FRAGMENTS_ID),
+      () => manager.disable(SYSTEM_FRAGMENTS_ID),
+      () => manager.retry(SYSTEM_FRAGMENTS_ID),
+      () => manager.remove(SYSTEM_FRAGMENTS_ID),
+    ])
+      await expect(act()).rejects.toThrow(/core fragment/);
+    expect(kernel.slots.getSnapshot(enabledFragmentsSlot).has(SYSTEM_FRAGMENTS_ID)).toBe(true);
+  });
+
+  it("removes keeping the data: a reinstall finds it, its migrations recorded", async () => {
+    const journal = (tags: string[]) => ({
+      ...archive({ id: "org.example.journal", server: true }),
+      "wrangler.jsonc": JSON.stringify({
+        name: "org-example-journal",
+        main: "server/index.js",
+        migrations: tags.map((tag) => ({ tag, new_sqlite_classes: ["Journal"] })),
+      }),
+    });
+    const { kernel, platform } = await start();
+    const manager = createFragmentManager({ kernel, platform });
+    await manager.install(await manager.inspect(journal(["v1"]), { source: "file" }));
+    await manager.remove("org.example.journal");
+    // The kept data: an archive bringing a migration it lacks would change it, so is refused.
+    const newer = await manager.inspect(journal(["v1", "v2"]), { source: "file" });
+    expect(newer.refusals.map((r) => r.code)).toEqual(["pending-migrations"]);
+    const again = await manager.inspect(journal(["v1"]), { source: "file" });
+    expect((await manager.install(again)).map((f) => f.id)).toEqual(["org.example.journal"]);
+  });
+});
+
+describe("review regressions (statewalker/statewalker-kernel#71)", () => {
+  it("installs only the archives the user consented to", async () => {
+    const { kernel, platform } = await start([NOTES]);
+    const manager = createFragmentManager({ kernel, platform, catalog: catalog(MARKDOWN) });
+    const files: Record<string, string> = { ...EXPORT };
+    const summary = await manager.inspect(files, { source: "file" });
+    // The caller's object changes after consent: the summary keeps what was inspected.
+    files["fragment.jsonc"] = (files["fragment.jsonc"] ?? "").replace("1.0.0", "6.6.6");
+    expect(Object.isFrozen(summary.files)).toBe(true);
+    const done = await manager.install(summary);
+    expect(done.find((f) => f.id === "org.example.notes-export")?.manifest.version).toBe("1.0.0");
+  });
+
+  it("refuses a summary whose archives are not the ones inspected", async () => {
+    const { kernel, platform } = await start([NOTES]);
+    const offered = { current: MARKDOWN };
+    const manager = createFragmentManager({
+      kernel,
+      platform,
+      catalog: {
+        load: async (id) =>
+          id === "org.example.markdown" ? { files: offered.current, source: "catalog" } : undefined,
+      },
+    });
+    const summary = await manager.inspect(EXPORT, { source: "file" });
+    const forged = { ...summary, files: archive({ id: "org.example.other" }) };
+    await expect(manager.install(forged)).rejects.toBeInstanceOf(ConsentMismatchError);
+    // The catalog now offers another markdown than the one shown.
+    offered.current = archive({ id: "org.example.markdown", version: "1.1.0", client: [] });
+    await expect(manager.install(summary)).rejects.toBeInstanceOf(ConsentMismatchError);
+    const installed = kernel.slots.getSnapshot(installedFragmentsSlot);
+    expect(installed.has("org.example.notes-export")).toBe(false);
+    expect(installed.has("org.example.markdown")).toBe(false);
+  });
+
+  it("shows a proposed requirement's own items", async () => {
+    const markdown = archive({
+      id: "org.example.markdown",
+      server: true,
+      client: [
+        { point: "system.profile/secrets", data: { name: "MD_TOKEN" } },
+        {
+          point: "commands",
+          data: { operation: { operationId: "render" }, exposures: { http: {} } },
+        },
+      ],
+      agent: [{ point: "agent-plugins", data: { name: "md" } }],
+    });
+    const { kernel, platform } = await start([NOTES]);
+    const manager = createFragmentManager({ kernel, platform, catalog: catalog(markdown) });
+    const summary = await manager.inspect(EXPORT, { source: "file" });
+    expect(summary.proposed).toHaveLength(1);
+    expect(summary.proposed[0]).toMatchObject({
+      id: "org.example.markdown",
+      archive: await archiveHash(markdown),
+      source: "catalog:org.example.markdown",
+      server: true,
+      secrets: [{ name: "MD_TOKEN" }],
+      agentPlugins: [{ name: "md" }],
+      exposures: [{ command: "org.example.markdown/render", exposures: ["http"] }],
+      installable: true,
+    });
+  });
+
+  it("gives every reason the kernel would refuse, and accepts what it accepts", async () => {
+    const { kernel, platform } = await start([
+      archive({ id: "org.example.d", version: "1.1.0-beta.1" }),
+    ]);
+    const manager = createFragmentManager({ kernel, platform });
+    const reserved = await manager.inspect(archive({ id: "system.evil" }), { source: "file" });
+    expect(reserved).toMatchObject({ installable: false });
+    expect(reserved.refusals.map((r) => r.code)).toEqual(["reserved-id"]);
+    const noWrangler = { ...archive({ id: "org.example.srv", server: true }) };
+    delete (noWrangler as Record<string, string>)["wrangler.jsonc"];
+    expect((await manager.inspect(noWrangler, { source: "file" })).refusals[0]?.code).toBe(
+      "worker-name",
+    );
+    // A prerelease in range satisfies it, as the kernel reads ranges.
+    const pre = await manager.inspect(
+      archive({ id: "org.example.e", requires: { "org.example.d": "^1.0.0" } }),
+      { source: "file" },
+    );
+    expect(pre.installable).toBe(true);
+    await manager.install(pre);
+  });
+
+  it("installs nothing when the kernel refuses a requirement the catalog proposes", async () => {
+    const { kernel, platform } = await start([NOTES]);
+    // The catalog offers a markdown with a server half whose Worker is misnamed.
+    const bad = {
+      ...archive({ id: "org.example.markdown", server: true, client: [] }),
+      "wrangler.jsonc": JSON.stringify({ name: "elsewhere", main: "x.js" }),
+    };
+    const manager = createFragmentManager({ kernel, platform, catalog: catalog(bad) });
+    const summary = await manager.inspect(EXPORT, { source: "file" });
+    expect(summary.installable).toBe(false);
+    expect(summary.proposed[0]?.refusals.map((r) => r.code)).toEqual(["worker-name"]);
+    // Even forced through (its `installable` set), the kernel installs nothing.
+    await expect(manager.install({ ...summary, installable: true })).rejects.toMatchObject({
+      refusals: [expect.objectContaining({ code: "worker-name" })],
+    });
+    const installed = kernel.slots.getSnapshot(installedFragmentsSlot);
+    expect(installed.has("org.example.markdown")).toBe(false);
+    expect(installed.has("org.example.notes-export")).toBe(false);
+  });
+
+  it("ends on requirements that require each other", async () => {
+    const b = archive({ id: "org.example.b", requires: { "org.example.c": "^1.0.0" } });
+    const c = archive({ id: "org.example.c", requires: { "org.example.b": "^1.0.0" } });
+    let loads = 0;
+    const offered = catalog(b, c);
+    const { kernel, platform } = await start();
+    const manager = createFragmentManager({
+      kernel,
+      platform,
+      catalog: {
+        load: (id) => {
+          loads++;
+          return offered.load(id);
+        },
+      },
+    });
+    const summary = await manager.inspect(
+      archive({ id: "org.example.a", requires: { "org.example.b": "^1.0.0" } }),
+      { source: "file" },
+    );
+    expect(summary.proposed.map((p) => p.id)).toEqual(["org.example.c", "org.example.b"]);
+    expect(summary.proposed.find((p) => p.id === "org.example.c")?.requires[0]?.state).toBe(
+      "proposed",
+    );
+    expect(loads).toBe(2);
   });
 });
