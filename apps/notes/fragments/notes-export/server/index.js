@@ -1,8 +1,10 @@
 // The server half of the notes-export fragment (statewalker/statewalker-root#261): its fragment DO
 // keeps every export of the notes in SQLite.
 //
-//   GET  /exports           → 200 { exports: [{ id, count, text, at }] }, oldest first
-//   POST /exports { notes } → 201 { id, count, text, at }  (notes: [{ text }])
+//   GET  /exports                  → 200 { exports: [{ id, count, text, at }] }, oldest first
+//   POST /exports { notes, call? } → 201 { id, count, text, at }  (notes: [{ text }]); with `call`
+//                                    (a task's callId) an export already made for it is answered
+//                                    again (200), not made twice: a task runs at least once
 //
 // The fragment hosts route `/fragments/org.statewalker.notes-export/<path>` to the object at
 // `idFromName("org.statewalker.notes-export")`; the Worker's own fetch does the same under
@@ -14,6 +16,8 @@ const PREFIX = `/fragments/${ID}`;
 /** The most notes one export takes, and the longest text it keeps. */
 const MAX_NOTES = 1_000;
 const MAX_TEXT = 1_000_000;
+/** A call id: what the queue gives a task (an id), at most 128 characters. */
+const CALL = /^[A-Za-z0-9._:-]{1,128}$/;
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -26,6 +30,15 @@ export class ExportsFragment extends DurableObject {
     super(ctx, env);
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS exports (id INTEGER PRIMARY KEY AUTOINCREMENT, count INTEGER NOT NULL, text TEXT NOT NULL, at INTEGER NOT NULL)",
+    );
+    // `call` (a task's id) came after the first version: a table made before gets the column,
+    // its exports kept (null), so an older DO's exports go on working. Rollback: an older version
+    // ignores the column.
+    const columns = ctx.storage.sql.exec("PRAGMA table_info(exports)").toArray();
+    if (!columns.some((c) => c.name === "call"))
+      ctx.storage.sql.exec("ALTER TABLE exports ADD COLUMN call TEXT");
+    ctx.storage.sql.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS exports_call ON exports (call) WHERE call IS NOT NULL",
     );
   }
 
@@ -40,10 +53,19 @@ export class ExportsFragment extends DurableObject {
     }
     if (request.method !== "POST") return json({ error: "method not allowed" }, 405);
     let notes;
+    let call;
     try {
-      ({ notes } = await request.json());
+      ({ notes, call } = await request.json());
     } catch {
       return json({ error: "the body is not JSON" }, 400);
+    }
+    if (call !== undefined && (typeof call !== "string" || !CALL.test(call)))
+      return json({ error: "call must be a task's call id" }, 400);
+    if (call !== undefined) {
+      const [made] = this.ctx.storage.sql
+        .exec("SELECT id, count, text, at FROM exports WHERE call = ?", call)
+        .toArray();
+      if (made) return json(made);
     }
     if (
       !Array.isArray(notes) ||
@@ -57,10 +79,11 @@ export class ExportsFragment extends DurableObject {
     const at = Date.now();
     const [row] = this.ctx.storage.sql
       .exec(
-        "INSERT INTO exports (count, text, at) VALUES (?, ?, ?) RETURNING id",
+        "INSERT INTO exports (count, text, at, call) VALUES (?, ?, ?, ?) RETURNING id",
         notes.length,
         text,
         at,
+        call ?? null,
       )
       .toArray();
     return json({ id: row.id, count: notes.length, text, at }, 201);

@@ -229,7 +229,9 @@ describe("settings", () => {
       await choose(page, "Sort notes by", "Alphabetical");
       await page.evaluate(() => window.platform.l10n.setLocale("fr"));
       const page_ = settingsPage(page, NOTES);
-      // The notes fragment's own French texts: its page, its settings and their choices.
+      // The notes fragment's own French texts: its page, its settings and their choices (once the
+      // view has rendered the new language: the switch is live, not synchronous).
+      await page_.getByRole("heading", { name: "Bloc-notes", exact: true }).waitFor();
       await expect(page_.getByRole("heading").first().innerText()).resolves.toBe("Bloc-notes");
       await expect(page_.getByLabel("Trier les notes par").innerText()).resolves.toBe(
         "Ordre alphabétique",

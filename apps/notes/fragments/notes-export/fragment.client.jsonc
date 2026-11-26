@@ -1,6 +1,7 @@
 // The client aspect of notes-export: its action on the notes fragment's `actions` point, the
-// `export-notes` command (offered to agents as a write), its entry in the notes menu, and the Exports
-// view with its activity bar entry.
+// `export-notes` command (offered to agents as a write), `export-slowly` (run from system.tasks'
+// queue: the `task` exposure), its entry in the notes menu, and the Exports view with its activity
+// bar entry.
 {
   "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
   "extensions": [
@@ -46,6 +47,54 @@
       "reference": {
         "module": "./index.js",
         "export": "exportNotes"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "export-slowly",
+          "summary": "Export the notes as a task",
+          "description": "Export the notes one by one (delay_ms each), reporting progress: run from system.tasks' queue, followed through its job log.",
+          "x-idempotent": true,
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "delay_ms": { "type": "integer", "minimum": 0, "maximum": 10000 }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "The export",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["id", "count"],
+                    "properties": {
+                      "id": { "type": "integer" },
+                      "count": { "type": "integer" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "task": {}
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "exportSlowly"
       }
     },
     {

@@ -1,13 +1,46 @@
 import { DatabaseSync } from "node:sqlite";
 import { createKernel, type ExtensionReference } from "@statewalker/kernel.core";
 import type { SqlLike } from "@statewalker/shared-tasks";
+import { TaskQueue } from "@statewalker/shared-tasks";
 import {
   type CallGate,
   createSystemCommands,
   SYSTEM_COMMANDS_ID,
   systemCommandsArchive,
 } from "@statewalker/system.commands";
-import { createSystemTasks, SYSTEM_TASKS_ID, systemTasksArchive } from "../src/index.js";
+import {
+  createSystemTasks,
+  localQueueStore,
+  type QueueOperation,
+  queueErrorFromData,
+  queueErrorToData,
+  remoteQueueStore,
+  SYSTEM_TASKS_ID,
+  serveQueueStore,
+  systemTasksArchive,
+} from "../src/index.js";
+
+/**
+ * Where the tests' queue is: in this process (`sql`), or, with `TASKS_STORE=remote` (the
+ * `remote` test project), behind `remoteQueueStore` and `serveQueueStore` with every operation
+ * and answer through JSON, as between the client half and the fragment's DO.
+ */
+const REMOTE = process.env.TASKS_STORE === "remote";
+
+/** The queue over `sql` as the client half reaches the DO's: JSON both ways. */
+function overJson(queue: TaskQueue, sql: SqlLike) {
+  const serve = serveQueueStore(localQueueStore(queue, sql));
+  return remoteQueueStore(async (operation: QueueOperation) => {
+    let answer: unknown;
+    try {
+      answer = await serve(JSON.parse(JSON.stringify(operation)));
+    } catch (error) {
+      // Refusals cross as JSON too: their message and code, nothing else.
+      throw queueErrorFromData(JSON.parse(JSON.stringify(queueErrorToData(error))));
+    }
+    return answer === undefined ? undefined : JSON.parse(JSON.stringify(answer));
+  });
+}
 
 const SCHEMA = "https://example.org/schemas/fragment.v1.schema.json";
 const ASPECT_SCHEMA = "https://example.org/schemas/fragment-aspect.v1.schema.json";
@@ -99,11 +132,12 @@ export async function platform(
       },
     },
   });
+  const local = new TaskQueue(sql);
   tasks = createSystemTasks({
     commands: commands.bus,
     callAs: commands.callAs,
     slots: kernel.slots,
-    sql,
+    ...(REMOTE ? { store: overJson(local, sql) } : { sql }),
     waitMs: 50,
     ...(options.gate ? { gate: options.gate } : {}),
     ...(options.leaseMs ? { leaseMs: options.leaseMs } : {}),
@@ -113,7 +147,9 @@ export async function platform(
   const installed = await kernel.install(archives);
   for (const f of installed) await kernel.enable(f.id);
   await kernel.activate("client");
-  return { kernel, bus: commands.bus, tasks, db };
+  // The queue is in this process here (`sql`): the tests read it directly.
+  const queue = tasks.queue ?? local;
+  return { kernel, bus: commands.bus, tasks: { ...tasks, queue }, db };
 }
 
 /** Waits until `check` holds, polling every 5 ms, up to 2 s. */

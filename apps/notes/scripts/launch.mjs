@@ -17,6 +17,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
+import { coreServerFragments } from "./core-fragments.mjs";
 import { serveStatic } from "./static-server.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -36,8 +37,16 @@ const HOP_BY_HOP = [
 ];
 const DIST = join(ROOT, "dist");
 
-/** The app's fragments that have a server half: their id and source folder. */
+/**
+ * The fragments whose server halves a server host runs: the platform's core ones
+ * (scripts/core-fragments.mjs), then the app's own.
+ */
 export function serverFragments() {
+  return [...coreServerFragments().map(({ id, dir }) => ({ id, dir })), ...appServerFragments()];
+}
+
+/** The app's fragments that have a server half: their id and source folder. */
+function appServerFragments() {
   const fragments = join(ROOT, "fragments");
   const found = [];
   for (const folder of readdirSync(fragments, { withFileTypes: true })) {
@@ -48,6 +57,28 @@ export function serverFragments() {
   }
   return found;
 }
+
+/** The names this host answers to: it listens on the loopback address only. */
+const LOCAL_NAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * A request to a server half from anywhere but this app's pages: one a browser says comes from
+ * another site (`Sec-Fetch-Site`), or one addressed to another name (`Host`: a page of a domain
+ * rebound to 127.0.0.1 is same-origin to itself). The fragments' DOs trust the app's pages only.
+ */
+function fromElsewhere(request) {
+  const site = request.headers.get("sec-fetch-site");
+  if (site !== null && site !== "same-origin" && site !== "none") return true;
+  const host = request.headers.get("host") ?? "";
+  const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
+  return !LOCAL_NAMES.has((name ?? "").toLowerCase());
+}
+
+const refusedElsewhere = () =>
+  new Response("the fragments' server halves answer only this app's pages", {
+    status: 403,
+    headers: { "content-type": "text/plain" },
+  });
 
 /** `/fragments/<id>/…`, or `/peers/<peerId>/fragments/<id>/…` naming this host: the fragment's. */
 function fragmentOf(pathname, peerId) {
@@ -165,8 +196,10 @@ export async function launch(mode, options = {}) {
     }
     const server = await serveStatic(DIST, port, {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
-      handle: async (request) =>
-        fragmentOf(new URL(request.url).pathname, peerId) ? host.fetch(request) : undefined,
+      handle: async (request) => {
+        if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
+        return fromElsewhere(request) ? refusedElsewhere() : host.fetch(request);
+      },
     });
     return {
       mode,
@@ -193,6 +226,7 @@ export async function launch(mode, options = {}) {
           const url = new URL(request.url);
           const target = fragmentOf(url.pathname, peerId);
           if (!target) return undefined;
+          if (fromElsewhere(request)) return refusedElsewhere();
           const worker = workers.get(target.id);
           if (!worker)
             return new Response(`no fragment "${target.id}" on this host`, {

@@ -30,7 +30,9 @@
     "dist",
     "src",
     "fragment.jsonc",
-    "fragment.client.jsonc"
+    "fragment.client.jsonc",
+    "server",
+    "wrangler.jsonc"
   ],
   "scripts": {
     "build": "tsdown",

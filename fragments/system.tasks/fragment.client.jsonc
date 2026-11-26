@@ -1,4 +1,4 @@
-// The client aspect of system.tasks: its publish, cancel and job commands.
+// The client aspect of system.tasks: its publish, cancel, job and jobs commands.
 // Kept equal to src/archive.ts by tests/archive.test.ts.
 {
   "$schema": "./node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
@@ -204,6 +204,71 @@
       "reference": {
         "module": "./index.js",
         "export": "job"
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "jobs",
+          "summary": "The jobs that ran a task, oldest first, each with its reply once it has ended",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["task"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "task": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "ok",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "required": ["jobs"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "jobs": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["job", "at"],
+                          "additionalProperties": false,
+                          "properties": {
+                            "job": {
+                              "type": "string"
+                            },
+                            "at": {
+                              "type": "number"
+                            },
+                            "reply": {
+                              "description": "The runner's reply: { job, result } or { job, error }."
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "reference": {
+        "module": "./index.js",
+        "export": "jobs"
       }
     }
   ]

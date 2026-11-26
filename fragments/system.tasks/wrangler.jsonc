@@ -1,0 +1,11 @@
+// The server half of system.tasks (statewalker/statewalker-root#409): one fragment DO, `FRAGMENT`,
+// at `idFromName("system.tasks")`, holding the host's task queue. Its Worker name is the fragment id
+// with dots as dashes, as the kernel checks.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "system-tasks",
+  "main": "server/index.js",
+  "compatibility_date": "2025-06-01",
+  "durable_objects": { "bindings": [{ "name": "FRAGMENT", "class_name": "TasksFragment" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["TasksFragment"] }]
+}
