@@ -84,6 +84,7 @@ import {
 import {
   createSystemTasks,
   type QueueOperation,
+  queueErrorFromData,
   remoteQueueStore,
   SYSTEM_TASKS_ID,
   type SystemTasks,
@@ -359,9 +360,16 @@ function tasksStore(servers: ClientServersHost) {
         body: JSON.stringify(operation),
       }),
     );
-    const body = (await response.json().catch(() => ({}))) as { value?: unknown; error?: string };
+    const body = (await response.json().catch(() => ({}))) as {
+      value?: unknown;
+      error?: string;
+      code?: string;
+    };
     if (!response.ok)
-      throw new Error(body.error ?? `system.tasks' server half answered ${response.status}`);
+      throw queueErrorFromData({
+        error: body.error ?? `system.tasks' server half answered ${response.status}`,
+        ...(body.code ? { code: body.code } : {}),
+      });
     return body.value;
   });
 }

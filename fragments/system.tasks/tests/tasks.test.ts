@@ -339,3 +339,38 @@ describe("a task's jobs (statewalker/statewalker-root#409)", () => {
     });
   });
 });
+
+describe("a cancellation the handler meets in its progress (statewalker/statewalker-root#409)", () => {
+  it("ends the task as cancelled, not failed, wherever the queue is", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const { bus } = await platform([fragment(NOTES, [taskCommand("export")])], {
+      [NOTES]: {
+        // A handler reporting progress: the cancellation reaches it as its progress call's
+        // refusal (ECANCELED), before its signal.
+        export: async (_input: unknown, context: CommandContext) => {
+          started();
+          for (;;) {
+            await context.progress({ tick: Date.now() });
+            await new Promise((r) => setTimeout(r, 5));
+          }
+        },
+      },
+    });
+    const { task } = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      wait: false,
+    });
+    await running;
+    await bus.call("system.tasks/cancel", { task });
+    type Jobs = { jobs: { job: string; reply?: Record<string, unknown> }[] };
+    let jobs: Jobs["jobs"] = [];
+    await until(async () => {
+      ({ jobs } = await bus.call<Jobs>("system.tasks/jobs", { task }));
+      return jobs[0]?.reply !== undefined;
+    });
+    expect(jobs[0]?.reply).toMatchObject({ cancelled: true });
+  });
+});

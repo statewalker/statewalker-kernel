@@ -4,13 +4,13 @@
 // through `remoteQueueStore`:
 //
 //   POST /queue <operation>  → 200 { value }   the operation's answer (src/store.ts)
-//                            → 400 { error }   an operation the store does not name, or refused
-//                                              by the queue (its code first: "ENOENT: ...")
+//                            → 400 { error, code? }   an operation the store does not name, or
+//                                                     refused by the queue (`ECANCELED`, ...)
 //
 // The fragment hosts route `/fragments/system.tasks/<path>` to the object at
 // `idFromName("system.tasks")`; the Worker's own fetch does the same under `wrangler dev`.
 import { DurableObject } from "cloudflare:workers";
-import { serveQueueStore, sqlQueueStore } from "../src/store.ts";
+import { queueErrorToData, serveQueueStore, sqlQueueStore } from "../src/store.ts";
 
 const ID = "system.tasks";
 const PREFIX = `/fragments/${ID}`;
@@ -61,7 +61,8 @@ export class TasksFragment extends DurableObject {
       const value = await this.serve(capWaits(operation));
       return json(value === undefined ? {} : { value });
     } catch (error) {
-      return json({ error: String(error?.message ?? error) }, 400);
+      // The queue's code goes back with the message: a runner tells a cancellation by it.
+      return json(queueErrorToData(error), 400);
     }
   }
 }

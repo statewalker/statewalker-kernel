@@ -12,6 +12,8 @@ import {
   createSystemTasks,
   localQueueStore,
   type QueueOperation,
+  queueErrorFromData,
+  queueErrorToData,
   remoteQueueStore,
   SYSTEM_TASKS_ID,
   serveQueueStore,
@@ -29,7 +31,13 @@ const REMOTE = process.env.TASKS_STORE === "remote";
 function overJson(queue: TaskQueue, sql: SqlLike) {
   const serve = serveQueueStore(localQueueStore(queue, sql));
   return remoteQueueStore(async (operation: QueueOperation) => {
-    const answer = await serve(JSON.parse(JSON.stringify(operation)));
+    let answer: unknown;
+    try {
+      answer = await serve(JSON.parse(JSON.stringify(operation)));
+    } catch (error) {
+      // Refusals cross as JSON too: their message and code, nothing else.
+      throw queueErrorFromData(JSON.parse(JSON.stringify(queueErrorToData(error))));
+    }
     return answer === undefined ? undefined : JSON.parse(JSON.stringify(answer));
   });
 }

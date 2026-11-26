@@ -230,6 +230,28 @@ function memoryJobIndex(now: () => number): JobIndex {
   };
 }
 
+/** A refused operation as it crosses back: its message and the queue's code (`ECANCELED`, ...). */
+export interface QueueErrorData {
+  readonly error: string;
+  readonly code?: string;
+}
+
+/** An error as JSON carries it: the runner tells a cancellation by its `code`, so it is kept. */
+export function queueErrorToData(error: unknown): QueueErrorData {
+  const code = (error as { code?: unknown })?.code;
+  return {
+    error: String((error as Error)?.message ?? error),
+    ...(typeof code === "string" ? { code } : {}),
+  };
+}
+
+/** And back: an `Error` with the queue's `code`, as the queue in this process throws it. */
+export function queueErrorFromData(data: QueueErrorData): Error & { code?: string } {
+  const error = new Error(data.error) as Error & { code?: string };
+  if (typeof data.code === "string") error.code = data.code;
+  return error;
+}
+
 /** Why an operation was refused before it reached the queue. */
 export class QueueOperationError extends Error {
   override name = "QueueOperationError";
