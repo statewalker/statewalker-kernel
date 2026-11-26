@@ -58,7 +58,7 @@ export const fragmentManifest = {
   description:
     "The host's task queue: commands exposed as `task` served from it, and publishing, cancelling and job logs.",
   engines: { platform: "*" },
-  aspects: { client: {} },
+  aspects: { server: {}, client: {} },
 };
 
 export const clientAspect = {
@@ -126,11 +126,47 @@ export const clientAspect = {
       ),
       "job",
     ),
+    command(
+      "jobs",
+      "The jobs that ran a task, oldest first, each with its reply once it has ended",
+      object({ task: { type: "string", minLength: 1 } }, ["task"]),
+      object(
+        {
+          jobs: {
+            type: "array",
+            items: object(
+              {
+                job: { type: "string" },
+                at: { type: "number" },
+                reply: { description: "The runner's reply: { job, result } or { job, error }." },
+              },
+              ["job", "at"],
+            ),
+          },
+        },
+        ["jobs"],
+      ),
+      "jobs",
+    ),
   ],
+};
+
+/**
+ * The server half's project: one fragment DO holding the queue (server/index.js), its Worker
+ * named as the kernel derives it from the id.
+ */
+const wranglerConfig = {
+  $schema: "../../node_modules/wrangler/config-schema.json",
+  name: "system-tasks",
+  main: "server/index.js",
+  compatibility_date: "2025-06-01",
+  durable_objects: { bindings: [{ name: "FRAGMENT", class_name: "TasksFragment" }] },
+  migrations: [{ tag: "v1", new_sqlite_classes: ["TasksFragment"] }],
 };
 
 /** The fragment's archive, as the kernel takes it (`createKernel({ core: [...] })`). */
 export const systemTasksArchive: FragmentFiles = Object.freeze({
   "fragment.jsonc": `${JSON.stringify(fragmentManifest, null, 2)}\n`,
+  "wrangler.jsonc": `${JSON.stringify(wranglerConfig, null, 2)}\n`,
   "fragment.client.jsonc": `${JSON.stringify(clientAspect, null, 2)}\n`,
 });

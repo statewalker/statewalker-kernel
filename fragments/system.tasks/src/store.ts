@@ -50,10 +50,91 @@ export interface QueueStore {
     reader: string,
     options?: { after?: number; wait_ms?: number },
   ): Promise<JobLog>;
+  /** Note that `job` (a lease's job log) runs `task`: the first entry of the task's job index. */
+  recordJob(project: string, task: string, job: string): Promise<void>;
+  /** Note the reply `job` ended with (the runner's: `{ job, result }`, `{ job, error }`, ...). */
+  recordReply(project: string, job: string, reply: unknown): Promise<void>;
+  /** The jobs that ran `task`, oldest first, each with its reply once it has one. */
+  jobsOf(project: string, task: string): Promise<TaskJob[]>;
   /** The queue API as `reader` (the runners' claims, renewals, acks and replies). */
   api(
     reader: QueueReaderData,
   ): Pick<TasksApi, "claim" | "renew" | "ack" | "release" | "reply" | "changes">;
+}
+
+/** One job of a task, as system.tasks indexes them: what `system.tasks/jobs` answers. */
+export interface TaskJob {
+  readonly job: string;
+  /** When the job started, in the queue's clock (epoch ms). */
+  readonly at: number;
+  /** The reply it ended with, once it has ended. */
+  readonly reply?: unknown;
+}
+
+/** The most jobs one task's index keeps (its attempts): the oldest go first. */
+const MAX_JOBS_PER_TASK = 20;
+/** A reply's cap in the index, as JSON: a larger one is kept as its error. */
+const MAX_REPLY_BYTES = 64 * 1024;
+
+/** system.tasks' index of jobs by task. */
+interface JobIndex {
+  recordJob(project: string, task: string, job: string): void;
+  recordReply(project: string, job: string, reply: unknown): void;
+  jobsOf(project: string, task: string): TaskJob[];
+}
+
+/** The job index in `sql` beside the queue (its own table). */
+function sqlJobIndex(sql: SqlLike, now: () => number): JobIndex {
+  sql.exec(
+    "CREATE TABLE IF NOT EXISTS system_tasks_jobs (project TEXT NOT NULL, task TEXT NOT NULL, job TEXT NOT NULL PRIMARY KEY, at INTEGER NOT NULL, reply TEXT)",
+  );
+  sql.exec(
+    "CREATE INDEX IF NOT EXISTS system_tasks_jobs_task ON system_tasks_jobs (project, task, at)",
+  );
+  return {
+    recordJob(project, task, job) {
+      sql.exec(
+        "INSERT OR IGNORE INTO system_tasks_jobs (project, task, job, at) VALUES (?, ?, ?, ?)",
+        project,
+        task,
+        job,
+        now(),
+      );
+      sql.exec(
+        "DELETE FROM system_tasks_jobs WHERE project = ? AND task = ? AND job NOT IN (SELECT job FROM system_tasks_jobs WHERE project = ? AND task = ? ORDER BY at DESC LIMIT ?)",
+        project,
+        task,
+        project,
+        task,
+        MAX_JOBS_PER_TASK,
+      );
+    },
+    recordReply(project, job, reply) {
+      let text = JSON.stringify(reply ?? null);
+      if (new TextEncoder().encode(text).length > MAX_REPLY_BYTES)
+        text = JSON.stringify({ job, error: "the reply is larger than the index keeps" });
+      sql.exec(
+        "UPDATE system_tasks_jobs SET reply = ? WHERE project = ? AND job = ?",
+        text,
+        project,
+        job,
+      );
+    },
+    jobsOf(project, task) {
+      return sql
+        .exec(
+          "SELECT job, at, reply FROM system_tasks_jobs WHERE project = ? AND task = ? ORDER BY at, job",
+          project,
+          task,
+        )
+        .toArray()
+        .map((row) => ({
+          job: String(row.job),
+          at: Number(row.at),
+          ...(typeof row.reply === "string" ? { reply: JSON.parse(row.reply) } : {}),
+        }));
+    },
+  };
 }
 
 /** The store's operations that cross to the DO, by name. */
@@ -69,6 +150,9 @@ const QUEUE_METHODS = [
   "reply",
   "cancel",
   "waitJob",
+  "recordJob",
+  "recordReply",
+  "jobsOf",
 ] as const;
 const API_METHODS = ["claim", "renew", "ack", "release", "reply", "changes"] as const;
 type QueueMethod = (typeof QUEUE_METHODS)[number];
@@ -84,9 +168,20 @@ export type QueueOperation =
       readonly args: readonly unknown[];
     };
 
-/** The queue in this process. */
-export function localQueueStore(queue: TaskQueue): QueueStore {
+/**
+ * The queue in this process, its job index in `sql` (the queue's own database) or, without one,
+ * in memory.
+ */
+export function localQueueStore(
+  queue: TaskQueue,
+  sql?: SqlLike,
+  now: () => number = Date.now,
+): QueueStore {
+  const index = sql ? sqlJobIndex(sql, now) : memoryJobIndex(now);
   return {
+    recordJob: async (p, task, job) => index.recordJob(p, task, job),
+    recordReply: async (p, job, reply) => index.recordReply(p, job, reply),
+    jobsOf: async (p, task) => index.jobsOf(p, task),
     changeSeq: async (p) => queue.changeSeq(p),
     waitChange: (p, after, waitMs) => queue.waitChange(p, after, waitMs),
     publish: async (p, input, sender) => queue.publish(p, input, sender),
@@ -104,7 +199,35 @@ export function localQueueStore(queue: TaskQueue): QueueStore {
 
 /** A queue over `sql`, in this process: the DO's, or SQLite in memory. */
 export function sqlQueueStore(sql: SqlLike, options: TaskQueueOptions = {}): QueueStore {
-  return localQueueStore(new TaskQueue(sql, options));
+  return localQueueStore(new TaskQueue(sql, options), sql, options.now ?? Date.now);
+}
+
+/** The job index in memory, for a queue whose database is not at hand. */
+function memoryJobIndex(now: () => number): JobIndex {
+  const jobs = new Map<
+    string,
+    { project: string; task: string; job: string; at: number; reply?: unknown }
+  >();
+  return {
+    recordJob(project, task, job) {
+      if (!jobs.has(job)) jobs.set(job, { project, task, job, at: now() });
+      const mine = [...jobs.values()]
+        .filter((j) => j.project === project && j.task === task)
+        .sort((x, y) => y.at - x.at);
+      for (const old of mine.slice(MAX_JOBS_PER_TASK)) jobs.delete(old.job);
+    },
+    recordReply(project, job, reply) {
+      const found = jobs.get(job);
+      if (found && found.project === project)
+        found.reply = JSON.parse(JSON.stringify(reply ?? null));
+    },
+    jobsOf(project, task) {
+      return [...jobs.values()]
+        .filter((j) => j.project === project && j.task === task)
+        .sort((x, y) => x.at - y.at || x.job.localeCompare(y.job))
+        .map(({ job, at, reply }) => ({ job, at, ...(reply !== undefined ? { reply } : {}) }));
+    },
+  };
 }
 
 /** Why an operation was refused before it reached the queue. */
@@ -119,8 +242,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  * The DO's side: runs one operation (as JSON) on its queue. Only the store's named methods run,
  * never anything else of the queue; their own checks (rights, sizes) apply as in this process.
  */
-export function serveQueueStore(queue: TaskQueue): (operation: unknown) => Promise<unknown> {
-  const local = localQueueStore(queue);
+export function serveQueueStore(local: QueueStore): (operation: unknown) => Promise<unknown> {
   return async (operation) => {
     if (!isRecord(operation) || !Array.isArray(operation.args))
       throw new QueueOperationError("an operation is { kind, method, args }");

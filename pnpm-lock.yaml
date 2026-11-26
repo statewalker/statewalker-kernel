@@ -335,6 +335,9 @@ importers:
       '@statewalker/system.settings':
         specifier: workspace:^
         version: link:../../fragments/system.settings
+      '@statewalker/system.tasks':
+        specifier: workspace:^
+        version: link:../../fragments/system.tasks
       '@statewalker/system.workbench':
         specifier: workspace:^
         version: link:../../fragments/system.workbench

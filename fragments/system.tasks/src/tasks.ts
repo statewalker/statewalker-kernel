@@ -30,7 +30,7 @@ import type {
   CommandEntry,
   SystemCommands,
 } from "@statewalker/system.commands";
-import { localQueueStore, type QueueReaderData, type QueueStore } from "./store.js";
+import { localQueueStore, type QueueReaderData, type QueueStore, type TaskJob } from "./store.js";
 
 /** The queue's project: one queue per host. */
 export const TASKS_PROJECT = "local";
@@ -116,6 +116,7 @@ export interface SystemTasksModule {
     input: { job: string; after?: number; wait_ms?: number },
     context: CommandContext,
   ) => Promise<unknown>;
+  readonly jobs: (input: { task: string }, context: CommandContext) => Promise<{ jobs: TaskJob[] }>;
   readonly [name: string]: unknown;
 }
 
@@ -193,13 +194,23 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           }
         }
         running.set(lease.task.id, () => void context.progress(null).catch(() => {}));
+        // The task's job index: a viewer finds this attempt's log, and its reply, by the task.
+        await store.recordJob(P, lease.task.id, lease.id).catch(onError);
         try {
           // As its publisher: the handler sees the caller the gate let through.
-          return await callAs(caller, id, payload, {
+          const result = await callAs(caller, id, payload, {
             callId: lease.task.id,
             signal: context.signal,
             onProgress: (entry) => context.progress(entry),
           });
+          await store.recordReply(P, lease.id, { job: lease.id, result }).catch(onError);
+          return result;
+        } catch (error) {
+          const reply = context.signal.aborted
+            ? { job: lease.id, cancelled: true }
+            : { job: lease.id, error: String((error as Error)?.message ?? error) };
+          await store.recordReply(P, lease.id, reply).catch(onError);
+          throw error;
         } finally {
           running.delete(lease.task.id);
         }
@@ -326,6 +337,22 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
       // The user cancels any task; a gated caller only its own.
       await cancelTask(task, principalOf(context.caller), isUser(context.caller));
       return { cancelled: true };
+    },
+    async jobs({ task }, context) {
+      const jobs = await store.jobsOf(P, task);
+      if (isUser(context.caller)) return { jobs };
+      // A gated caller reads only the jobs of its own tasks: those its job reads would allow.
+      const reader = principalOf(context.caller);
+      const own: TaskJob[] = [];
+      for (const job of jobs) {
+        try {
+          await store.waitJob(P, job.job, reader, { wait_ms: 0 });
+          own.push(job);
+        } catch {
+          // not its task's
+        }
+      }
+      return { jobs: own };
     },
     job({ job, after, wait_ms }, context) {
       // The user reads any job (as its holder); a gated caller those of its own tasks.

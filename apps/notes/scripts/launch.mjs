@@ -17,6 +17,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
+import { coreServerFragments } from "./core-fragments.mjs";
 import { serveStatic } from "./static-server.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -36,8 +37,16 @@ const HOP_BY_HOP = [
 ];
 const DIST = join(ROOT, "dist");
 
-/** The app's fragments that have a server half: their id and source folder. */
+/**
+ * The fragments whose server halves a server host runs: the platform's core ones
+ * (scripts/core-fragments.mjs), then the app's own.
+ */
 export function serverFragments() {
+  return [...coreServerFragments().map(({ id, dir }) => ({ id, dir })), ...appServerFragments()];
+}
+
+/** The app's fragments that have a server half: their id and source folder. */
+function appServerFragments() {
   const fragments = join(ROOT, "fragments");
   const found = [];
   for (const folder of readdirSync(fragments, { withFileTypes: true })) {

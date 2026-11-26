@@ -82,6 +82,14 @@ import {
   systemSettingsArchive,
 } from "@statewalker/system.settings";
 import {
+  createSystemTasks,
+  type QueueOperation,
+  remoteQueueStore,
+  SYSTEM_TASKS_ID,
+  type SystemTasks,
+  systemTasksArchive,
+} from "@statewalker/system.tasks";
+import {
   createSystemWorkbench,
   deviceModeOf,
   type LayoutContribution,
@@ -336,6 +344,28 @@ export function applicationLayouts(definition: ApplicationDefinition): LayoutCon
   return [{ zones: { center: [...definition.layout.open] } }];
 }
 
+/**
+ * system.tasks' queue in its fragment DO, through its server half (`POST fragments/system.tasks/queue`
+ * with one operation, `{ value }` or `{ error }` back).
+ */
+function tasksStore(servers: ClientServersHost) {
+  const url = new URL(`fragments/${SYSTEM_TASKS_ID}/queue`, servers.base).href;
+  return remoteQueueStore(async (operation: QueueOperation) => {
+    await servers.ready();
+    const response = await servers.fetch(
+      new Request(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(operation),
+      }),
+    );
+    const body = (await response.json().catch(() => ({}))) as { value?: unknown; error?: string };
+    if (!response.ok)
+      throw new Error(body.error ?? `system.tasks' server half answered ${response.status}`);
+    return body.value;
+  });
+}
+
 /** The app's installable archives: `archives/index.json`, each fetched as the boot fetches it. */
 function archiveCatalog(base: URL): FragmentCatalog {
   return {
@@ -420,6 +450,9 @@ export async function boot({
       return client.fragmentsModule(fragments);
     }),
   };
+  // system.tasks, with its queue in its fragment DO: only where server halves run (with none,
+  // tasks would have nowhere to wait, so the platform has no queue).
+  let tasks: SystemTasks | undefined;
   /** The points app fragments open, for their client code (the client API's `points`). */
   const appPoints = createAppPoints();
   const kernel = createKernel({
@@ -434,6 +467,7 @@ export async function boot({
       systemSettingsArchive,
       systemL10nArchive,
       systemFragmentsArchive,
+      ...(servers ? [systemTasksArchive] : []),
     ],
     profile: userProfile,
     baseline: definition.baseline,
@@ -447,6 +481,8 @@ export async function boot({
     resolvers: {
       // A client module export, from the fragment's client folder.
       module: async (ref, { contributor }) => {
+        if (contributor.id === SYSTEM_TASKS_ID && tasks)
+          return tasks.module[ref.export ?? "default"];
         const core = coreModules[contributor.id];
         if (core) return (await core())[ref.export ?? "default"];
         const folder = aspectUrl(base, contributor, "client").href;
@@ -474,6 +510,7 @@ export async function boot({
         if (fragment.id === SYSTEM_L10N_ID) return l10n.activate(context);
         // Its view is all it brings; the stylesheet is the shell's (main.tsx).
         if (fragment.id === SYSTEM_FRAGMENTS_ID) return () => {};
+        if (fragment.id === SYSTEM_TASKS_ID && tasks) return tasks.activate(context);
         return activateClient(base, fragment, context, appPoints, serverHalf);
       },
     },
@@ -488,6 +525,14 @@ export async function boot({
     ...(servers ? { servers } : {}),
     points: appPoints.points,
   });
+  if (servers)
+    tasks = createSystemTasks({
+      commands: commands.bus,
+      callAs: commands.callAs,
+      slots: kernel.slots,
+      store: tasksStore(servers),
+      onError: (error) => console.warn("[system.tasks]", error),
+    });
   const fragments = createFragmentManager({
     kernel,
     platform: { version: platform.version, bindings: [] },

@@ -25,6 +25,7 @@ import { dirname, join, resolve } from "node:path";
 import { bundleWorkerForBrowser } from "@statewalker/cellb/node";
 import { parseJsonc } from "@statewalker/kernel.core";
 import semver from "semver";
+import { coreServerFragments } from "./core-fragments.mjs";
 import { build } from "vite";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -193,6 +194,15 @@ async function buildFragments() {
   return ids;
 }
 
+/** The core fragments' server halves, for the browser's shard pool (not in the catalog). */
+async function buildCoreServerHalves() {
+  for (const { id, dir, serverDir, wrangler } of coreServerFragments()) {
+    const out = join(DIST, "archives", id, serverDir);
+    mkdirSync(out, { recursive: true });
+    writeFileSync(join(out, "bundle.js"), await bundleWorkerForBrowser(join(dir, wrangler.main)));
+  }
+}
+
 function writeIndex(fragments) {
   const imports = Object.fromEntries(SHARED.map((s) => [s, `./shared/${fileOf(s)}`]));
   const html = `<!doctype html>
@@ -258,6 +268,7 @@ rmSync(DIST, { recursive: true, force: true });
 await bundle({ entry: { main: join(ROOT, "src", "main.tsx") }, outDir: DIST, cssFileName: "main" });
 await bundle({ entry: writeShims(), outDir: join(DIST, "shared") });
 const fragments = await buildFragments();
+await buildCoreServerHalves();
 writeIndex(fragments);
 await buildFragmentHost();
 writeFileSync(join(DIST, "launch.json"), `${JSON.stringify({ fragments: "none" }, null, 2)}\n`);

@@ -10,6 +10,7 @@ import {
 } from "@statewalker/system.commands";
 import {
   createSystemTasks,
+  localQueueStore,
   type QueueOperation,
   remoteQueueStore,
   SYSTEM_TASKS_ID,
@@ -25,8 +26,8 @@ import {
 const REMOTE = process.env.TASKS_STORE === "remote";
 
 /** The queue over `sql` as the client half reaches the DO's: JSON both ways. */
-function overJson(queue: TaskQueue) {
-  const serve = serveQueueStore(queue);
+function overJson(queue: TaskQueue, sql: SqlLike) {
+  const serve = serveQueueStore(localQueueStore(queue, sql));
   return remoteQueueStore(async (operation: QueueOperation) => {
     const answer = await serve(JSON.parse(JSON.stringify(operation)));
     return answer === undefined ? undefined : JSON.parse(JSON.stringify(answer));
@@ -128,7 +129,7 @@ export async function platform(
     commands: commands.bus,
     callAs: commands.callAs,
     slots: kernel.slots,
-    ...(REMOTE ? { store: overJson(local) } : { sql }),
+    ...(REMOTE ? { store: overJson(local, sql) } : { sql }),
     waitMs: 50,
     ...(options.gate ? { gate: options.gate } : {}),
     ...(options.leaseMs ? { leaseMs: options.leaseMs } : {}),

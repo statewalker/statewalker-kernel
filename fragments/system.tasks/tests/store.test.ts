@@ -1,12 +1,12 @@
 // The queue's store as the fragment's DO serves it (statewalker/statewalker-root#409): only the
 // store's named operations run, a reader crosses without its functions, and absent arguments keep
 // their places through JSON.
-import { TaskQueue } from "@statewalker/shared-tasks";
 import { describe, expect, it } from "vitest";
 import {
   QueueOperationError,
   remoteQueueStore,
   serveQueueStore,
+  sqlQueueStore,
   TASKS_PROJECT,
 } from "../src/index.js";
 import { sqlite } from "./helpers.js";
@@ -29,12 +29,12 @@ describe("serveQueueStore", () => {
       { kind: "api", reader: { destinations: [] }, method: "claim", args: [P, "x"] },
     ],
   ])("refuses %s", async (_label, operation) => {
-    const serve = serveQueueStore(new TaskQueue(sqlite().sql));
+    const serve = serveQueueStore(sqlQueueStore(sqlite().sql));
     await expect(serve(operation)).rejects.toBeInstanceOf(QueueOperationError);
   });
 
   it("runs the store's operations through JSON, absent arguments in their places", async () => {
-    const serve = serveQueueStore(new TaskQueue(sqlite().sql));
+    const serve = serveQueueStore(sqlQueueStore(sqlite().sql));
     const sent: unknown[] = [];
     const store = remoteQueueStore(async (operation) => {
       const wire = JSON.parse(JSON.stringify(operation));

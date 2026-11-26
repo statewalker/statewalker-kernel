@@ -263,3 +263,79 @@ describe("the system.tasks fragment", () => {
     ]);
   });
 });
+
+describe("a task's jobs (statewalker/statewalker-root#409)", () => {
+  it("lists the jobs that ran a task, each with its reply, for a viewer that knows only the task", async () => {
+    const { bus } = await platform([fragment(NOTES, [taskCommand("export")])], {
+      [NOTES]: {
+        export: async (input: { n: number }, context: CommandContext) => {
+          await context.progress({ step: 1 });
+          return { doubled: input.n * 2 };
+        },
+      },
+    });
+    const { task } = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      payload: { n: 4 },
+      wait: false,
+    });
+    type Jobs = { jobs: { job: string; at: number; reply?: unknown }[] };
+    let found: Jobs = { jobs: [] };
+    await until(async () => {
+      found = await bus.call<Jobs>("system.tasks/jobs", { task });
+      return found.jobs[0]?.reply !== undefined;
+    });
+    const [job] = found.jobs;
+    expect(job?.reply).toEqual({ job: job?.job, result: { doubled: 8 } });
+    // The job's log, read by its id, has the handler's progress and the outcome.
+    const log = await bus.call<{ entries: { progress: unknown; outcome?: string }[] }>(
+      "system.tasks/job",
+      { job: job?.job },
+    );
+    expect(log.entries.map((e) => e.progress)).toContainEqual({ step: 1 });
+    expect(log.entries.at(-1)?.outcome).toBe("done");
+  });
+
+  it("records an attempt that failed with its error, and a cancelled one as cancelled", async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const { bus } = await platform(
+      [fragment(NOTES, [taskCommand("export"), taskCommand("fail")])],
+      {
+        [NOTES]: {
+          export: (_input: unknown, context: CommandContext) => {
+            started();
+            return new Promise((_resolve, reject) => {
+              context.signal.addEventListener("abort", () => reject(context.signal.reason));
+            });
+          },
+          fail: () => {
+            throw new Error("disk full");
+          },
+        },
+      },
+      { maxAttempts: 1 },
+    );
+    type Jobs = { jobs: { job: string; reply?: Record<string, unknown> }[] };
+    const failing = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(`${NOTES}/fail`),
+      wait: false,
+    });
+    await until(async () => {
+      const { jobs } = await bus.call<Jobs>("system.tasks/jobs", { task: failing.task });
+      return typeof jobs[0]?.reply?.error === "string";
+    });
+    const slow = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      wait: false,
+    });
+    await running;
+    await bus.call("system.tasks/cancel", { task: slow.task });
+    await until(async () => {
+      const { jobs } = await bus.call<Jobs>("system.tasks/jobs", { task: slow.task });
+      return jobs[0]?.reply?.cancelled === true;
+    });
+  });
+});
