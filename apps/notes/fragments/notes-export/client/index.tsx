@@ -218,6 +218,17 @@ async function step(current: Run): Promise<void> {
     await new Promise((r) => setTimeout(r, 300));
     return;
   }
+  // The task's answer: its latest job's reply, unless the queue runs it again.
+  const final = latest.reply as { retry?: boolean } | undefined;
+  if (final && !final.retry) {
+    current.job = latest.job;
+    current.reply = replyText(final);
+    const r = final as { result?: unknown; cancelled?: boolean };
+    current.state = r.result !== undefined ? "done" : r.cancelled ? "cancelled" : "error";
+    if (current.state === "done") await refresh();
+    saveRun();
+    return;
+  }
   if (current.job !== latest.job) {
     // A new attempt (the last one's runner gone with its page): its log starts afresh.
     if (current.job !== undefined) current.log.push("attempt restarted");
@@ -238,20 +249,12 @@ async function step(current: Run): Promise<void> {
       current.state = "running";
       current.log.push(`${p.done} of ${p.total} notes`);
     }
-    if (entry.outcome === "done" || entry.outcome === "error" || entry.outcome === "cancelled")
-      current.state = entry.outcome;
   }
-  if (ended(current)) {
-    // The reply: the job index has it once the runner has recorded it.
-    for (let i = 0; i < 20 && current.reply === undefined; i++) {
-      const { jobs: now } = await commands.call<{
-        jobs: { job: string; reply?: unknown }[];
-      }>("system.tasks/jobs", { task: current.task });
-      current.reply = replyText(now.find((j) => j.job === current.job)?.reply);
-      if (current.reply === undefined) await new Promise((r) => setTimeout(r, 200));
-    }
-    if (current.state === "done") await refresh();
-  }
+  // A job's log ending (its outcome) ends this attempt only: the reply, read above on the next
+  // step, says whether the task ended or runs again (a lease lost with its page ends as `error`).
+  // An ended log answers at once (no wait): pause before looking again for the next attempt.
+  if (log.entries.length === 0 || log.entries.some((e) => e.outcome !== undefined))
+    await new Promise((r) => setTimeout(r, 300));
   saveRun();
 }
 

@@ -374,3 +374,32 @@ describe("a cancellation the handler meets in its progress (statewalker/statewal
     expect(jobs[0]?.reply).toMatchObject({ cancelled: true });
   });
 });
+
+describe("a failed attempt the queue retries (statewalker/statewalker-root#409)", () => {
+  it("is recorded with retry, and only the last attempt's error is the task's answer", async () => {
+    const { bus } = await platform(
+      [fragment(NOTES, [taskCommand("export")])],
+      {
+        [NOTES]: {
+          export: () => {
+            throw new Error("disk full");
+          },
+        },
+      },
+      { maxAttempts: 2 },
+    );
+    const { task } = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      wait: false,
+    });
+    type Jobs = { jobs: { job: string; reply?: Record<string, unknown> }[] };
+    let jobs: Jobs["jobs"] = [];
+    await until(async () => {
+      ({ jobs } = await bus.call<Jobs>("system.tasks/jobs", { task }));
+      return jobs.length === 2 && jobs[1]?.reply !== undefined;
+    });
+    expect(jobs[0]?.reply).toMatchObject({ error: expect.stringMatching(/export/), retry: true });
+    expect(jobs[1]?.reply).toMatchObject({ error: expect.stringMatching(/export/) });
+    expect(jobs[1]?.reply?.retry).toBeUndefined();
+  });
+});

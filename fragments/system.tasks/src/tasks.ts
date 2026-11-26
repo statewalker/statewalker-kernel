@@ -206,9 +206,15 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           await store.recordReply(P, lease.id, { job: lease.id, result }).catch(onError);
           return result;
         } catch (error) {
+          // An error the queue retries is not the task's answer yet: `retry` says another attempt
+          // follows (a viewer waits for its job), as the runner replies only after the last one.
           const reply = context.signal.aborted
             ? { job: lease.id, cancelled: true }
-            : { job: lease.id, error: String((error as Error)?.message ?? error) };
+            : {
+                job: lease.id,
+                error: String((error as Error)?.message ?? error),
+                ...(lease.attempt < lease.max_attempts ? { retry: true } : {}),
+              };
           await store.recordReply(P, lease.id, reply).catch(onError);
           throw error;
         } finally {

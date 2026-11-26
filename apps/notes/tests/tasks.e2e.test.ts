@@ -101,6 +101,8 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
         let page = await open(context, app);
         await addNotes(page, "a", "b", "c", "d", "e", "f");
         await installExport(page);
+        // The host's exports so far (a server host's DO outlives the browser's contexts).
+        const made = await exportsCount(page);
         await openExports(page);
         await page.getByRole("button", { name: "Export as a task" }).click();
         await page.waitForFunction(
@@ -125,13 +127,13 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           expect(new Set(lines).size).toBe(lines.length);
         }
         expect(after.at(-1)).toBe("6 of 6 notes");
-        await expect(run(page).getByTestId("export-run-reply").innerText()).resolves.toBe(
-          "Exported 6 notes (export 1)",
+        await expect(run(page).getByTestId("export-run-reply").innerText()).resolves.toMatch(
+          /^Exported 6 notes \(export \d+\)$/,
         );
         // At least once, made once: the handler deduplicates by the task's id.
-        await expect(exportsCount(page)).resolves.toBe(1);
+        await expect(exportsCount(page)).resolves.toBe(made + 1);
         page = await open(context, app); // a second tab reads the same queue
-        await expect(exportsCount(page)).resolves.toBe(1);
+        await expect(exportsCount(page)).resolves.toBe(made + 1);
       } finally {
         await context.close();
       }
@@ -143,6 +145,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
         const page = await open(context, app);
         await addNotes(page, "a", "b", "c", "d", "e", "f", "g", "h");
         await installExport(page);
+        const made = await exportsCount(page);
         await openExports(page);
         await page.getByRole("button", { name: "Export as a task" }).click();
         await page.waitForSelector('[data-testid="export-run"][data-state="running"]');
@@ -151,7 +154,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
         await expect(run(page).getByTestId("export-run-reply").innerText()).resolves.toBe(
           "Cancelled",
         );
-        await expect(exportsCount(page)).resolves.toBe(0);
+        await expect(exportsCount(page)).resolves.toBe(made);
       } finally {
         await context.close();
       }
@@ -165,6 +168,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           let page = await open(context, app);
           await addNotes(page, "kept");
           await installExport(page);
+          const made = await exportsCount(page);
           // Its fragment disabled: the task waits in the queue (the DO), no runner serves it.
           await page.evaluate((id) => window.platform.fragments.disable(id), EXPORT);
           const task = await page.evaluate(
@@ -188,6 +192,10 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           page = await open(context, app);
           await page.evaluate((id) => window.platform.fragments.enable(id), EXPORT);
           await page.waitForFunction(
+            (id) => window.platform.kernel.slots.getSnapshot(window.platform.slots.active).has(id),
+            EXPORT,
+          );
+          await page.waitForFunction(
             async (t) => {
               const { jobs } = await window.platform.commands.call<{
                 jobs: { reply?: { result?: unknown } }[];
@@ -197,7 +205,7 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
             task,
             { polling: 500, timeout: 30_000 },
           );
-          await expect(exportsCount(page)).resolves.toBe(1);
+          await expect(exportsCount(page)).resolves.toBe(made + 1);
         } finally {
           await context.close();
         }
@@ -229,6 +237,10 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
           await page.close();
           page = await open(context, app);
           await page.evaluate((id) => window.platform.fragments.enable(id), EXPORT);
+          await page.waitForFunction(
+            (id) => window.platform.kernel.slots.getSnapshot(window.platform.slots.active).has(id),
+            EXPORT,
+          );
           await page.waitForFunction(
             async (t) => {
               const { jobs } = await window.platform.commands.call<{
