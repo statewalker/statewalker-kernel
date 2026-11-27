@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { type SqlLike, TaskQueue } from "@statewalker/shared-tasks";
-import { localQueueStore, type QueueStore, taskSubject } from "@statewalker/system.tasks";
+import {
+  localQueueStore,
+  type QueueStore,
+  subscriptionName,
+  taskSubject,
+} from "@statewalker/system.tasks";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   createHostJobs,
@@ -13,6 +18,7 @@ import {
   type HostJobCommand,
   type HostJobs,
   hostJobScriptOf,
+  processIdentity,
   resolveScript,
   ScriptRefusedError,
 } from "../src/index.js";
@@ -37,6 +43,16 @@ afterEach(async () => {
   for (const jobs of running.splice(0)) await jobs.stop();
 });
 
+/** The subscription system.tasks makes when the command's fragment is installed. */
+async function installed(store: QueueStore, command: HostJobCommand) {
+  await store.subscribe(
+    P,
+    { name: subscriptionName(command.command), filter: { subject: taskSubject(command.command) } },
+    HOST_JOBS_PRINCIPAL,
+  );
+}
+
+/** A host with these commands' fragments installed (their subscriptions made before it starts). */
 function host(
   store: QueueStore,
   commands: HostJobCommand[],
@@ -48,9 +64,19 @@ function host(
     stateDir,
     graceMs: 300,
     waitMs: 50,
+    syncMs: 50,
   });
-  running.push(jobs);
-  return { jobs, stateDir };
+  const start = jobs.start;
+  const installing = Promise.all(commands.map((c) => installed(store, c)));
+  const started: HostJobs = {
+    ...jobs,
+    async start() {
+      await installing;
+      await start();
+    },
+  };
+  running.push(started);
+  return { jobs: started, stateDir };
 }
 
 const command = (id: string, script: string): HostJobCommand => ({
@@ -223,5 +249,63 @@ describe("host-jobs on a Node host", () => {
       "scripts/a.sh",
     );
     expect(hostJobScriptOf({ operationId: "x" })).toBeUndefined();
+  });
+});
+
+// Merge gate pass 1 on statewalker/statewalker-kernel#83.
+describe("host-jobs serves only installed fragments, and kills only its own processes", () => {
+  it("runs nothing for a command whose fragment is not installed (no subscription)", async () => {
+    const store = queueStore();
+    const job = command("count", "scripts/count.sh");
+    const jobs = createHostJobs({
+      store,
+      commands: () => [job],
+      stateDir: mkdtempSync(join(tmpdir(), "host-jobs-")),
+      waitMs: 50,
+      syncMs: 50,
+    });
+    running.push(jobs);
+    await jobs.start();
+    // Its subject published to, with no subscription: nobody takes it, no job runs.
+    const before = await store.publish(P, { subject: taskSubject(job.command) }, "user");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await store.jobsOf(P, before.id)).toEqual([]);
+    // Installed: served from the next sync.
+    await installed(store, job);
+    const after = await run(store, "count", { n: 1 });
+    expect(after.reply).toMatchObject({ result: { exitCode: 0 } });
+    // Removed, its subscription with it: its runner stops, a task finds no one.
+    await store.unsubscribe(P, subscriptionName(job.command));
+    await new Promise((r) => setTimeout(r, 300));
+    await installed(store, job);
+    await store.unsubscribe(P, subscriptionName(job.command));
+    const gone = await store.publish(P, { subject: taskSubject(job.command) }, "user");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(await store.jobsOf(P, gone.id)).toEqual([]);
+  });
+
+  it("leaves a process alone whose pid a stale record names (another boot or start)", async () => {
+    const store = queueStore();
+    const stateDir = mkdtempSync(join(tmpdir(), "host-jobs-"));
+    // A process group this test owns, standing for an unrelated one that reused the pid.
+    const { spawn } = await import("node:child_process");
+    const { writeFileSync } = await import("node:fs");
+    const other = spawn("bash", ["-c", "sleep 30"], { detached: true, stdio: "ignore" });
+    const pid = other.pid as number;
+    try {
+      expect(processIdentity(pid)).toBeDefined();
+      const task = await store.publish(P, { subject: "fragments.org.example.jobs.stale" }, "user");
+      writeFileSync(
+        join(stateDir, "stale.json"),
+        JSON.stringify({ pid, task: task.id, command: "x/y", identity: "another-boot:1" }),
+      );
+      const jobs = createHostJobs({ store, commands: () => [], stateDir, waitMs: 50 });
+      running.push(jobs);
+      await jobs.start();
+      expect(readdirSync(stateDir)).toEqual([]);
+      expect(() => process.kill(pid, 0)).not.toThrow();
+    } finally {
+      process.kill(-pid, "SIGKILL");
+    }
   });
 });

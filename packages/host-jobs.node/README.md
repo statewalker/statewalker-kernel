@@ -52,14 +52,15 @@ apps/notes' `node` launch configuration does exactly this (`scripts/launch.mjs`)
 
 | Export | Provides |
 | --- | --- |
-| `createHostJobs(options)` → `{ start, sync, stop }` | The processor. Options: `store`, `commands()`, `stateDir`, and optionally `graceMs` (5 s), `heartbeatMs` (1 s), `leaseMs`, `waitMs`, `env`, `onError`. |
+| `createHostJobs(options)` → `{ start, sync, stop }` | The processor. Options: `store`, `commands()`, `stateDir`, and optionally `graceMs` (5 s), `heartbeatMs` (1 s), `syncMs` (2 s), `waitMs`, `env`, `onError`. |
+| `processIdentity(pid)` | The boot id and the process's start time, or undefined off Linux. |
 | `HOST_JOBS_BINDING`, `HOST_JOBS_PRINCIPAL` | `host-jobs`, and the principal the subscriptions and leases are held as (system.tasks' own, `system:tasks`, so its `jobs`/`job` read these jobs and a fragment's removal removes their subscriptions). |
 | `resolveScript(root, script)`, `ScriptRefusedError` | A script's real path inside the archive. It refuses absolute paths, `..`, links leading out, and anything that is not a file. |
 | `hostJobScriptOf(operation)` | The `x-host-job` script of a command's operation. |
 
 ## Internals
 
-- **One subscription per command,** `<fragment-id>.<command-id>` on `fragments.<fragment-id>.<command-id>`, the subject the `task` exposure uses. system.tasks' runner in the page leaves `x-host-job` commands alone.
+- **Only installed fragments' commands run.** The platform's system.tasks makes a command's subscription, `<fragment-id>.<command-id>` on `fragments.<fragment-id>.<command-id>`, when the fragment is installed, and removes it with the fragment; its page runner never runs `x-host-job` commands itself. host-jobs serves a command only while that subscription exists, looking again every `syncMs` (2 s). A fragment that is shipped but not installed runs nothing, whoever publishes to its subject.
 - **The process:**
   - The interpreter comes from the script's extension: `.sh` runs with bash, `.py` with python3, `.js`/`.mjs` with node; a script with another extension is executed itself.
   - The process runs in its own group (`detached`), with the archive's root as its working directory.
@@ -70,8 +71,8 @@ apps/notes' `node` launch configuration does exactly this (`scripts/launch.mjs`)
   - On a cancel, SIGTERM goes to the group, and SIGKILL follows `graceMs` later, even after the script itself has exited, since its children may ignore SIGTERM.
   - What the script prints after the cancel is not logged: the queue takes no entries of a cancelled task.
 - **Restart:**
-  - Each running process is recorded in `stateDir/<job>.json` (its pid and task) and the record is removed when the process ends.
-  - `start()` kills each recorded group still there, then cancels its task, so the job ends `cancelled` and is not run again.
+  - Each running process is recorded in `stateDir/<job>.json`, with its pid, its task, and its identity: the machine's boot id and the process's start time (Linux `/proc`). The record is removed when the process ends.
+  - `start()` kills each recorded group whose leader still has that identity, then cancels its task, so the job ends `cancelled` and is not run again. A pid reused since then (a reboot or a restart) has another identity and is never signalled. Where the identity cannot be read, nothing is killed: the task is only cancelled.
 - **Retries:** the queue retries a failed job up to the subscription's attempts. A refused script is refused at every attempt, and its reply says no retry follows.
 
 ## License

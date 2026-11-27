@@ -35,7 +35,6 @@ import {
   subscriptionName,
   TASKS_PRINCIPAL,
   TASKS_PROJECT,
-  taskSubject,
 } from "@statewalker/system.tasks";
 
 /** The binding a Node host offers, and a fragment requires to run its scripts here. */
@@ -114,13 +113,13 @@ export interface HostJobsOptions {
   readonly stateDir: string;
   /** Between SIGTERM and SIGKILL on a cancel (5 s). */
   readonly graceMs?: number;
-  /** A subscription's lease (the queue's default: 5 minutes), renewed by each output line. */
-  readonly leaseMs?: number;
   /**
    * How often a running job renews its lease while its script prints nothing (1 s): a cancel is
    * learnt at a renew, so this bounds how long a cancelled script runs on.
    */
   readonly heartbeatMs?: number;
+  /** How often the installed fragments' subscriptions are looked at again (2 s). */
+  readonly syncMs?: number;
   /** How long one wait for a change lasts in a runner (30 s). */
   readonly waitMs?: number;
   /** The environment the scripts start from (the host's own by default; `JOB_*` added). */
@@ -131,8 +130,11 @@ export interface HostJobsOptions {
 export interface HostJobs {
   /** Ends the jobs of a previous run, then serves the commands' subscriptions. */
   start(): Promise<void>;
-  /** The commands changed (a fragment installed or removed): serves what `commands()` gives now. */
-  sync(): void;
+  /**
+   * Serves the commands of installed fragments now (their subscriptions exist); `start()` also
+   * does it every `syncMs`.
+   */
+  sync(): Promise<void>;
   /** Stops serving: running processes are terminated as on a cancel. */
   stop(): Promise<void>;
 }
@@ -141,6 +143,24 @@ interface Running {
   readonly pid: number;
   readonly task: string;
   readonly command: string;
+  /** The machine's boot and the process's start, so a reused pid is never taken for it. */
+  readonly identity?: string;
+}
+
+/**
+ * Who `pid` is: this boot's id and the process's start time (Linux `/proc`), or undefined where
+ * that cannot be read. A pid reused after a reboot or a restart has another identity.
+ */
+export function processIdentity(pid: number): string | undefined {
+  try {
+    const boot = readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
+    const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
+    // Field 22 (starttime), counted after the command's closing parenthesis (it may hold spaces).
+    const start = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+    return boot && start ? `${boot}:${start}` : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function createHostJobs(options: HostJobsOptions): HostJobs {
@@ -149,6 +169,7 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
   const P = TASKS_PROJECT;
   const own = { id: HOST_JOBS_PRINCIPAL, destinations: [], admin: true };
   const runners = new Map<string, { stop: AbortController; done: Promise<void> }>();
+  let resync: ReturnType<typeof setInterval> | undefined;
   mkdirSync(options.stateDir, { recursive: true });
   const recordOf = (lease: string) =>
     join(options.stateDir, `${lease.replace(/[^\w.-]/g, "_")}.json`);
@@ -236,6 +257,7 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
           pid: child.pid,
           task: lease.task.id,
           command: job.command,
+          ...(processIdentity(child.pid) ? { identity: processIdentity(child.pid) } : {}),
         } satisfies Running),
       );
     // A renew without an entry: the queue's cancel reaches a quiet script too.
@@ -283,16 +305,6 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
 
   async function serve(job: HostJobCommand, stop: AbortController): Promise<void> {
     const name = subscriptionName(job.command);
-    if (!(await options.store.listSubscriptions(P)).some((s) => s.name === name))
-      await options.store.subscribe(
-        P,
-        {
-          name,
-          filter: { subject: taskSubject(job.command) },
-          ...(options.leaseMs !== undefined ? { lease_ms: options.leaseMs } : {}),
-        },
-        HOST_JOBS_PRINCIPAL,
-      );
     if (stop.signal.aborted) return;
     await serveSubscription(options.store.api(own), {
       project: P,
@@ -304,8 +316,23 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
     });
   }
 
-  function sync(): void {
-    const live = new Map(options.commands().map((c) => [c.command, c]));
+  /**
+   * Serves exactly the commands whose fragment is installed: those whose subscription the
+   * platform's system.tasks made when the fragment was installed (it removes it with the
+   * fragment). A command of a fragment not installed runs nothing, whoever publishes to it.
+   */
+  async function sync(): Promise<void> {
+    const subscribed = new Set(
+      (await options.store.listSubscriptions(P))
+        .filter((s) => !s.inbox && s.owner === HOST_JOBS_PRINCIPAL)
+        .map((s) => s.name),
+    );
+    const live = new Map(
+      options
+        .commands()
+        .filter((c) => subscribed.has(subscriptionName(c.command)))
+        .map((c) => [c.command, c]),
+    );
     for (const [command, runner] of runners) {
       if (live.has(command)) continue;
       runner.stop.abort();
@@ -333,8 +360,14 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
       const path = join(options.stateDir, file);
       try {
         const record = JSON.parse(readFileSync(path, "utf8")) as Running;
+        // Only the very process this host started (same boot, same start time): a pid reused
+        // since (a reboot, a restart) belongs to someone else, and is left alone.
+        const ours =
+          record.pid > 1 &&
+          record.identity !== undefined &&
+          processIdentity(record.pid) === record.identity;
         try {
-          if (record.pid > 1) process.kill(-record.pid, "SIGKILL");
+          if (ours) process.kill(-record.pid, "SIGKILL");
         } catch {
           // already gone
         }
@@ -350,10 +383,14 @@ export function createHostJobs(options: HostJobsOptions): HostJobs {
   return {
     async start() {
       await recover();
-      sync();
+      await sync();
+      // Installs and removals reach the host through the queue: looked at again periodically.
+      resync = setInterval(() => void sync().catch(onError), options.syncMs ?? 2_000);
+      resync.unref?.();
     },
     sync,
     async stop() {
+      if (resync) clearInterval(resync);
       const done = [...runners.values()];
       for (const { stop } of done) stop.abort();
       runners.clear();

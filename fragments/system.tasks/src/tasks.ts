@@ -174,6 +174,8 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   const jobHomes = new Map<string, QueueStore>();
   const runners = new Map<string, { stop: AbortController; home: QueueStore }>();
   let lastEntries: readonly CommandEntry[] = [];
+  // The host-job commands whose subscription was made (or is being made).
+  const hostJobs = new Set<string>();
   // The running tasks of this host: a cancel makes each one's runner renew at once, so the
   // queue's "cancelled" reaches its handler without waiting for the next renew.
   const running = new Map<string, () => void>();
@@ -262,6 +264,22 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     };
   }
 
+  /** The subscription of a task-exposed command, made once at its home. */
+  async function subscribeOnce(entry: CommandEntry, home: QueueStore): Promise<void> {
+    const name = subscriptionName(entry.id);
+    if (!(await home.listSubscriptions(P)).some((s) => s.name === name))
+      await home.subscribe(
+        P,
+        {
+          name,
+          filter: { subject: taskSubject(entry.id) },
+          ...(options.leaseMs !== undefined ? { lease_ms: options.leaseMs } : {}),
+          ...(options.maxAttempts !== undefined ? { max_attempts: options.maxAttempts } : {}),
+        },
+        TASKS_PRINCIPAL,
+      );
+  }
+
   async function serve(
     entry: CommandEntry,
     stop: AbortController,
@@ -294,11 +312,22 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   function sync(entries: readonly CommandEntry[]): void {
     lastEntries = entries;
     // A command that runs a script on the host (`x-host-job`, statewalker-root#411) is served by
-    // the host's processor (host-jobs.node), not by this runner.
+    // the host's processor (host-jobs.node), not by this runner: its subscription is made here,
+    // as for any task-exposed command of an installed fragment (and removed with the fragment),
+    // and the host serves only commands so subscribed.
+    const isHostJob = (e: CommandEntry) => !!(e.operation as Record<string, unknown>)["x-host-job"];
+    for (const entry of entries)
+      if (entry.exposures.task && isHostJob(entry) && !hostJobs.has(entry.id)) {
+        hostJobs.add(entry.id);
+        subscribeOnce(entry, homeOf(fragmentOf(subscriptionName(entry.id)))).catch(
+          (error: unknown) => {
+            hostJobs.delete(entry.id);
+            onError(error);
+          },
+        );
+      }
     const live = new Map(
-      entries
-        .filter((e) => e.exposures.task && !(e.operation as Record<string, unknown>)["x-host-job"])
-        .map((e) => [e.id, e]),
+      entries.filter((e) => e.exposures.task && !isHostJob(e)).map((e) => [e.id, e]),
     );
     for (const [id, runner] of runners) {
       // Gone, or its fragment's home changed: stopped (and started again at the new home).
