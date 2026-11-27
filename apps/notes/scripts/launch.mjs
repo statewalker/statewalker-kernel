@@ -13,8 +13,9 @@
 //
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
 import { coreServerFragments } from "./core-fragments.mjs";
@@ -105,6 +106,47 @@ const refusedElsewhere = () =>
     status: 403,
     headers: { "content-type": "text/plain" },
   });
+
+/**
+ * `POST /_launch/fragments/<id>/data/remove`: "remove with data" of a fragment's server half on
+ * this host (statewalker/statewalker-kernel#73), the shell's `removeServerData` in the `server`
+ * launch configuration. Its DO storage is deleted and the server half starts again empty, ready
+ * for a reinstall. Answers the fragment's id, or the refusal.
+ */
+const REMOVE_DATA = /^\/_launch\/fragments\/([^/]+)\/data\/remove$/;
+
+/** The fragment a "remove with data" request names, or undefined for any other request. */
+function removeDataOf(request) {
+  const match = REMOVE_DATA.exec(new URL(request.url).pathname);
+  if (!match) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Runs a "remove with data" request with `remove(id)`, as the app's own pages may ask it. */
+async function answerRemoveData(request, id, known, remove) {
+  if (fromElsewhere(request)) return refusedElsewhere();
+  if (request.method !== "POST")
+    return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
+  if (simplePost(request)) return refusedSimple();
+  if (!known(id))
+    return new Response(`no fragment "${id}" on this host`, {
+      status: 404,
+      headers: { "content-type": "text/plain" },
+    });
+  try {
+    await remove(id);
+    return Response.json({ removed: id });
+  } catch (error) {
+    return new Response(`${id}: its data was not removed: ${error?.message ?? error}`, {
+      status: 500,
+      headers: { "content-type": "text/plain" },
+    });
+  }
+}
 
 /** `/fragments/<id>/…`, or `/peers/<peerId>/fragments/<id>/…` naming this host: the fragment's. */
 function fragmentOf(pathname, peerId) {
@@ -215,6 +257,12 @@ export async function launch(mode, options = {}) {
   if (mode === "node") {
     const { createFragmentHost } = await import("@statewalker/cellb/node");
     const host = createFragmentHost({ ...(data ? { data } : {}), ...(peerId ? { peerId } : {}) });
+    const dirs = new Map(serverFragments().map(({ id, dir }) => [id, dir]));
+    // Removed with its data, a server half comes back empty: the host serves every app fragment.
+    const removeData = async (id) => {
+      await host.remove(id, { withData: true });
+      await host.add(id, dirs.get(id));
+    };
     for (const { id, dir } of serverFragments()) {
       const added = await host.add(id, dir);
       if (added.unsupported.length)
@@ -223,6 +271,9 @@ export async function launch(mode, options = {}) {
     const server = await serveStatic(DIST, port, {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
       handle: async (request) => {
+        const removing = removeDataOf(request);
+        if (removing !== undefined)
+          return answerRemoveData(request, removing, (id) => dirs.has(id), removeData);
         if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
         if (fromElsewhere(request)) return refusedElsewhere();
         return simplePost(request) ? refusedSimple() : host.fetch(request);
@@ -240,16 +291,29 @@ export async function launch(mode, options = {}) {
   }
   if (mode === "wrangler") {
     const workers = new Map();
+    // Each server half's state where this launch can delete it: under `data`, else a folder of
+    // this launch's own (wrangler's default is the fragment's source folder, kept across runs).
+    const state = data ?? mkdtempSync(join(tmpdir(), "notes-wrangler-"));
+    const fragments = new Map(serverFragments().map((f) => [f.id, f]));
+    const removeData = async (id) => {
+      await workers.get(id)?.close();
+      workers.delete(id);
+      rmSync(join(state, id), { recursive: true, force: true });
+      workers.set(id, await wranglerDev(fragments.get(id), { persistTo: state }));
+    };
     const stopWorkers = async () => {
       for (const w of workers.values()) await w.close();
     };
     let server;
     try {
-      for (const fragment of serverFragments())
-        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: data }));
+      for (const fragment of fragments.values())
+        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: state }));
       server = await serveStatic(DIST, port, {
         launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
         handle: async (request) => {
+          const removing = removeDataOf(request);
+          if (removing !== undefined)
+            return answerRemoveData(request, removing, (id) => fragments.has(id), removeData);
           const url = new URL(request.url);
           const target = fragmentOf(url.pathname, peerId);
           if (!target) return undefined;
@@ -284,6 +348,7 @@ export async function launch(mode, options = {}) {
       });
     } catch (error) {
       await stopWorkers();
+      if (!data) rmSync(state, { recursive: true, force: true });
       throw error;
     }
     return {
@@ -292,6 +357,7 @@ export async function launch(mode, options = {}) {
       async close() {
         await server.close();
         await stopWorkers();
+        if (!data) rmSync(state, { recursive: true, force: true });
       },
     };
   }
