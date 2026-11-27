@@ -133,6 +133,12 @@ From the repository root, after `pnpm install`:
 
 `tests/move-tasks.e2e.test.ts` (seam 2, two node hosts) covers #410: with notes-export moved to a second host, a task published from the first is served in the second host's queue and its reply comes back; the first host's wildcard subscription never sees it; once the home is down, the publish fails (`unreachable`) with nothing queued on the first host.
 
+`tests/host-jobs.e2e.test.ts` (seam 2) covers #411:
+- **node:** the jobs-demo fragment (`fragments/jobs-demo`, which requires the `host-jobs` binding) runs its `count` script through a task-exposed command, and the job log holds its lines, then `done`. Cancelling `wait` terminates its process group (SIGTERM, then SIGKILL for a child that ignores SIGTERM) and ends the job `cancelled`. A script outside the archive is refused.
+- **browser:** the install is refused, naming the missing binding.
+
+The `node` configuration offers the binding (`launch.json`'s `bindings`) and runs `@statewalker/host-jobs.node` over its own system.tasks queue, taking each script from the fragment's built archive (`dist/archives/<id>/scripts/`).
+
 `tests/tasks.e2e.test.ts` (seam 2, on browser, node and wrangler) covers #409:
 - the task, started from the Exports view, is followed over a reload with no log entry read twice, and its reply shows;
 - its export is made once;

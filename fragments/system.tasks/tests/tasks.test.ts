@@ -532,3 +532,35 @@ describe("publishes forwarded to a fragment's home", () => {
     expect(subjectFragment("jobs.x")).toBeUndefined();
   });
 });
+
+// statewalker-root#411: a command that runs a script on the host (`x-host-job`) is served by the
+// host's processor (host-jobs.node), never by this page's runner.
+describe("commands a host runs as jobs", () => {
+  it("makes their subscription (the host serves it), and never runs their tasks here", async () => {
+    let called = false;
+    const hostJob = taskCommand("run-script");
+    const operation = (hostJob.data as { operation: Record<string, unknown> }).operation;
+    operation["x-host-job"] = { script: "scripts/run.sh" };
+    const { tasks } = await platform([fragment(NOTES, [hostJob, taskCommand("export")])], {
+      [NOTES]: {
+        export: () => ({}),
+        "run-script": () => {
+          called = true;
+          return {};
+        },
+      },
+    });
+    const name = subscriptionName(`${NOTES}/run-script`);
+    await until(async () =>
+      (await tasks.store.listSubscriptions("local")).some((s) => s.name === name),
+    );
+    const task = await tasks.store.publish(
+      "local",
+      { subject: taskSubject(`${NOTES}/run-script`) },
+      "user",
+    );
+    await new Promise((r) => setTimeout(r, 200));
+    expect(called).toBe(false);
+    expect(await tasks.store.jobsOf("local", task.id)).toEqual([]);
+  });
+});

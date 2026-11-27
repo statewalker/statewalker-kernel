@@ -37,6 +37,8 @@ export interface LaunchConfig {
   readonly shards?: number;
   /** This origin's own peer id: `/peers/<peerId>/fragments/…` answers as `/fragments/…`. */
   readonly peerId?: string;
+  /** The bindings the host offers fragments (`node`: `host-jobs`, statewalker-root#411). */
+  readonly bindings?: readonly string[];
 }
 
 /** launch.json, or `none` when the page has none. */

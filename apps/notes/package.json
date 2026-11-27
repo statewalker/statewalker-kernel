@@ -21,6 +21,7 @@
     "@sqlite.org/sqlite-wasm": "catalog:",
     "@statewalker/cellb": "catalog:",
     "@statewalker/client.core": "workspace:^",
+    "@statewalker/host-jobs.node": "workspace:^",
     "@statewalker/kernel.core": "workspace:^",
     "@statewalker/platform.browser": "workspace:^",
     "@statewalker/system.a2ui": "workspace:^",

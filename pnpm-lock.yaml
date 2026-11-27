@@ -305,6 +305,9 @@ importers:
       '@statewalker/client.core':
         specifier: workspace:^
         version: link:../../packages/client.core
+      '@statewalker/host-jobs.node':
+        specifier: workspace:^
+        version: link:../../packages/host-jobs.node
       '@statewalker/kernel.core':
         specifier: workspace:^
         version: link:../../packages/kernel.core
@@ -1414,6 +1417,31 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.6.5
+
+  packages/host-jobs.node:
+    dependencies:
+      '@statewalker/shared-tasks':
+        specifier: 'catalog:'
+        version: 0.1.0
+      '@statewalker/system.tasks':
+        specifier: workspace:^
+        version: link:../../fragments/system.tasks
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.6.4
+      rimraf:
+        specifier: 'catalog:'
+        version: 6.1.3
+      tsdown:
+        specifier: 'catalog:'
+        version: 0.23.0(tsx@4.23.15)(typescript@7.0.2)
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 5.0.3(@types/node@26.6.4)(jsdom@31.0.1(@noble/hashes@2.4.0))(vite@8.3.8(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
   packages/inline.core:
     dependencies:

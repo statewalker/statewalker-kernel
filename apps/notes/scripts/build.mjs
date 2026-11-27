@@ -19,7 +19,16 @@
 // import map resolves, so each one loads once. Fragment CSS is prebuilt with Tailwind per fragment,
 // against the shared shadcn tokens and without preflight.
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { bundleWorkerForBrowser } from "@statewalker/cellb/node";
@@ -181,8 +190,14 @@ async function buildFragments() {
         await bundleWorkerForBrowser(join(source, wrangler.main)),
       );
     }
-    if (manifest.aspects?.client) {
-      const dir = manifest.aspects.client.dir ?? "client";
+    // Scripts a Node host runs as jobs (the `host-jobs` binding, statewalker-root#411): shipped in
+    // the archive, the only place host-jobs takes a script from.
+    if (manifest.bindings?.includes("host-jobs") && existsSync(join(source, "scripts")))
+      cpSync(join(source, "scripts"), join(out, "scripts"), { recursive: true });
+    // A client aspect with no code of its own (only extensions, as commands a host serves).
+    const clientDir = manifest.aspects?.client?.dir ?? "client";
+    if (manifest.aspects?.client && existsSync(join(source, clientDir, "index.tsx"))) {
+      const dir = clientDir;
       await bundle({
         entry: { index: join(source, dir, "index.tsx") },
         outDir: join(out, dir),
