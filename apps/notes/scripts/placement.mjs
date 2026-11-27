@@ -15,8 +15,40 @@
 // Files travel as `[path, base64]`. A move copies them without transforming them: the host it goes
 // to must offer the same version of the fragment.
 
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+/**
+ * What a host keeps of placement across its restarts, in `<data>/placement.json`: the fragments
+ * moved here (`arrived`: run at start though not offered from the start) and those moved away for
+ * good (`left`: never started again, so no empty copy serves beside the real one).
+ * @param {string | undefined} dataDir
+ * @returns {{ arrived: string[]; left: string[] }}
+ */
+export function readPlacementRecord(dataDir) {
+  if (dataDir === undefined) return { arrived: [], left: [] };
+  try {
+    const record = JSON.parse(readFileSync(join(dataDir, "placement.json"), "utf8"));
+    return {
+      arrived: Array.isArray(record.arrived) ? record.arrived.map(String) : [],
+      left: Array.isArray(record.left) ? record.left.map(String) : [],
+    };
+  } catch {
+    return { arrived: [], left: [] };
+  }
+}
+
+/** Records that `id` arrived here, or left for good (atomically: a temporary file renamed). */
+function recordPlacement(dataDir, id, what) {
+  if (dataDir === undefined) return;
+  const record = readPlacementRecord(dataDir);
+  const other = what === "arrived" ? "left" : "arrived";
+  record[other] = record[other].filter((x) => x !== id);
+  if (!record[what].includes(id)) record[what].push(id);
+  const file = join(dataDir, "placement.json");
+  writeFileSync(`${file}.tmp`, JSON.stringify(record));
+  renameSync(`${file}.tmp`, file);
+}
 
 /** `/_launch/host.json`, or `/_launch/fragments/<id>/<action>`: what a placement request names. */
 const PLACEMENT =
@@ -114,6 +146,7 @@ export async function answerPlacement(request, target, { host, offered, serial, 
             );
           }
           await host.disable(id);
+          recordPlacement(dataDir, id, "arrived");
           return Response.json({ installed: id, version: source.version });
         }
         case "disable":
@@ -124,6 +157,10 @@ export async function answerPlacement(request, target, { host, offered, serial, 
           return Response.json({ id, state: host.state(id) });
         case "data/export": {
           if (host.state(id) === "enabled") return text(409, `${id} runs: disable it first`);
+          // Handed over already: this data is no longer the fragment's current one (another
+          // device's Move took it); a second hand-over would start a second home from it.
+          if (body.handOver && host.handedOver(id))
+            return text(409, `${id} was handed over from this host already`);
           const handOver = body.handOver
             ? {
                 at: new Date().toISOString(),
@@ -140,11 +177,22 @@ export async function answerPlacement(request, target, { host, offered, serial, 
           const report = await host.importData(id, files, { overwrite: true });
           return Response.json({ id, ...report });
         }
-        case "reactivate":
+        case "reactivate": {
+          // Only data this host handed over and still keeps comes back: never an empty copy.
+          if (!host.handedOver(id))
+            return text(409, `${id} has no handed-over data on this host to reactivate`);
           await host.reactivate(id);
+          // Not on the host since a restart (a handed-over fragment is not started): added again.
+          if (host.state(id) === undefined) {
+            const source = offered.get(id);
+            if (!source) return text(404, `this host offers no fragment "${id}"`);
+            await host.add(id, source.dir);
+          }
           return Response.json({ id, state: host.state(id) });
+        }
         case "data/delete":
           await host.remove(id, { withData: true });
+          recordPlacement(dataDir, id, "left");
           return Response.json({ deleted: id });
         default:
           return text(404, "no such placement action");

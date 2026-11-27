@@ -87,7 +87,10 @@ const platform = await boot({
   // A fragment placed on another host: its tasks are queued and served there (#410).
   taskHome: (id) => {
     const host = placement.routeOf(id);
-    return host.startsWith("url:") ? host.slice(4) : undefined;
+    if (!host.startsWith("url:")) return undefined;
+    // A base URL, as placement resolves it: `fragments/…` stays under its path.
+    const url = host.slice(4);
+    return url.endsWith("/") ? url : `${url}/`;
   },
   ...(launch.fragments === "none"
     ? {}

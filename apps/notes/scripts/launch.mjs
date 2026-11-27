@@ -14,12 +14,12 @@
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
 import { coreServerFragments } from "./core-fragments.mjs";
-import { answerPlacement, placementOf } from "./placement.mjs";
+import { answerPlacement, placementOf, readPlacementRecord } from "./placement.mjs";
 import { serveStatic } from "./static-server.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -369,8 +369,21 @@ export async function launch(mode, options = {}) {
     });
     // Placement steps, one at a time per fragment, after any removal of it.
     const serial = oneAtATimeRun();
-    const started = options.fragments ?? [...offered.keys()];
+    // What runs from the start, as placement left it (scripts/placement.mjs): the fragments moved
+    // here too, not those moved away for good, nor data handed over to another host (it waits,
+    // not running, for a confirm or a rollback).
+    const record = readPlacementRecord(data);
+    const started = [
+      ...new Set([...(options.fragments ?? [...offered.keys()]), ...record.arrived]),
+    ].filter((id) => offered.has(id) && !record.left.includes(id));
     for (const id of started) {
+      if (
+        data !== undefined &&
+        existsSync(join(data, "fragments", id, ".cellb-handed-over.json"))
+      ) {
+        console.warn(`${id}: its data here was handed over to another host: not started`);
+        continue;
+      }
       const added = await host.add(id, /** @type {string} */ (dirs.get(id)));
       if (added.unsupported.length)
         console.warn(`${id}: unsupported: ${added.unsupported.join("; ")}`);

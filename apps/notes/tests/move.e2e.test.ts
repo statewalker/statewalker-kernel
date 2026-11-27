@@ -163,3 +163,79 @@ describe("Move of a fragment to a second CellB Node host", () => {
     expect(preflight.status).toBe(403);
   });
 });
+
+// Merge gate pass 1 on statewalker/statewalker-kernel#81: a host's placement steps refuse what
+// would start a second home or lose the last copy, and a restart keeps what placement left.
+describe("placement on one host, across its restarts", () => {
+  const step = async (app: Launched, action: string, body?: unknown) => {
+    const response = await fetch(new URL(`_launch/fragments/${NOTES}/${action}`, app.url), {
+      method: body === undefined ? "GET" : "POST",
+      headers: { "content-type": "application/json" },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    return { status: response.status, text: await response.text() };
+  };
+  const write = async (app: Launched, text: string) => {
+    const response = await fetch(new URL(`fragments/${NOTES}/notes`, app.url), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    expect(response.status).toBeLessThan(300);
+  };
+
+  it("hands over once, reactivates only kept data, and restarts as placement left it", async () => {
+    const data = temp("move-host-");
+    let app = await launch("node", { data });
+    try {
+      await write(app, "kept");
+      expect((await step(app, "disable", {})).status).toBe(200);
+      expect(
+        (await step(app, "data/export", { handOver: true, to: "url:http://h1/" })).status,
+      ).toBe(200);
+      // A second hand-over of the same data (another device's Move) is refused.
+      const again = await step(app, "data/export", { handOver: true, to: "url:http://h2/" });
+      expect(again.status).toBe(409);
+      expect(again.text).toMatch(/handed over from this host already/);
+
+      // Restarted while the Move is pending: the host starts, the handed-over fragment does not.
+      const port = Number(new URL(app.url).port);
+      await app.close();
+      app = await launch("node", { data, port });
+      expect(app.host?.state(NOTES)).toBeUndefined();
+      // Rolled back after the restart: it runs again on the data it kept.
+      expect((await step(app, "reactivate", {})).status).toBe(200);
+      expect(app.host?.state(NOTES)).toBe("enabled");
+      expect(JSON.parse((await step(app, "data")).text)).toMatchObject({ hasData: true });
+      // Nothing handed over now: a second reactivate is refused (a rollback racing a confirm
+      // stops there, before it deletes the other copy).
+      expect((await step(app, "reactivate", {})).status).toBe(409);
+
+      // Moved away for good (its data deleted): a restart does not bring back an empty copy.
+      expect((await step(app, "data/delete", {})).status).toBe(200);
+      expect((await step(app, "reactivate", {})).status).toBe(409);
+      await app.close();
+      app = await launch("node", { data, port });
+      expect(app.host?.state(NOTES)).toBeUndefined();
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+
+  it("starts the fragments moved here after a restart", async () => {
+    const data = temp("move-arrived-");
+    let app = await launch("node", { data, fragments: [] });
+    try {
+      expect((await step(app, "install", { version: "0.1.0" })).status).toBe(200);
+      expect((await step(app, "enable", {})).status).toBe(200);
+      await write(app, "arrived");
+      const port = Number(new URL(app.url).port);
+      await app.close();
+      app = await launch("node", { data, port, fragments: [] });
+      expect(app.host?.state(NOTES)).toBe("enabled");
+      expect(JSON.parse((await step(app, "data")).text)).toMatchObject({ hasData: true });
+    } finally {
+      await app.close();
+    }
+  }, 120_000);
+});

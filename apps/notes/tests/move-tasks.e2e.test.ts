@@ -44,6 +44,16 @@ async function queue(app: Launched, method: string, ...args: unknown[]): Promise
   return body.value;
 }
 
+/** Waits until `app`'s queue has the runner's subscription for notes-export's command. */
+async function served(app: Launched) {
+  for (let i = 0; i < 300; i++) {
+    const subs = (await queue(app, "listSubscriptions", "local")) as { name: string }[];
+    if (subs.some((s) => s.name === `${EXPORT}.export-slowly`)) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`no runner subscribed on ${app.url}`);
+}
+
 const jobsOn = async (app: Launched, task: string) =>
   ((await queue(app, "jobsOf", "local", task)) as unknown[]).length;
 
@@ -116,6 +126,7 @@ describe("system.tasks forwards publishes to a fragment's home", () => {
         ) as Promise<unknown[]>;
 
       // Before the Move: served here.
+      await served(a);
       const here = await publish(page);
       expect(here.result, here.failed ?? here.error).toBeDefined();
       expect(await jobsOn(a, here.task)).toBe(1);
@@ -130,6 +141,7 @@ describe("system.tasks forwards publishes to a fragment's home", () => {
         [EXPORT, `url:${b.url}`] as const,
       );
       expect(moved).toBeUndefined();
+      await served(b);
 
       // After it: published from the first host, served in the second host's queue, the reply
       // back here.
