@@ -13,6 +13,7 @@
 //
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -173,7 +174,7 @@ async function freePort() {
 }
 
 /** `wrangler dev` for one server half; resolves once it answers. */
-async function wranglerDev({ id, dir }, { persistTo }) {
+async function wranglerDev({ id, dir }, { persistTo, secret }) {
   const port = await freePort();
   const inspector = await freePort();
   const bin = join(ROOT, "node_modules", ".bin", "wrangler");
@@ -187,6 +188,9 @@ async function wranglerDev({ id, dir }, { persistTo }) {
     "127.0.0.1",
   ];
   if (persistTo) args.push("--persist-to", join(persistTo, id));
+  // Its Worker takes only requests carrying this launch's secret (statewalker-kernel#78): its own
+  // port, which a page could find, bypasses this server's checks otherwise.
+  if (secret) args.push("--var", `LAUNCH_SECRET:${secret}`);
   // Its own process group (wrangler starts workerd as its children): stopped as a whole, and
   // whenever this process exits, however it exits.
   const child = spawn(bin, args, {
@@ -294,12 +298,14 @@ export async function launch(mode, options = {}) {
     // Each server half's state where this launch can delete it: under `data`, else a folder of
     // this launch's own (wrangler's default is the fragment's source folder, kept across runs).
     const state = data ?? mkdtempSync(join(tmpdir(), "notes-wrangler-"));
+    /** What every forwarded request carries, and the Workers take nothing without. */
+    const secret = randomUUID();
     const fragments = new Map(serverFragments().map((f) => [f.id, f]));
     const removeData = async (id) => {
       await workers.get(id)?.close();
       workers.delete(id);
       rmSync(join(state, id), { recursive: true, force: true });
-      workers.set(id, await wranglerDev(fragments.get(id), { persistTo: state }));
+      workers.set(id, await wranglerDev(fragments.get(id), { persistTo: state, secret }));
     };
     const stopWorkers = async () => {
       for (const w of workers.values()) await w.close();
@@ -307,7 +313,7 @@ export async function launch(mode, options = {}) {
     let server;
     try {
       for (const fragment of fragments.values())
-        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: state }));
+        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: state, secret }));
       server = await serveStatic(DIST, port, {
         launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
         handle: async (request) => {
@@ -328,6 +334,7 @@ export async function launch(mode, options = {}) {
           // Hop-by-hop headers are this connection's, not the next one's (fetch refuses some).
           const forwarded = new Headers(request.headers);
           for (const name of HOP_BY_HOP) forwarded.delete(name);
+          forwarded.set("x-launch-secret", secret);
           const answer = await fetch(`${worker.base}${target.path}${url.search}`, {
             method: request.method,
             headers: forwarded,
@@ -354,6 +361,8 @@ export async function launch(mode, options = {}) {
     return {
       mode,
       url: server.url,
+      /** Each server half's own `wrangler dev` address (for tests: it answers this server only). */
+      workerBases: () => new Map([...workers].map(([id, w]) => [id, w.base])),
       async close() {
         await server.close();
         await stopWorkers();

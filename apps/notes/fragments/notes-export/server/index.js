@@ -90,14 +90,29 @@ export class ExportsFragment extends DurableObject {
   }
 }
 
+/**
+ * Under `wrangler dev` behind the app's launch server (apps/notes/scripts/launch.mjs), a request
+ * is taken only as it forwarded it: with the launch's secret (`LAUNCH_SECRET`), so a page that
+ * finds this Worker's own port reaches no DO. Deployed, the variable is unset and nothing is
+ * checked here (statewalker/statewalker-kernel#78).
+ */
+function fromLaunch(request, env) {
+  const secret = env.LAUNCH_SECRET;
+  return !secret || request.headers.get("x-launch-secret") === secret;
+}
+
 export default {
   /** `/fragments/org.statewalker.notes-export/<path>` → the fragment DO at `/<path>` (wrangler dev). */
   async fetch(request, env) {
+    if (!fromLaunch(request, env))
+      return json({ error: "this Worker answers only its launch server" }, 403);
     const url = new URL(request.url);
     if (url.pathname !== PREFIX && !url.pathname.startsWith(`${PREFIX}/`))
       return json({ error: "not found" }, 404);
     const forwarded = new URL(url.pathname.slice(PREFIX.length) || "/", url);
     forwarded.search = url.search;
-    return env.FRAGMENT.getByName(ID).fetch(new Request(forwarded, request));
+    const inner = new Request(forwarded, request);
+    inner.headers.delete("x-launch-secret");
+    return env.FRAGMENT.getByName(ID).fetch(inner);
   },
 };

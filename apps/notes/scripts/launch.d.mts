@@ -6,10 +6,12 @@ export interface Launched {
   readonly url: string;
   /** The fragment host (node only). */
   readonly host?: FragmentHost;
+  /** Each server half's own `wrangler dev` address, by fragment id (wrangler only). */
+  readonly workerBases?: () => Map<string, string>;
   close(): Promise<void>;
 }
 
-/** The app's fragments that have a server half: their id and source folder. */
+/** The fragments whose server halves a server host runs (core, then the app's): id and folder. */
 export function serverFragments(): { id: string; dir: string }[];
 
 /** Serve the built app in a launch configuration. */
