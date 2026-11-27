@@ -1,5 +1,15 @@
 # @statewalker/backbone.node
 
+## 0.4.3
+
+### Patch Changes
+
+- Release of the changes since the last published version:
+  
+  - files changed: dist/bootstrap.d.ts, dist/bootstrap.d.ts.map, dist/bootstrap.js, dist/index.js
+- Updated dependencies
+  - @statewalker/backbone.core@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

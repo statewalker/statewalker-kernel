@@ -1,5 +1,14 @@
 # @statewalker/workspace.core
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/files-fragment.js, dist/fragment.js, dist/internal/change-workspace.handler.js, dist/internal/get-mime-type.js, dist/internal/json-per-key-store.js, 92 more
+
 ## 0.8.0
 
 ### Minor Changes

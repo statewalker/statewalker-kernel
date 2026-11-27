@@ -1,5 +1,19 @@
 # @statewalker/settings.core
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/fragment.js, dist/internal/settings.manager.js, dist/public/commands.d.ts, dist/public/commands.d.ts.map, dist/public/commands.js, 11 more
+
+### Patch Changes
+
+- Updated dependencies
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

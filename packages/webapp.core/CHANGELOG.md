@@ -1,5 +1,19 @@
 # @statewalker/webapp.core
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - files changed: dist/derive-lock.d.ts, dist/derive-lock.d.ts.map, dist/derive-lock.js, dist/index.js, dist/prefix-files-api.d.ts, 14 more
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

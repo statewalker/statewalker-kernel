@@ -1,5 +1,20 @@
 # @statewalker/platform.browser
 
+## 0.9.0
+
+### Minor Changes
+
+- fc95a2e: Add `createBrowserHostServices()`: the browser's clipboard, file picker and URL state (the hash) as one object, over the existing `platform:copy-to-clipboard` and `platform:pick-file` handlers, for system.host's `host-services` defaults.
+  
+  Fix `buildHash` and `parseHash` (and so `bindUrlState`) for paths with characters the hash escapes: the path's segments are now percent-encoded and decoded, so a space, a non-ASCII character, `?`, `#` or `%` round-trips instead of reading back escaped or spilling into the query. Plain paths are written as before.
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @statewalker/platform.core@0.9.0
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

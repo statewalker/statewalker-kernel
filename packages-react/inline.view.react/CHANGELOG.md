@@ -1,5 +1,27 @@
 # @statewalker/inline.view.react
 
+## 0.5.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/inline.core ^0.4.0 -> ^0.4.2
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - @statewalker/workspace.view.react removed
+  - files changed: README.md, dist/fragment.js, dist/internal/components/action-button.js, dist/internal/components/directory-card.js, dist/internal/components/file-card.js, 11 more
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+  - @statewalker/inline.core@0.4.3
+  - @statewalker/mime.core@0.9.0
+  - @statewalker/ui.view.react@0.5.0
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.4.0
 
 ### Minor Changes

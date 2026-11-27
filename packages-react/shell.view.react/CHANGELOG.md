@@ -1,5 +1,29 @@
 # @statewalker/shell.view.react
 
+## 0.5.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/ui.view.react crosses a breaking line
+  - @statewalker/render.core crosses a breaking line
+  - @statewalker/shell.core crosses a breaking line
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies [4b18761]
+  - @statewalker/render.core@0.9.0
+  - @statewalker/shell.core@0.9.0
+  - @statewalker/ui.view.react@0.5.0
+  - @statewalker/workspace.core@0.9.0
+  - @statewalker/ui.view.shadcn@0.1.5
+
 ## 0.4.0
 
 ### Minor Changes

@@ -1,5 +1,19 @@
 # @statewalker/workspace.browser
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/fragment.js, dist/internal/files-api-factory.js, dist/internal/handle-store.js, dist/internal/workspace-bridge.manager.js, dist/internal/workspace-shell-adapter.d.ts, 8 more
+
+### Patch Changes
+
+- Updated dependencies
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes
