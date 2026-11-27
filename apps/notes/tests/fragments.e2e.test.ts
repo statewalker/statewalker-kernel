@@ -266,6 +266,39 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
       60_000,
     );
 
+    // statewalker/statewalker-kernel#76: a POST a page of another origin can send without a
+    // preflight (a text, a form, no type) never reaches a DO, whatever the browser sends besides.
+    it.skipIf(mode === "browser")(
+      "refuses a POST another site could send without a preflight",
+      async () => {
+        const url = new URL(`fragments/${NOTES}/notes`, app.url);
+        const post = (headers: Record<string, string>, body: string) =>
+          fetch(url, { method: "POST", headers, body }).then((r) => r.status);
+        const note = JSON.stringify({ text: "from elsewhere" });
+        await expect(post({ "content-type": "text/plain" }, note)).resolves.toBe(415);
+        await expect(post({ "content-type": "text/plain;charset=UTF-8" }, note)).resolves.toBe(415);
+        await expect(
+          post({ "content-type": "application/x-www-form-urlencoded" }, "text=x"),
+        ).resolves.toBe(415);
+        await expect(
+          post({ "content-type": "multipart/form-data; boundary=b" }, "--b--"),
+        ).resolves.toBe(415);
+        // No type at all: what a no-cors Blob without one sends.
+        const untyped = await new Promise<number>((done, fail) => {
+          const req = httpRequest(url, { method: "POST" }, (res) => {
+            res.resume();
+            done(res.statusCode ?? 0);
+          });
+          req.on("error", fail);
+          req.end(note);
+        });
+        expect(untyped).toBe(415);
+        // The app's own requests (JSON) go on.
+        await expect(post({ "content-type": "application/json" }, note)).resolves.toBe(201);
+      },
+      60_000,
+    );
+
     // H1: a fragment whose server half cannot load does not stop the pool following the others,
     // and an upgrade loads the upgraded archive's server half.
     it.skipIf(mode !== "browser")(

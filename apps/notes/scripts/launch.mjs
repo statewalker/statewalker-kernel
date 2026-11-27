@@ -74,6 +74,32 @@ function fromElsewhere(request) {
   return !LOCAL_NAMES.has((name ?? "").toLowerCase());
 }
 
+/**
+ * The body types a page of another origin can POST without a preflight (CORS-safelisted), and no
+ * type at all (a no-cors Blob without one): a server half never takes them, so a site elsewhere
+ * cannot write to a DO even in a browser that sends no `Sec-Fetch-Site`
+ * (statewalker/statewalker-kernel#76). JSON, and any other type, needs a preflight, never answered.
+ */
+const SIMPLE_TYPES = new Set([
+  "",
+  "text/plain",
+  "application/x-www-form-urlencoded",
+  "multipart/form-data",
+]);
+
+/** A POST another site could have sent without a preflight. */
+function simplePost(request) {
+  if (request.method !== "POST") return false;
+  const type = (request.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  return SIMPLE_TYPES.has(type);
+}
+
+const refusedSimple = () =>
+  new Response("a server half takes a POST as JSON (or another type a preflight guards)", {
+    status: 415,
+    headers: { "content-type": "text/plain" },
+  });
+
 const refusedElsewhere = () =>
   new Response("the fragments' server halves answer only this app's pages", {
     status: 403,
@@ -198,7 +224,8 @@ export async function launch(mode, options = {}) {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
       handle: async (request) => {
         if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
-        return fromElsewhere(request) ? refusedElsewhere() : host.fetch(request);
+        if (fromElsewhere(request)) return refusedElsewhere();
+        return simplePost(request) ? refusedSimple() : host.fetch(request);
       },
     });
     return {
@@ -227,6 +254,7 @@ export async function launch(mode, options = {}) {
           const target = fragmentOf(url.pathname, peerId);
           if (!target) return undefined;
           if (fromElsewhere(request)) return refusedElsewhere();
+          if (simplePost(request)) return refusedSimple();
           const worker = workers.get(target.id);
           if (!worker)
             return new Response(`no fragment "${target.id}" on this host`, {

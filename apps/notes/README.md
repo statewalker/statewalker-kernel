@@ -32,6 +32,8 @@ From the repository root, after `pnpm install`:
    - `start:node`: CellB on Node, one fragment host (`createFragmentHost`) holding every server half, its data under `--data <dir>` (memory by default).
    - `start:wrangler`: `wrangler dev`, one per server half, its Worker routing `/fragments/{id}/…` to its fragment DO; the app's server forwards to it.
 
+   Under `node` and `wrangler`, the app's server answers `/fragments/…` only to this app's pages. It refuses a request a browser marks as cross-site (`Sec-Fetch-Site`) and one whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`, which blocks DNS rebinding (403). It also refuses a POST whose body type another site could send without a preflight: `text/plain`, a form type, or no type at all (415, statewalker/statewalker-kernel#76).
+
    Each takes `--peer-id <id>`: `/peers/<id>/fragments/{id}/…` then answers as `/fragments/{id}/…`. The page reads which one runs from `launch.json` (`window.launch`); the built `dist/launch.json` says `none`, so a plain file server runs no server halves.
 3. `pnpm --filter @statewalker/notes.app test`: the browser tests, against `dist/` (build first). They need Chromium for the pinned `playwright`: `pnpm --filter @statewalker/notes.app exec playwright install chromium` once, if it is not there.
 
