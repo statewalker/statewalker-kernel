@@ -63,6 +63,8 @@ export interface Placement {
   rollback(id: string): Promise<void>;
   /** A route change without moving data: refused once the fragment has data at its home. */
   setRoute(id: string, host: FragmentRoute["host"]): Promise<void>;
+  /** Calls `listener` after each change of the route table; returns the unsubscribe. */
+  observe(listener: () => void): () => void;
 }
 
 /** Why a placement step was refused, and by which host. */
@@ -89,6 +91,7 @@ export function createPlacement(options: {
 }): Placement {
   const send = options.fetch ?? ((r: Request) => fetch(r));
   let table: Record<string, FragmentRoute> = { ...(options.routes ?? {}) };
+  const listeners = new Set<() => void>();
   const fragments = new URL("fragments/", options.base).href;
 
   const homeOf = (host: FragmentRoute["host"]): string => {
@@ -129,6 +132,7 @@ export function createPlacement(options: {
     else next[id] = { host };
     await options.profile.set(ROUTES_KEY, next);
     table = next;
+    for (const listener of [...listeners]) listener();
   }
 
   const pending = async (id: string) =>
@@ -136,6 +140,10 @@ export function createPlacement(options: {
 
   return {
     routes: () => table,
+    observe(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     routeOf: (id) => table[id]?.host ?? "local",
     async route(request) {
       if (!request.url.startsWith(fragments)) return request;

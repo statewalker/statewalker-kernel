@@ -84,6 +84,11 @@ function within<T>(ms: number, promise: Promise<T>, message: string): Promise<T>
 const platform = await boot({
   base,
   locale: navigator.language,
+  // A fragment placed on another host: its tasks are queued and served there (#410).
+  taskHome: (id) => {
+    const host = placement.routeOf(id);
+    return host.startsWith("url:") ? host.slice(4) : undefined;
+  },
   ...(launch.fragments === "none"
     ? {}
     : {
@@ -136,6 +141,8 @@ const platform = await boot({
       }),
 });
 window.platform = platform;
+// A Move or a route change: system.tasks' runners follow the fragment to its new home.
+placement.observe(() => platform.tasks?.rehome());
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);
 // Surfaces popped out (by the user, or by system.workbench/open-surface) show in the dock.

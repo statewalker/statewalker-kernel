@@ -3,8 +3,9 @@
 import { activeFragmentsSlot, FragmentLifecycleError } from "@statewalker/kernel.core";
 import { type CommandContext, harnessTools } from "@statewalker/system.commands";
 import { describe, expect, it } from "vitest";
+import type { QueueStore } from "../src/index.js";
 import { SYSTEM_TASKS_ID, subscriptionName, taskSubject } from "../src/index.js";
-import { fragment, platform, taskCommand, until } from "./helpers.js";
+import { fragment, otherHost, platform, taskCommand, until } from "./helpers.js";
 
 const NOTES = "org.example.notes";
 const EXPORT = `${NOTES}/export`;
@@ -435,5 +436,99 @@ describe("an attempt stopped without a cancel (statewalker/statewalker-root#409)
     });
     expect(jobs[0]?.reply).toMatchObject({ retry: true });
     expect(jobs[0]?.reply?.cancelled).toBeUndefined();
+  });
+});
+
+// statewalker-root#410: a publish under `fragments.<id>.` goes to the queue on that fragment's
+// home; the runners of its commands serve them there; replies come back to the publisher.
+describe("publishes forwarded to a fragment's home", () => {
+  const handlers = {
+    [NOTES]: { export: (input: { n: number }) => ({ doubled: input.n * 2 }) },
+  };
+
+  it("runs the task in the home's queue, and the reply reaches the publisher", async () => {
+    const home = otherHost();
+    const { bus, tasks } = await platform([fragment(NOTES, [taskCommand("export")])], handlers, {
+      storeOf: (f) => (f === NOTES ? home.store : undefined),
+    });
+    // A wildcard subscription on this host: it never sees tasks published to the home.
+    await tasks.store.subscribe(
+      "local",
+      { name: "all", filter: { subject: "fragments.>" } },
+      "user",
+    );
+    const reply = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      payload: { n: 4 },
+    });
+    expect(reply).toMatchObject({ result: { doubled: 8 } });
+    // Served there: the subscription and the job are the home's, not this host's.
+    const there = await home.store.listSubscriptions("local");
+    expect(there.some((s) => s.name === subscriptionName(EXPORT))).toBe(true);
+    expect((await tasks.store.listSubscriptions("local")).map((s) => s.name)).toEqual(["all"]);
+    expect(await home.store.jobsOf("local", reply.task)).toHaveLength(1);
+    // Its job reads and cancel follow the task to its home.
+    await expect(bus.call("system.tasks/jobs", { task: reply.task })).resolves.toMatchObject({
+      jobs: [{ job: reply.job }],
+    });
+    expect(
+      await tasks.store.take("local", "all", { id: "user", destinations: [] }, { limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it("fails with the home's error when it is unreachable, queueing nothing here", async () => {
+    const unreachable = new Proxy({} as QueueStore, {
+      get: () => async () => {
+        throw Object.assign(new Error("the home of org.example.notes is unreachable"), {
+          code: "EHOSTUNREACH",
+        });
+      },
+    });
+    const { bus, tasks } = await platform([fragment(NOTES, [taskCommand("export")])], handlers, {
+      storeOf: (f) => (f === NOTES ? unreachable : undefined),
+    });
+    await tasks.store.subscribe(
+      "local",
+      { name: "all", filter: { subject: "fragments.>" } },
+      "user",
+    );
+    for (const wait of [true, false])
+      await expect(
+        bus.call("system.tasks/publish", { subject: taskSubject(EXPORT), wait }),
+      ).rejects.toMatchObject({ cause: { code: "EHOSTUNREACH" } });
+    expect(
+      await tasks.store.take("local", "all", { id: "user", destinations: [] }, { limit: 10 }),
+    ).toEqual([]);
+  });
+
+  it("follows a route's change: after rehome(), new publishes run at the new home", async () => {
+    const home = otherHost();
+    let moved = false;
+    const { bus, tasks } = await platform([fragment(NOTES, [taskCommand("export")])], handlers, {
+      storeOf: (f) => (f === NOTES && moved ? home.store : undefined),
+    });
+    const before = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      payload: { n: 1 },
+    });
+    expect(await tasks.store.jobsOf("local", before.task)).toHaveLength(1);
+    moved = true;
+    tasks.rehome();
+    const after = await bus.call<PublishReply>("system.tasks/publish", {
+      subject: taskSubject(EXPORT),
+      payload: { n: 2 },
+    });
+    expect(after).toMatchObject({ result: { doubled: 4 } });
+    expect(await home.store.jobsOf("local", after.task)).toHaveLength(1);
+    expect(await tasks.store.jobsOf("local", after.task)).toHaveLength(0);
+  });
+
+  it("keeps wildcard and other subjects on this host", async () => {
+    const { subjectFragment } = await import("../src/index.js");
+    expect(subjectFragment("fragments.org.example.notes.export")).toBe("org.example.notes");
+    expect(subjectFragment("fragments.>")).toBeUndefined();
+    expect(subjectFragment("fragments.org.example.*")).toBeUndefined();
+    expect(subjectFragment("fragments.org.*.notes.export")).toBeUndefined();
+    expect(subjectFragment("jobs.x")).toBeUndefined();
   });
 });

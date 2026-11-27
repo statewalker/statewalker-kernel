@@ -399,7 +399,16 @@ export async function launch(mode, options = {}) {
           );
         }
         if (!fragmentOf(pathname, peerId)) return undefined;
-        return withCors(simplePost(request) ? refusedSimple() : await host.fetch(request), origin);
+        if (simplePost(request)) return withCors(refusedSimple(), origin);
+        // A page of an origin this host lets in is one of the app's own here: the fragments'
+        // DOs, which take only same-origin pages (system.tasks' queue), see it as one.
+        let forwarded = request;
+        if (origin) {
+          const headers = new Headers(request.headers);
+          headers.set("sec-fetch-site", "same-origin");
+          forwarded = new Request(request, { headers, duplex: "half" });
+        }
+        return withCors(await host.fetch(forwarded), origin);
       },
     });
     return {

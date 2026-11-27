@@ -131,6 +131,8 @@ From the repository root, after `pnpm install`:
 - a rollback runs the source again on that data, and a confirmed Move deletes it;
 - a Move to a host offering another version is refused, as is a route change on a fragment with data and a page of an origin the second host does not let in.
 
+`tests/move-tasks.e2e.test.ts` (seam 2, two node hosts) covers #410: with notes-export moved to a second host, a task published from the first is served in the second host's queue and its reply comes back; the first host's wildcard subscription never sees it; once the home is down, the publish fails (`unreachable`) with nothing queued on the first host.
+
 `tests/tasks.e2e.test.ts` (seam 2, on browser, node and wrangler) covers #409:
 - the task, started from the Exports view, is followed over a reload with no log entry read twice, and its reply shows;
 - its export is made once;

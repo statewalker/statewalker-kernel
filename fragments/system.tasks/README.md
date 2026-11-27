@@ -81,8 +81,9 @@ A fragment exposes a command to the queue in its `fragment.client.jsonc`. The op
 
 | Export | What it is |
 | --- | --- |
-| `createSystemTasks(options)` | The fragment's code: `queue` (when it is in this process), `store`, `module` (its commands' handlers) and `activate(context)`. |
-| `SystemTasksOptions` | `commands` (the bus), `callAs` (system.commands', held by the host), `slots` (the kernel's), `store` or `sql` (where the queue is), `gate`, and optionally `queue` (clock, ids, limits), `leaseMs`, `maxAttempts`, `waitMs`, `onError`. |
+| `createSystemTasks(options)` | The fragment's code: `queue` (when it is in this process), `store`, `module` (its commands' handlers), `activate(context)` and `rehome()` (a route changed: runners move to their fragments' new homes). |
+| `SystemTasksOptions` | `commands` (the bus), `callAs` (system.commands', held by the host), `slots` (the kernel's), `store` or `sql` (where the queue is), `gate`, and optionally `storeOf(fragment)` (the queue on a fragment's home on another host, statewalker-root#410), `queue` (clock, ids, limits), `leaseMs`, `maxAttempts`, `waitMs`, `onError`. |
+| `subjectFragment(subject)` | The fragment a subject `fragments.<id>.<command>` names; undefined for a wildcard or any other subject. |
 | `taskSubject(id)`, `subscriptionName(id)` | `fragments.<fragment-id>.<command-id>` and `<fragment-id>.<command-id>` for a command `<fragment-id>/<command-id>` (a subscription's name takes no `/`). |
 | `TASKS_PROJECT`, `TASKS_PRINCIPAL` | The queue's one project (`local`) and the principal system.tasks holds leases as (`system:tasks`). |
 | `SYSTEM_TASKS_ID`, `systemTasksArchive` | The fragment's id and its archive for `createKernel({ core })`, with its server half's `wrangler.jsonc`. |
@@ -105,6 +106,12 @@ A fragment exposes a command to the queue in its `fragment.client.jsonc`. The op
 - **One subscription per `task`-exposed command**, `<fragment-id>.<command-id>` on `fragments.<fragment-id>.<command-id>`, created when the command reaches the bus. A runner serves it while the command is on the bus.
 - **A disabled fragment's commands leave the bus,** and their runners stop. The subscriptions stay, so tasks wait for the fragment's return and are served then. Removing the fragment removes its subscriptions, and its waiting tasks' publishers get an error reply.
 - **Retries and dead letters** are the queue's. A handler that throws is retried up to the subscription's attempts (3 by default); the last failure replies with the error and goes to the dead letters.
+- **A fragment's home** (statewalker-root#410). With `storeOf`, a publish under `fragments.<id>.` goes to the queue on `<id>`'s home (another host, as the route table places it), never queued here instead.
+  - The runners of `<id>`'s task-exposed commands lease from that queue, so the task is served there. Its reply's inbox is opened there too, and the publisher takes the reply from it.
+  - Cancel and job reads follow the task to its home.
+  - Wildcard subjects name no one fragment and stay on this host, so a wildcard subscription here never sees what is published to a home elsewhere.
+  - An unreachable home fails the publish with the store's error (`EHOSTUNREACH` from apps/notes' store).
+  - `rehome()` after a Move: runners serve the new home. Tasks left in the old home's queue wait there.
 - **Rights.**
   - Each task carries its publisher: `user` for the user and system code, `capability:<c>` for a caller that went through system.commands' gate.
   - A task a gated caller published runs only if the gate lets that caller run the target command when the task runs, as a direct call would be decided. It then runs as that caller (`callAs`), so its handler sees the capability, not the user. A refusal is final: the publisher gets the error, and the task is not tried again. Without a gate it is refused.

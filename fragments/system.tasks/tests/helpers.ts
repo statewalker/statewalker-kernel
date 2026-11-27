@@ -12,6 +12,7 @@ import {
   createSystemTasks,
   localQueueStore,
   type QueueOperation,
+  type QueueStore,
   queueErrorFromData,
   queueErrorToData,
   remoteQueueStore,
@@ -110,7 +111,13 @@ export type Handlers = Record<string, Record<string, (...args: never[]) => unkno
 export async function platform(
   archives: Record<string, string>[],
   handlers: Handlers = {},
-  options: { gate?: CallGate; leaseMs?: number; maxAttempts?: number } = {},
+  options: {
+    gate?: CallGate;
+    leaseMs?: number;
+    maxAttempts?: number;
+    /** Fragments' homes on other hosts (statewalker-root#410). */
+    storeOf?: (fragment: string) => QueueStore | undefined;
+  } = {},
 ) {
   const { sql, db } = sqlite();
   const commands = createSystemCommands(options.gate ? { gate: options.gate } : {});
@@ -142,6 +149,7 @@ export async function platform(
     ...(options.gate ? { gate: options.gate } : {}),
     ...(options.leaseMs ? { leaseMs: options.leaseMs } : {}),
     ...(options.maxAttempts ? { maxAttempts: options.maxAttempts } : {}),
+    ...(options.storeOf ? { storeOf: options.storeOf } : {}),
   });
   await kernel.start();
   const installed = await kernel.install(archives);
@@ -150,6 +158,13 @@ export async function platform(
   // The queue is in this process here (`sql`): the tests read it directly.
   const queue = tasks.queue ?? local;
   return { kernel, bus: commands.bus, tasks: { ...tasks, queue }, db };
+}
+
+/** Another host's queue (statewalker-root#410): its own database, reached as the DO's is. */
+export function otherHost(): { store: QueueStore; queue: TaskQueue } {
+  const { sql } = sqlite();
+  const queue = new TaskQueue(sql);
+  return { store: REMOTE ? overJson(queue, sql) : localQueueStore(queue, sql), queue };
 }
 
 /** Waits until `check` holds, polling every 5 ms, up to 2 s. */
