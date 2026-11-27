@@ -293,7 +293,13 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   /** Serve exactly the live task-exposed commands; a runner stops, its subscription stays. */
   function sync(entries: readonly CommandEntry[]): void {
     lastEntries = entries;
-    const live = new Map(entries.filter((e) => e.exposures.task).map((e) => [e.id, e]));
+    // A command that runs a script on the host (`x-host-job`, statewalker-root#411) is served by
+    // the host's processor (host-jobs.node), not by this runner.
+    const live = new Map(
+      entries
+        .filter((e) => e.exposures.task && !(e.operation as Record<string, unknown>)["x-host-job"])
+        .map((e) => [e.id, e]),
+    );
     for (const [id, runner] of runners) {
       // Gone, or its fragment's home changed: stopped (and started again at the new home).
       if (live.has(id) && runner.home === homeOf(fragmentOf(subscriptionName(id)))) continue;

@@ -84,6 +84,8 @@ function within<T>(ms: number, promise: Promise<T>, message: string): Promise<T>
 const platform = await boot({
   base,
   locale: navigator.language,
+  // What the host offers fragments (a Node host: host-jobs, #411).
+  ...(launch.bindings ? { bindings: launch.bindings } : {}),
   // A fragment placed on another host: its tasks are queued and served there (#410).
   taskHome: (id) => {
     const host = placement.routeOf(id);

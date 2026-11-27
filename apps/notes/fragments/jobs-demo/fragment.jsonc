@@ -1,0 +1,19 @@
+// The jobs-demo fragment (statewalker/statewalker-root#411): scripts shipped in its archive, run
+// as jobs on a CellB Node host through the `host-jobs` binding. Each command names its script
+// (`x-host-job`) and is served from the host's task queue (the `task` exposure): one OS process per
+// task, each output line in the job log. Hosts without the binding (the browser, Cloudflare)
+// refuse its install, naming the binding.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment.v1.schema.json",
+  "id": "org.statewalker.jobs-demo",
+  "version": "0.1.0",
+  "name": "Jobs demo",
+  "description": "Scripts of this fragment, run as jobs on a Node host.",
+  "engines": {
+    "platform": "^0.1.0"
+  },
+  "bindings": ["host-jobs"],
+  "aspects": {
+    "client": {}
+  }
+}

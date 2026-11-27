@@ -202,6 +202,11 @@ export interface BootOptions {
    * there. Undefined: this host. Asked at each publish; `platform.tasks.rehome()` after a change.
    */
   readonly taskHome?: (fragment: string) => string | undefined;
+  /**
+   * The bindings the host offers its fragments (launch.json's `bindings`: a Node host's
+   * `host-jobs`, statewalker-root#411). A fragment requiring another is refused, naming it.
+   */
+  readonly bindings?: readonly string[];
 }
 
 /** `load` run once, its promise shared. */
@@ -422,6 +427,7 @@ export async function boot({
   serverHalf,
   started,
   taskHome,
+  bindings,
 }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
   const system = createSystemProfile({
@@ -483,7 +489,7 @@ export async function boot({
   /** The points app fragments open, for their client code (the client API's `points`). */
   const appPoints = createAppPoints();
   const kernel = createKernel({
-    platform: { version: platform.version, bindings: [] },
+    platform: { version: platform.version, bindings: [...(bindings ?? [])] },
     core: [
       systemProfileArchive,
       systemCommandsArchive,
@@ -583,7 +589,7 @@ export async function boot({
     });
   const fragments = createFragmentManager({
     kernel,
-    platform: { version: platform.version, bindings: [] },
+    platform: { version: platform.version, bindings: [...(bindings ?? [])] },
     catalog: archiveCatalog(base),
   });
   installA2ui(a2ui.a2ui);

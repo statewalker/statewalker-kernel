@@ -14,8 +14,9 @@
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
 import { coreServerFragments } from "./core-fragments.mjs";
@@ -53,6 +54,54 @@ export function serverFragments() {
 /** A fragment's version, as its manifest (`fragment.jsonc`) says. */
 function versionOf(dir) {
   return String(parseJsonc(readFileSync(join(dir, "fragment.jsonc"), "utf8")).value.version);
+}
+
+/**
+ * The commands that run scripts on this host (`x-host-job`, statewalker-root#411): those of each
+ * built archive whose fragment requires the `host-jobs` binding, the script inside that archive.
+ */
+function hostJobCommands() {
+  const archives = join(DIST, "archives");
+  const found = [];
+  if (!existsSync(archives)) return found;
+  for (const folder of readdirSync(archives, { withFileTypes: true })) {
+    if (!folder.isDirectory()) continue;
+    const root = join(archives, folder.name);
+    const read = (file) =>
+      existsSync(join(root, file))
+        ? parseJsonc(readFileSync(join(root, file), "utf8")).value
+        : undefined;
+    const manifest = read("fragment.jsonc");
+    if (!manifest?.bindings?.includes("host-jobs")) continue;
+    for (const extension of read("fragment.client.jsonc")?.extensions ?? []) {
+      const operation = extension.point === "commands" ? extension.data?.operation : undefined;
+      const script = operation?.["x-host-job"]?.script;
+      if (typeof script === "string" && extension.data?.exposures?.task)
+        found.push({ command: `${manifest.id}/${operation.operationId}`, root, script });
+    }
+  }
+  return found;
+}
+
+/** The host's system.tasks queue, as its fragment DO serves it (`POST /fragments/system.tasks/queue`). */
+async function hostQueueStore(host) {
+  const { queueErrorFromData, remoteQueueStore } = await import("@statewalker/system.tasks");
+  return remoteQueueStore(async (operation) => {
+    const response = await host.fetch(
+      new Request("http://127.0.0.1/fragments/system.tasks/queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(operation),
+      }),
+    );
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw queueErrorFromData({
+        error: body.error ?? `system.tasks answered ${response.status}`,
+        ...(body.code ? { code: body.code } : {}),
+      });
+    return body.value;
+  });
 }
 
 /** The app's fragments that have a server half: their id and source folder. */
@@ -388,8 +437,25 @@ export async function launch(mode, options = {}) {
       if (added.unsupported.length)
         console.warn(`${id}: unsupported: ${added.unsupported.join("; ")}`);
     }
+    // host-jobs (statewalker-root#411): this host runs the scripts fragments ship, as jobs of its
+    // task queue, and offers the binding (launch.json) so the kernel installs such fragments.
+    let jobs;
+    if (host.state("system.tasks") === "enabled") {
+      const { createHostJobs } = await import("@statewalker/host-jobs.node");
+      jobs = createHostJobs({
+        store: await hostQueueStore(host),
+        commands: hostJobCommands,
+        stateDir: data ? join(data, "host-jobs") : mkdtempSync(join(tmpdir(), "host-jobs-")),
+        onError: (error) => console.warn("[host-jobs]", error?.message ?? error),
+      });
+      await jobs.start();
+    }
     const server = await serveStatic(DIST, port, {
-      launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
+      launch: {
+        fragments: "server",
+        ...(peerId ? { peerId } : {}),
+        ...(jobs ? { bindings: ["host-jobs"] } : {}),
+      },
       handle: async (request) => {
         const { pathname } = new URL(request.url);
         const ours = fragmentOf(pathname, peerId) !== undefined || pathname.startsWith("/_launch/");
@@ -430,6 +496,7 @@ export async function launch(mode, options = {}) {
       host,
       async close() {
         await server.close();
+        await jobs?.stop();
         await host.close();
       },
     };

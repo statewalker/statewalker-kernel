@@ -1,0 +1,123 @@
+// The client aspect of jobs-demo: only commands, each running a script of the fragment's archive on
+// the Node host (`x-host-job`), served from the host's task queue. No client code: the host's
+// processor (packages/host-jobs.node) serves them, not this page.
+{
+  "$schema": "../../node_modules/@statewalker/kernel.core/schemas/fragment-aspect.v1.schema.json",
+  "extensions": [
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "count",
+          "summary": "Count to n, one line each",
+          "x-idempotent": true,
+          "x-host-job": {
+            "script": "scripts/count.sh"
+          },
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "n": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 100
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "The script's exit",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "exitCode": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "task": {}
+        }
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "wait",
+          "summary": "Run until cancelled",
+          "x-idempotent": true,
+          "x-host-job": {
+            "script": "scripts/wait.sh"
+          },
+          "responses": {
+            "200": {
+              "description": "The script's exit",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "exitCode": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "task": {}
+        }
+      }
+    },
+    {
+      "point": "commands",
+      "data": {
+        "operation": {
+          "operationId": "escape",
+          "summary": "A script outside the archive (refused)",
+          "x-idempotent": true,
+          "x-host-job": {
+            "script": "../org.statewalker.notes/fragment.jsonc"
+          },
+          "responses": {
+            "200": {
+              "description": "The script's exit",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "exitCode": {
+                        "type": "integer"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "exposures": {
+          "task": {}
+        }
+      }
+    }
+  ]
+}
