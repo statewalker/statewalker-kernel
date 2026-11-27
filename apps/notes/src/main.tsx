@@ -103,7 +103,20 @@ const platform = await boot({
                 await window.fragmentServers?.removeData(id);
               },
             }
-          : {}),
+          : {
+              // The server the page came from deletes the server half's data
+              // (scripts/launch.mjs); one that cannot refuses, and the kernel keeps its record.
+              removeServerData: async (id: string) => {
+                const response = await fetch(
+                  new URL(`_launch/fragments/${encodeURIComponent(id)}/data/remove`, base),
+                  { method: "POST", headers: { "content-type": "application/json" }, body: "{}" },
+                );
+                if (!response.ok)
+                  throw new Error(
+                    `${id}: this host did not remove its data (${response.status} ${await response.text()})`,
+                  );
+              },
+            }),
       }),
 });
 window.platform = platform;

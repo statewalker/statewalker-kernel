@@ -19,6 +19,15 @@ import {
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// jsdom lays nothing out and has no Range rects; CodeMirror measures text ranges in an animation
+// frame, which then threw an uncaught TypeError (after a test, when that frame ran late: a
+// failure of the whole file in CI). Empty rects, as a page without layout gives them.
+if (typeof Range !== "undefined" && !Range.prototype.getClientRects) {
+  const empty = { length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] };
+  Range.prototype.getClientRects = () => empty as unknown as DOMRectList;
+  Range.prototype.getBoundingClientRect = () => new DOMRect(0, 0, 0, 0);
+}
+
 const places = [
   { id: "ber", lat: 52.52, lng: 13.405, label: "Berlin" },
   { id: "par", lat: 48.857, lng: 2.352, label: "Paris" },
@@ -120,6 +129,11 @@ describe("CodeEditor (CodeMirror 6)", () => {
     const { undo } = await import("@codemirror/commands");
     await act(async () => void undo(view));
     expect(view.state.doc.toString()).toBe("# Hello\n\nbody, appended by the agent");
+    // The editor's measure runs in the next animation frame (CodeMirror reads text ranges'
+    // rects): let it run inside the test, as it otherwise did after it, at times.
+    await act(async () => {
+      await new Promise((r) => requestAnimationFrame(() => r(undefined)));
+    });
     t.root.unmount();
   });
 

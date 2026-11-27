@@ -13,7 +13,8 @@
 //
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
@@ -106,6 +107,61 @@ const refusedElsewhere = () =>
     headers: { "content-type": "text/plain" },
   });
 
+/**
+ * `POST /_launch/fragments/<id>/data/remove`: "remove with data" of a fragment's server half on
+ * this host (statewalker/statewalker-kernel#73), the shell's `removeServerData` in the `server`
+ * launch configuration. Its DO storage is deleted and the server half starts again empty, ready
+ * for a reinstall. Answers the fragment's id, or the refusal.
+ */
+const REMOVE_DATA = /^\/_launch\/fragments\/([^/]+)\/data\/remove$/;
+
+/** The fragment a "remove with data" request names, or undefined for any other request. */
+function removeDataOf(request) {
+  const match = REMOVE_DATA.exec(new URL(request.url).pathname);
+  if (!match) return undefined;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return undefined;
+  }
+}
+
+/** `run(id)`, one call at a time per id: a call waits for the one before it, whatever its end. */
+function oneAtATime(run) {
+  const last = new Map();
+  return (id) => {
+    const next = (last.get(id) ?? Promise.resolve()).then(() => run(id));
+    const settled = next.catch(() => {});
+    last.set(id, settled);
+    void settled.then(() => {
+      if (last.get(id) === settled) last.delete(id);
+    });
+    return next;
+  };
+}
+
+/** Runs a "remove with data" request with `remove(id)`, as the app's own pages may ask it. */
+async function answerRemoveData(request, id, known, remove) {
+  if (fromElsewhere(request)) return refusedElsewhere();
+  if (request.method !== "POST")
+    return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
+  if (simplePost(request)) return refusedSimple();
+  if (!known(id))
+    return new Response(`no fragment "${id}" on this host`, {
+      status: 404,
+      headers: { "content-type": "text/plain" },
+    });
+  try {
+    await remove(id);
+    return Response.json({ removed: id });
+  } catch (error) {
+    return new Response(`${id}: its data was not removed: ${error?.message ?? error}`, {
+      status: 500,
+      headers: { "content-type": "text/plain" },
+    });
+  }
+}
+
 /** `/fragments/<id>/…`, or `/peers/<peerId>/fragments/<id>/…` naming this host: the fragment's. */
 function fragmentOf(pathname, peerId) {
   let path = pathname;
@@ -131,7 +187,7 @@ async function freePort() {
 }
 
 /** `wrangler dev` for one server half; resolves once it answers. */
-async function wranglerDev({ id, dir }, { persistTo }) {
+async function wranglerDev({ id, dir }, { persistTo, secret }) {
   const port = await freePort();
   const inspector = await freePort();
   const bin = join(ROOT, "node_modules", ".bin", "wrangler");
@@ -145,6 +201,9 @@ async function wranglerDev({ id, dir }, { persistTo }) {
     "127.0.0.1",
   ];
   if (persistTo) args.push("--persist-to", join(persistTo, id));
+  // Its Worker takes only requests carrying this launch's secret (statewalker-kernel#78): its own
+  // port, which a page could find, bypasses this server's checks otherwise.
+  if (secret) args.push("--var", `LAUNCH_SECRET:${secret}`);
   // Its own process group (wrangler starts workerd as its children): stopped as a whole, and
   // whenever this process exits, however it exits.
   const child = spawn(bin, args, {
@@ -215,6 +274,13 @@ export async function launch(mode, options = {}) {
   if (mode === "node") {
     const { createFragmentHost } = await import("@statewalker/cellb/node");
     const host = createFragmentHost({ ...(data ? { data } : {}), ...(peerId ? { peerId } : {}) });
+    const dirs = new Map(serverFragments().map(({ id, dir }) => [id, dir]));
+    // Removed with its data, a server half comes back empty: the host serves every app fragment.
+    // One at a time per fragment (a second add of the same id would be refused).
+    const removeData = oneAtATime(async (id) => {
+      await host.remove(id, { withData: true });
+      await host.add(id, dirs.get(id));
+    });
     for (const { id, dir } of serverFragments()) {
       const added = await host.add(id, dir);
       if (added.unsupported.length)
@@ -223,6 +289,9 @@ export async function launch(mode, options = {}) {
     const server = await serveStatic(DIST, port, {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
       handle: async (request) => {
+        const removing = removeDataOf(request);
+        if (removing !== undefined)
+          return answerRemoveData(request, removing, (id) => dirs.has(id), removeData);
         if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
         if (fromElsewhere(request)) return refusedElsewhere();
         return simplePost(request) ? refusedSimple() : host.fetch(request);
@@ -240,16 +309,34 @@ export async function launch(mode, options = {}) {
   }
   if (mode === "wrangler") {
     const workers = new Map();
+    // Each server half's state where this launch can delete it ("remove with data"): under
+    // `data`, else a folder of the app's own kept across runs (gitignored, as wrangler's default
+    // in each fragment's source folder was; that one is no longer read).
+    const state = data ?? join(ROOT, ".wrangler", "launch-state");
+    /** What every forwarded request carries, and the Workers take nothing without. */
+    const secret = randomUUID();
+    const fragments = new Map(serverFragments().map((f) => [f.id, f]));
+    // One at a time per fragment: two at once would each start a wrangler dev on the same
+    // state, the first left running unreachable.
+    const removeData = oneAtATime(async (id) => {
+      await workers.get(id)?.close();
+      workers.delete(id);
+      rmSync(join(state, id), { recursive: true, force: true });
+      workers.set(id, await wranglerDev(fragments.get(id), { persistTo: state, secret }));
+    });
     const stopWorkers = async () => {
       for (const w of workers.values()) await w.close();
     };
     let server;
     try {
-      for (const fragment of serverFragments())
-        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: data }));
+      for (const fragment of fragments.values())
+        workers.set(fragment.id, await wranglerDev(fragment, { persistTo: state, secret }));
       server = await serveStatic(DIST, port, {
         launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
         handle: async (request) => {
+          const removing = removeDataOf(request);
+          if (removing !== undefined)
+            return answerRemoveData(request, removing, (id) => fragments.has(id), removeData);
           const url = new URL(request.url);
           const target = fragmentOf(url.pathname, peerId);
           if (!target) return undefined;
@@ -264,6 +351,7 @@ export async function launch(mode, options = {}) {
           // Hop-by-hop headers are this connection's, not the next one's (fetch refuses some).
           const forwarded = new Headers(request.headers);
           for (const name of HOP_BY_HOP) forwarded.delete(name);
+          forwarded.set("x-launch-secret", secret);
           const answer = await fetch(`${worker.base}${target.path}${url.search}`, {
             method: request.method,
             headers: forwarded,
@@ -289,6 +377,8 @@ export async function launch(mode, options = {}) {
     return {
       mode,
       url: server.url,
+      /** Each server half's own `wrangler dev` address (for tests: it answers this server only). */
+      workerBases: () => new Map([...workers].map(([id, w]) => [id, w.base])),
       async close() {
         await server.close();
         await stopWorkers();

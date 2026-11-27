@@ -299,6 +299,35 @@ for (const mode of ["browser", "node", "wrangler"] as const) {
       60_000,
     );
 
+    // statewalker/statewalker-kernel#78: a server half's own `wrangler dev` port, which a page could
+    // find, reaches no DO: only what this launch's server forwards does.
+    it.skipIf(mode !== "wrangler")(
+      "answers on a Worker's own port only what the launch server forwards",
+      async () => {
+        const bases = app.workerBases?.() ?? new Map<string, string>();
+        for (const id of [NOTES, "system.tasks"]) {
+          const base = bases.get(id);
+          expect(base).toBeDefined();
+          const direct = await fetch(
+            `${base}/fragments/${id}/${id === NOTES ? "notes" : "queue"}`,
+            {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: id === NOTES ? JSON.stringify({ text: "around" }) : "{}",
+            },
+          );
+          expect(direct.status).toBe(403);
+          await expect(
+            fetch(`${base}/fragments/${NOTES}/notes`).then((r) => r.status),
+          ).resolves.toBe(403);
+        }
+        // Through the launch server, as the page sends it, it goes on.
+        const through = await fetch(new URL(`fragments/${NOTES}/notes`, app.url));
+        expect(through.status).toBe(200);
+      },
+      60_000,
+    );
+
     // H1: a fragment whose server half cannot load does not stop the pool following the others,
     // and an upgrade loads the upgraded archive's server half.
     it.skipIf(mode !== "browser")(

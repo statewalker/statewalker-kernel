@@ -32,7 +32,9 @@ From the repository root, after `pnpm install`:
    - `start:node`: CellB on Node, one fragment host (`createFragmentHost`) holding every server half, its data under `--data <dir>` (memory by default).
    - `start:wrangler`: `wrangler dev`, one per server half, its Worker routing `/fragments/{id}/…` to its fragment DO; the app's server forwards to it.
 
-   Under `node` and `wrangler`, the app's server answers `/fragments/…` only to this app's pages. It refuses a request a browser marks as cross-site (`Sec-Fetch-Site`) and one whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`, which blocks DNS rebinding (403). It also refuses a POST whose body type another site could send without a preflight: `text/plain`, a form type, or no type at all (415, statewalker/statewalker-kernel#76).
+   Under `node` and `wrangler`, the app's server answers `/fragments/…` only to this app's pages. It refuses a request a browser marks as cross-site (`Sec-Fetch-Site`) and one whose `Host` is not `127.0.0.1`, `localhost` or `[::1]`, which blocks DNS rebinding (403). It also refuses a POST whose body type another site could send without a preflight: `text/plain`, a form type, or no type at all (415, statewalker/statewalker-kernel#76). Under `wrangler`, each server half's own `wrangler dev` port answers only what this server forwards, which carries the launch's secret (`LAUNCH_SECRET`). A page that finds a Worker's port reaches no DO (403, statewalker/statewalker-kernel#78).
+
+   "Remove with data" of a fragment with a server half deletes its DO data on every host. In the browser this is the shard pool's storage. Under `node` and `wrangler` the shell asks the app's server (`POST /_launch/fragments/<id>/data/remove`, answered only to this app's pages). The server removes the server half with its data and starts it again empty: `FragmentHost.remove(id, { withData: true })` on Node, or the fragment's persisted state on wrangler. A host that cannot refuses, and the kernel keeps the fragment's record (statewalker/statewalker-kernel#73). Without `--data`, `wrangler` keeps its state in `apps/notes/.wrangler/launch-state/` (gitignored), across runs.
 
    Each takes `--peer-id <id>`: `/peers/<id>/fragments/{id}/…` then answers as `/fragments/{id}/…`. The page reads which one runs from `launch.json` (`window.launch`); the built `dist/launch.json` says `none`, so a plain file server runs no server halves.
 3. `pnpm --filter @statewalker/notes.app test`: the browser tests, against `dist/` (build first). They need Chromium for the pinned `playwright`: `pnpm --filter @statewalker/notes.app exec playwright install chromium` once, if it is not there.
@@ -111,6 +113,8 @@ From the repository root, after `pnpm install`:
 | A note's Copy button puts its text on the clipboard (read back with `navigator.clipboard.readText`); `host.provider("clipboard")` is `undefined` | A fragment's view reaches the clipboard through the client API's `host`; no fragment contributes one, so the host's own (the browser's) answers |
 | Opening the surfaces view writes `#?views=...` with both views; after a reload both are open again, in that order | The shell keeps the open views in the URL state (`src/url-layout.ts`) and restores them from it |
 | Loading `#?views=org.statewalker.surfaces%2Fsurfaces` opens only that view, not the default layout; changing the hash to name the notes view opens it and closes the other | A link restores a view; a navigation to another URL state reaches the layout |
+
+`tests/remove-data.e2e.test.ts` (seam 2, node and wrangler) shows that a plain removal keeps notes-export's DO data, which a reinstall finds, and that "remove with data" deletes it. The host's endpoint answers only the app's pages.
 
 `tests/tasks.e2e.test.ts` (seam 2, on browser, node and wrangler) covers #409:
 - the task, started from the Exports view, is followed over a reload with no log entry read twice, and its reply shows;
