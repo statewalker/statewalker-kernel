@@ -101,6 +101,25 @@ for (const mode of ["node", "wrangler"] as const) {
       }
     }, 120_000);
 
+    it("runs two removals of one fragment at once one after the other", async () => {
+      const url = `${app.url}_launch/fragments/${EXPORT}/data/remove`;
+      const post = () =>
+        fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        }).then((r) => r.status);
+      await expect(Promise.all([post(), post()])).resolves.toEqual([200, 200]);
+      // The server half still answers, from one server process (its data empty).
+      const page = await open(app);
+      try {
+        await install(page);
+        await expect(exportsCount(page)).resolves.toBe(0);
+      } finally {
+        await page.context().close();
+      }
+    }, 120_000);
+
     it("takes a 'remove with data' only from the app's own pages", async () => {
       const url = `${app.url}_launch/fragments/${EXPORT}/data/remove`;
       const post = (headers: Record<string, string>) =>

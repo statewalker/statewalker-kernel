@@ -14,9 +14,8 @@
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
-import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
 import { coreServerFragments } from "./core-fragments.mjs";
@@ -125,6 +124,20 @@ function removeDataOf(request) {
   } catch {
     return undefined;
   }
+}
+
+/** `run(id)`, one call at a time per id: a call waits for the one before it, whatever its end. */
+function oneAtATime(run) {
+  const last = new Map();
+  return (id) => {
+    const next = (last.get(id) ?? Promise.resolve()).then(() => run(id));
+    const settled = next.catch(() => {});
+    last.set(id, settled);
+    void settled.then(() => {
+      if (last.get(id) === settled) last.delete(id);
+    });
+    return next;
+  };
 }
 
 /** Runs a "remove with data" request with `remove(id)`, as the app's own pages may ask it. */
@@ -263,10 +276,11 @@ export async function launch(mode, options = {}) {
     const host = createFragmentHost({ ...(data ? { data } : {}), ...(peerId ? { peerId } : {}) });
     const dirs = new Map(serverFragments().map(({ id, dir }) => [id, dir]));
     // Removed with its data, a server half comes back empty: the host serves every app fragment.
-    const removeData = async (id) => {
+    // One at a time per fragment (a second add of the same id would be refused).
+    const removeData = oneAtATime(async (id) => {
       await host.remove(id, { withData: true });
       await host.add(id, dirs.get(id));
-    };
+    });
     for (const { id, dir } of serverFragments()) {
       const added = await host.add(id, dir);
       if (added.unsupported.length)
@@ -295,18 +309,21 @@ export async function launch(mode, options = {}) {
   }
   if (mode === "wrangler") {
     const workers = new Map();
-    // Each server half's state where this launch can delete it: under `data`, else a folder of
-    // this launch's own (wrangler's default is the fragment's source folder, kept across runs).
-    const state = data ?? mkdtempSync(join(tmpdir(), "notes-wrangler-"));
+    // Each server half's state where this launch can delete it ("remove with data"): under
+    // `data`, else a folder of the app's own kept across runs (gitignored, as wrangler's default
+    // in each fragment's source folder was; that one is no longer read).
+    const state = data ?? join(ROOT, ".wrangler", "launch-state");
     /** What every forwarded request carries, and the Workers take nothing without. */
     const secret = randomUUID();
     const fragments = new Map(serverFragments().map((f) => [f.id, f]));
-    const removeData = async (id) => {
+    // One at a time per fragment: two at once would each start a wrangler dev on the same
+    // state, the first left running unreachable.
+    const removeData = oneAtATime(async (id) => {
       await workers.get(id)?.close();
       workers.delete(id);
       rmSync(join(state, id), { recursive: true, force: true });
       workers.set(id, await wranglerDev(fragments.get(id), { persistTo: state, secret }));
-    };
+    });
     const stopWorkers = async () => {
       for (const w of workers.values()) await w.close();
     };
@@ -355,7 +372,6 @@ export async function launch(mode, options = {}) {
       });
     } catch (error) {
       await stopWorkers();
-      if (!data) rmSync(state, { recursive: true, force: true });
       throw error;
     }
     return {
@@ -366,7 +382,6 @@ export async function launch(mode, options = {}) {
       async close() {
         await server.close();
         await stopWorkers();
-        if (!data) rmSync(state, { recursive: true, force: true });
       },
     };
   }
