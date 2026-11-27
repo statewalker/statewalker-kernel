@@ -1,5 +1,28 @@
 # @statewalker/settings.view.react
 
+## 0.5.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - @statewalker/workspace.view.react removed
+  - files changed: dist/fragment.js, dist/internal/settings-button.js, dist/internal/settings-dialog.js, dist/public/init.d.ts, dist/public/init.d.ts.map, 1 more
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies [4b18761]
+  - @statewalker/settings.core@0.9.0
+  - @statewalker/shell.core@0.9.0
+  - @statewalker/ui.view.react@0.5.0
+  - @statewalker/workspace.core@0.9.0
+  - @statewalker/ui.view.shadcn@0.1.5
+
 ## 0.4.0
 
 ### Minor Changes

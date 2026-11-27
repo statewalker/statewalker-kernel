@@ -1,5 +1,19 @@
 # @statewalker/platform.core
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/adapters.d.ts, dist/adapters.d.ts.map, dist/adapters.js, dist/commands/copy-to-clipboard/index.d.ts, dist/commands/copy-to-clipboard/index.d.ts.map, 25 more
+
+### Patch Changes
+
+- Updated dependencies
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

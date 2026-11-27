@@ -1,5 +1,25 @@
 # @statewalker/webapp.browser
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/dock-catalog.d.ts, dist/dock-catalog.d.ts.map, dist/dock-catalog.js, dist/host-app.d.ts, dist/host-app.d.ts.map, 8 more
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies
+  - @statewalker/render.core@0.9.0
+  - @statewalker/shell.core@0.9.0
+  - @statewalker/webapp.core@0.9.0
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

@@ -1,5 +1,19 @@
 # @statewalker/workspace-vcs.core
 
+## 0.10.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - files changed: dist/adapters/config-files.d.ts, dist/adapters/config-files.d.ts.map, dist/adapters/config-files.js, dist/adapters/git-remote.d.ts, dist/adapters/git-remote.d.ts.map, 37 more
+  - @statewalker/workspace.core crosses a breaking line
+
+### Patch Changes
+
+- Updated dependencies
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.9.0
 
 ### Minor Changes

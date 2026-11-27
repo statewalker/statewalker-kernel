@@ -1,5 +1,15 @@
 # @statewalker/backbone.browser
 
+## 0.4.3
+
+### Patch Changes
+
+- Release of the changes since the last published version:
+  
+  - files changed: dist/bootstrap.d.ts, dist/bootstrap.d.ts.map, dist/bootstrap.js, dist/build-import-map.d.ts, dist/build-import-map.d.ts.map, 11 more
+- Updated dependencies
+  - @statewalker/backbone.core@0.4.3
+
 ## 0.4.2
 
 ### Patch Changes

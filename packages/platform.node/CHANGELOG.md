@@ -1,5 +1,21 @@
 # @statewalker/platform.node
 
+## 0.9.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/index.d.ts, dist/index.d.ts.map, dist/index.js
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @statewalker/platform.core@0.9.0
+  - @statewalker/workspace.core@0.9.0
+
 ## 0.8.0
 
 ### Minor Changes

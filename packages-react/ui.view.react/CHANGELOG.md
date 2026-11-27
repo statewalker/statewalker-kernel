@@ -1,5 +1,23 @@
 # @statewalker/ui.view.react
 
+## 0.5.0
+
+### Minor Changes
+
+- Release of the changes since the last published version:
+  
+  - @statewalker/shared-commands ^0.2.0 -> ^0.4.0
+  - files changed: dist/fragment.js, dist/internal/app-root.js, dist/internal/app-workspace-provider.d.ts, dist/internal/app-workspace-provider.d.ts.map, dist/internal/app-workspace-provider.js, 23 more
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+- Updated dependencies [4b18761]
+  - @statewalker/workspace.browser@0.9.0
+  - @statewalker/workspace.core@0.9.0
+  - @statewalker/ui.view.shadcn@0.1.5
+
 ## 0.4.0
 
 ### Minor Changes

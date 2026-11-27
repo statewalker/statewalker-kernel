@@ -1,5 +1,13 @@
 # @statewalker/backbone.core
 
+## 0.4.3
+
+### Patch Changes
+
+- Release of the changes since the last published version:
+  
+  - files changed: dist/_vendor/logger.d.ts, dist/_vendor/logger.d.ts.map, dist/_vendor/logger.js, dist/activate-modules.d.ts, dist/activate-modules.d.ts.map, 12 more
+
 ## 0.4.2
 
 ### Patch Changes

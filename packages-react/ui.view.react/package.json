@@ -1,6 +1,6 @@
 {
   "name": "@statewalker/ui.view.react",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "private": false,
   "type": "module",
   "description": "Substrate React fragment: mount, AppRoot, core:views slot, useSlot/useKeyedSlot/useAdapterValue/useAdapter hooks, theme binding.",
