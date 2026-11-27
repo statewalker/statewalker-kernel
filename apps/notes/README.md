@@ -36,6 +36,15 @@ From the repository root, after `pnpm install`:
 
    "Remove with data" of a fragment with a server half deletes its DO data on every host. In the browser this is the shard pool's storage. Under `node` and `wrangler` the shell asks the app's server (`POST /_launch/fragments/<id>/data/remove`, answered only to this app's pages). The server removes the server half with its data and starts it again empty: `FragmentHost.remove(id, { withData: true })` on Node, or the fragment's persisted state on wrangler. A host that cannot refuses, and the kernel keeps the fragment's record (statewalker/statewalker-kernel#73). Without `--data`, `wrangler` keeps its state in `apps/notes/.wrangler/launch-state/` (gitignored), across runs.
 
+   **Placement** (statewalker/statewalker-root#263). Where each server half is served is the route table in the profile (`routes`: `{ "<id>": { "host": "url:<base>" } }`; unlisted fragments are `local`, the app's own server). Client halves keep calling `<base>fragments/{id}/…`, and the page sends each request to the fragment's home (`src/placement.ts`, `window.placement`). A Move takes a fragment's server half, with its DO data, to another `node` host: `await placement.move("org.statewalker.notes", "url:http://127.0.0.1:4174/")`. It runs these steps, and each host does its own part under `/_launch/` (`scripts/placement.mjs`):
+   1. The new host installs the same version, disabled, or refuses, giving the version it offers or the bindings it lacks.
+   2. The fragment is disabled here.
+   3. Its data is exported with a hand-over, so it cannot run here again.
+   4. The data is imported there, and the fragment is activated there.
+   5. The route switches.
+
+   The source keeps its data, handed over, until `placement.confirm(id)` deletes it. `placement.rollback(id)` runs the source again on that data, switches the route back and deletes the copy. `placement.setRoute(id, host)` changes a route without moving data, and is refused once the fragment has data at its home. A Move copies data without transforming it. The host it goes to lets this app's pages in with `allowOrigins` (`launch("node", { allowOrigins: ["http://127.0.0.1:4173"], fragments: [] })`), which adds CORS and answers its preflights; every other origin is still refused.
+
    Each takes `--peer-id <id>`: `/peers/<id>/fragments/{id}/…` then answers as `/fragments/{id}/…`. The page reads which one runs from `launch.json` (`window.launch`); the built `dist/launch.json` says `none`, so a plain file server runs no server halves.
 3. `pnpm --filter @statewalker/notes.app test`: the browser tests, against `dist/` (build first). They need Chromium for the pinned `playwright`: `pnpm --filter @statewalker/notes.app exec playwright install chromium` once, if it is not there.
 
@@ -115,6 +124,14 @@ From the repository root, after `pnpm install`:
 | Loading `#?views=org.statewalker.surfaces%2Fsurfaces` opens only that view, not the default layout; changing the hash to name the notes view opens it and closes the other | A link restores a view; a navigation to another URL state reaches the layout |
 
 `tests/remove-data.e2e.test.ts` (seam 2, node and wrangler) shows that a plain removal keeps notes-export's DO data, which a reinstall finds, and that "remove with data" deletes it. The host's endpoint answers only the app's pages.
+
+`tests/move.e2e.test.ts` (seam 2, two node hosts) covers #263:
+- notes moves with its data to a second host, and the view reads and writes it through `<base>fragments/<id>/`;
+- the source keeps its data, handed over, so it cannot be enabled;
+- a rollback runs the source again on that data, and a confirmed Move deletes it;
+- a Move to a host offering another version is refused, as is a route change on a fragment with data and a page of an origin the second host does not let in.
+
+`tests/move-tasks.e2e.test.ts` (seam 2, two node hosts) covers #410: with notes-export moved to a second host, a task published from the first is served in the second host's queue and its reply comes back; the first host's wildcard subscription never sees it; once the home is down, the publish fails (`unreachable`) with nothing queued on the first host.
 
 `tests/tasks.e2e.test.ts` (seam 2, on browser, node and wrangler) covers #409:
 - the task, started from the Exports view, is followed over a reload with no log entry read twice, and its reply shows;

@@ -97,7 +97,7 @@ catalog:
   "@types/leaflet": ^1.9.22
   wrangler: ^4.150.0
   # apps/notes' server halves (statewalker/statewalker-root#259): CellB in the browser and on Node.
-  "@statewalker/cellb": ^0.15.0
+  "@statewalker/cellb": ^0.16.0
   "@sqlite.org/sqlite-wasm": ^3.54.1-build1
 # Peer ranges of the React packages in packages-react/.
 catalogs:

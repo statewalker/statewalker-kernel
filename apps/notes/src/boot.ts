@@ -84,6 +84,7 @@ import {
 import {
   createSystemTasks,
   type QueueOperation,
+  type QueueStore,
   queueErrorFromData,
   remoteQueueStore,
   SYSTEM_TASKS_ID,
@@ -123,6 +124,8 @@ export interface Platform {
   readonly l10n: L10n;
   /** system.fragments: the app's fragments installed with the user's consent, and their lifecycle. */
   readonly fragments: FragmentManager;
+  /** system.tasks, where server halves run: `rehome()` once a fragment's route changes. */
+  readonly tasks?: SystemTasks;
   /** The application definition this shell runs (application.json). */
   readonly application: ApplicationDefinition;
   /** Whether this run started from a fresh profile (and installed the baseline). */
@@ -193,6 +196,12 @@ export interface BootOptions {
    * activated: what runs the server halves starts here (their activations wait for it).
    */
   readonly started?: (kernel: Kernel) => void;
+  /**
+   * The base URL of a fragment's home when the route table places it on another host
+   * (statewalker-root#410): system.tasks publishes its tasks, and serves its commands, in the queue
+   * there. Undefined: this host. Asked at each publish; `platform.tasks.rehome()` after a change.
+   */
+  readonly taskHome?: (fragment: string) => string | undefined;
 }
 
 /** `load` run once, its promise shared. */
@@ -349,17 +358,26 @@ export function applicationLayouts(definition: ApplicationDefinition): LayoutCon
  * system.tasks' queue in its fragment DO, through its server half (`POST fragments/system.tasks/queue`
  * with one operation, `{ value }` or `{ error }` back).
  */
-function tasksStore(servers: ClientServersHost) {
-  const url = new URL(`fragments/${SYSTEM_TASKS_ID}/queue`, servers.base).href;
+function tasksStore(servers: ClientServersHost, home?: string) {
+  const url = new URL(`fragments/${SYSTEM_TASKS_ID}/queue`, home ?? servers.base).href;
   return remoteQueueStore(async (operation: QueueOperation) => {
     await servers.ready();
-    const response = await servers.fetch(
-      new Request(url, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(operation),
-      }),
-    );
+    let response: Response;
+    try {
+      response = await servers.fetch(
+        new Request(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(operation),
+        }),
+      );
+    } catch (error) {
+      // No answer at all: the host is unreachable, and nothing was queued there.
+      throw queueErrorFromData({
+        error: `system.tasks at ${home ?? "this host"} is unreachable: ${(error as Error)?.message ?? error}`,
+        code: "EHOSTUNREACH",
+      });
+    }
     const body = (await response.json().catch(() => ({}))) as {
       value?: unknown;
       error?: string;
@@ -403,6 +421,7 @@ export async function boot({
   removeServerData,
   serverHalf,
   started,
+  taskHome,
 }: BootOptions): Promise<Platform> {
   const definition: ApplicationDefinition = application;
   const system = createSystemProfile({
@@ -539,6 +558,24 @@ export async function boot({
       callAs: commands.callAs,
       slots: kernel.slots,
       store: tasksStore(servers),
+      ...(taskHome
+        ? {
+            // The queue on each fragment's home, one store per host.
+            storeOf: (() => {
+              const homes = new Map<string, QueueStore>();
+              return (fragment: string) => {
+                const home = taskHome(fragment);
+                if (home === undefined) return undefined;
+                let store = homes.get(home);
+                if (!store) {
+                  store = tasksStore(servers, home);
+                  homes.set(home, store);
+                }
+                return store;
+              };
+            })(),
+          }
+        : {}),
       // The runners are this page's: a lease outlives a closed or reloaded page by at most 10 s,
       // then the task runs again (at least once; handlers deduplicate by the task's id).
       leaseMs: 10_000,
@@ -568,6 +605,7 @@ export async function boot({
     settings: settings.settings,
     l10n: l10n.l10n,
     fragments,
+    ...(tasks ? { tasks } : {}),
     application: definition,
     firstRun,
     slots: {

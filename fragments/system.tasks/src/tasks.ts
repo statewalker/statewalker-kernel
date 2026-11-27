@@ -88,6 +88,13 @@ export interface SystemTasksOptions {
    */
   readonly store?: QueueStore;
   readonly sql?: SqlLike;
+  /**
+   * The queue on a fragment's home, when the route table places it on another host
+   * (statewalker-root#410); undefined: this host's (`store`). Asked at each publish and runner
+   * start: a publish under `fragments.<id>.` goes to `<id>`'s home, and the runners of `<id>`'s
+   * task-exposed commands serve its subscriptions there. `rehome()` follows a route's change.
+   */
+  readonly storeOf?: (fragment: string) => QueueStore | undefined;
   /** system.security's gate: decides, when they run, the tasks gated callers published. */
   readonly gate?: CallGate;
   /** The queue's clock, ids and limits. */
@@ -129,6 +136,22 @@ export interface SystemTasks {
   readonly module: SystemTasksModule;
   /** Activate the client aspect: serve the task-exposed commands. Returns the cleanup. */
   activate(context: ActivationContext): AspectCleanup;
+  /**
+   * The route table changed (a Move): each runner whose fragment's home changed is started again
+   * at the new home. Tasks left in the old home's queue wait there.
+   */
+  rehome(): void;
+}
+
+/** The fragment a subject under `fragments.<id>.<command>` names; undefined for any other. */
+export function subjectFragment(subject: string): string | undefined {
+  if (!subject.startsWith("fragments.")) return undefined;
+  const rest = subject.slice("fragments.".length);
+  const dot = rest.lastIndexOf(".");
+  const fragment = dot > 0 ? rest.slice(0, dot) : "";
+  // A wildcard names no one fragment: its fan-out stays on this host.
+  if (!fragment || /[*>]/.test(fragment) || /[*>]/.test(rest.slice(dot + 1))) return undefined;
+  return fragment;
 }
 
 export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
@@ -141,19 +164,28 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   const store: QueueStore = chosen;
   const P = TASKS_PROJECT;
   const own: QueueReaderData = { id: TASKS_PRINCIPAL, destinations: [], admin: true };
-  const api = store.api(own);
-  const runners = new Map<string, AbortController>();
+  /** The queue on `fragment`'s home: another host's, or this one's. */
+  const homeOf = (fragment: string | undefined): QueueStore =>
+    (fragment !== undefined ? options.storeOf?.(fragment) : undefined) ?? store;
+  // The queue each task this host published lives in, when it is not this host's: its cancel and
+  // job reads go there.
+  const taskHomes = new Map<string, QueueStore>();
+  const storeOfTask = (task: string): QueueStore => taskHomes.get(task) ?? store;
+  const jobHomes = new Map<string, QueueStore>();
+  const runners = new Map<string, { stop: AbortController; home: QueueStore }>();
+  let lastEntries: readonly CommandEntry[] = [];
   // The running tasks of this host: a cancel makes each one's runner renew at once, so the
   // queue's "cancelled" reaches its handler without waiting for the next renew.
   const running = new Map<string, () => void>();
 
   async function cancelTask(task: string, by: string, admin: boolean): Promise<void> {
-    await store.cancel(P, task, by, { admin });
+    await storeOfTask(task).cancel(P, task, by, { admin });
     running.get(task)?.();
   }
 
   /** Ends a task for good with an error: its reply (when it asks for one), then a cancel. */
   async function refuse(
+    home: QueueStore,
     task: string,
     replyTo: string | undefined,
     job: string,
@@ -161,15 +193,14 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
   ): Promise<void> {
     const message = String((error as Error)?.message ?? error);
     try {
-      if (replyTo)
-        await store.reply(P, task, TASKS_PRINCIPAL, { payload: { job, error: message } });
-      await cancelTask(task, TASKS_PRINCIPAL, true);
+      if (replyTo) await home.reply(P, task, TASKS_PRINCIPAL, { payload: { job, error: message } });
+      await home.cancel(P, task, TASKS_PRINCIPAL, { admin: true });
     } catch (e) {
       onError(e);
     }
   }
 
-  function processorOf(id: string): Processor {
+  function processorOf(id: string, home: QueueStore): Processor {
     return {
       async run(lease, context) {
         const entry: CommandEntry | undefined = commands.get(id);
@@ -189,13 +220,13 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           } catch (refusal) {
             // A refusal is final: the publisher gets it now, and the task is not tried again
             // (nor the user asked again for an approval).
-            await refuse(lease.task.id, lease.task.reply_to, lease.id, refusal);
+            await refuse(home, lease.task.id, lease.task.reply_to, lease.id, refusal);
             throw refusal;
           }
         }
         running.set(lease.task.id, () => void context.progress(null).catch(() => {}));
         // The task's job index: a viewer finds this attempt's log, and its reply, by the task.
-        await store.recordJob(P, lease.task.id, lease.id).catch(onError);
+        await home.recordJob(P, lease.task.id, lease.id).catch(onError);
         try {
           // As its publisher: the handler sees the caller the gate let through.
           const result = await callAs(caller, id, payload, {
@@ -203,7 +234,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
             signal: context.signal,
             onProgress: (entry) => context.progress(entry),
           });
-          await store.recordReply(P, lease.id, { job: lease.id, result }).catch(onError);
+          await home.recordReply(P, lease.id, { job: lease.id, result }).catch(onError);
           return result;
         } catch (error) {
           // An error the queue retries is not the task's answer yet: `retry` says another attempt
@@ -222,7 +253,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
                   error: String((error as Error)?.message ?? error),
                   ...(lease.attempt < lease.max_attempts ? { retry: true } : {}),
                 };
-          await store.recordReply(P, lease.id, reply).catch(onError);
+          await home.recordReply(P, lease.id, reply).catch(onError);
           throw error;
         } finally {
           running.delete(lease.task.id);
@@ -231,10 +262,14 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     };
   }
 
-  async function serve(entry: CommandEntry, stop: AbortController): Promise<void> {
+  async function serve(
+    entry: CommandEntry,
+    stop: AbortController,
+    home: QueueStore,
+  ): Promise<void> {
     const name = subscriptionName(entry.id);
-    if (!(await store.listSubscriptions(P)).some((s) => s.name === name))
-      await store.subscribe(
+    if (!(await home.listSubscriptions(P)).some((s) => s.name === name))
+      await home.subscribe(
         P,
         {
           name,
@@ -245,10 +280,10 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
         TASKS_PRINCIPAL,
       );
     if (stop.signal.aborted) return;
-    await serveSubscription(api, {
+    await serveSubscription(home.api(own), {
       project: P,
       subscription: name,
-      processor: processorOf(entry.id),
+      processor: processorOf(entry.id, home),
       signal: stop.signal,
       waitMs,
       onError,
@@ -257,20 +292,24 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
 
   /** Serve exactly the live task-exposed commands; a runner stops, its subscription stays. */
   function sync(entries: readonly CommandEntry[]): void {
+    lastEntries = entries;
     const live = new Map(entries.filter((e) => e.exposures.task).map((e) => [e.id, e]));
-    for (const [id, stop] of runners) {
-      if (live.has(id)) continue;
-      stop.abort();
+    for (const [id, runner] of runners) {
+      // Gone, or its fragment's home changed: stopped (and started again at the new home).
+      if (live.has(id) && runner.home === homeOf(fragmentOf(subscriptionName(id)))) continue;
+      runner.stop.abort();
       runners.delete(id);
     }
     for (const [id, entry] of live) {
       if (runners.has(id)) continue;
       const stop = new AbortController();
-      runners.set(id, stop);
-      serve(entry, stop).catch((error: unknown) => {
+      const home = homeOf(fragmentOf(subscriptionName(id)));
+      const runner = { stop, home };
+      runners.set(id, runner);
+      serve(entry, stop, home).catch((error: unknown) => {
         // A runner that could not start (its store unreachable) is started again by the next
         // change of the commands, not left registered as running.
-        if (runners.get(id) === stop) runners.delete(id);
+        if (runners.get(id) === runner) runners.delete(id);
         onError(error);
       });
     }
@@ -281,6 +320,11 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
    * one asking for a reply gets an error, so no publisher waits for a command that is gone.
    */
   async function removed(fragment: string): Promise<void> {
+    // Here, and at its home when that is another host.
+    for (const queue of new Set([store, homeOf(fragment)])) await removedFrom(queue, fragment);
+  }
+
+  async function removedFrom(store: QueueStore, fragment: string): Promise<void> {
     for (const sub of await store.listSubscriptions(P)) {
       if (sub.inbox || sub.owner !== TASKS_PRINCIPAL || fragmentOf(sub.name) !== fragment) continue;
       for (;;) {
@@ -305,16 +349,24 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     async publish({ subject, payload, wait }, context) {
       const sender = principalOf(context.caller);
       const task = { subject, ...(payload !== undefined ? { payload } : {}) };
-      if (wait === false) return { task: (await store.publish(P, task, sender)).id };
+      // To the queue on the fragment's home (statewalker-root#410): never queued here instead.
+      const home = homeOf(subjectFragment(subject));
+      const remember = (id: string) => {
+        if (home !== store) taskHomes.set(id, home);
+        return id;
+      };
+      if (wait === false) return { task: remember((await home.publish(P, task, sender)).id) };
       // Nobody would answer: a waited publish no subscription serves is refused at once.
-      const served = (await store.listSubscriptions(P)).some(
+      const served = (await home.listSubscriptions(P)).some(
         (s) => !s.inbox && subjectMatches(s.filter.subject, subject),
       );
       if (!served) throw new Error(`no subscription serves '${subject}'`);
-      const inbox = await store.createInbox(P, sender);
+      // The reply's inbox is on the queue the task is in: its runner replies there, and this
+      // publisher, on its own host, takes the reply from it.
+      const inbox = await home.createInbox(P, sender);
       const reader: QueueReaderData = { id: sender, destinations: [] };
       try {
-        const published = await store.publish(
+        const published = await home.publish(
           P,
           {
             ...task,
@@ -323,11 +375,12 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
           },
           sender,
         );
+        remember(published.id);
         const aborted = new Promise<void>((resolve) => {
           if (context.signal.aborted) resolve();
           else context.signal.addEventListener("abort", () => resolve(), { once: true });
         });
-        let seq = await store.changeSeq(P);
+        let seq = await home.changeSeq(P);
         for (;;) {
           if (context.signal.aborted) {
             // The caller gave up: the task is cancelled, a running handler stops.
@@ -338,12 +391,16 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
             }
             throw context.signal.reason;
           }
-          const [reply] = await store.take(P, inbox.name, reader);
-          if (reply) return { task: published.id, ...(reply.payload as Record<string, unknown>) };
-          seq = await Promise.race([store.waitChange(P, seq, waitMs), aborted.then(() => seq)]);
+          const [reply] = await home.take(P, inbox.name, reader);
+          if (reply) {
+            const answer = reply.payload as Record<string, unknown>;
+            if (home !== store && typeof answer?.job === "string") jobHomes.set(answer.job, home);
+            return { task: published.id, ...answer };
+          }
+          seq = await Promise.race([home.waitChange(P, seq, waitMs), aborted.then(() => seq)]);
         }
       } finally {
-        await store.unsubscribe(P, inbox.name).catch(onError);
+        await home.unsubscribe(P, inbox.name).catch(onError);
       }
     },
     async cancel({ task }, context) {
@@ -352,14 +409,16 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
       return { cancelled: true };
     },
     async jobs({ task }, context) {
-      const jobs = await store.jobsOf(P, task);
+      const home = storeOfTask(task);
+      const jobs = await home.jobsOf(P, task);
+      if (home !== store) for (const j of jobs) jobHomes.set(j.job, home);
       if (isUser(context.caller)) return { jobs };
       // A gated caller reads only the jobs of its own tasks: those its job reads would allow.
       const reader = principalOf(context.caller);
       const own: TaskJob[] = [];
       for (const job of jobs) {
         try {
-          await store.waitJob(P, job.job, reader, { wait_ms: 0 });
+          await home.waitJob(P, job.job, reader, { wait_ms: 0 });
           own.push(job);
         } catch {
           // not its task's
@@ -370,7 +429,7 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
     job({ job, after, wait_ms }, context) {
       // The user reads any job (as its holder); a gated caller those of its own tasks.
       const reader = isUser(context.caller) ? TASKS_PRINCIPAL : principalOf(context.caller);
-      return store.waitJob(P, job, reader, {
+      return (jobHomes.get(job) ?? store).waitJob(P, job, reader, {
         ...(after !== undefined ? { after } : {}),
         wait_ms: Math.min(Math.max(Number(wait_ms ?? 0), 0), MAX_WAIT_MS),
       });
@@ -395,9 +454,12 @@ export function createSystemTasks(options: SystemTasksOptions): SystemTasks {
       return () => {
         stopCommands();
         stopInstalled();
-        for (const stop of runners.values()) stop.abort();
+        for (const { stop } of runners.values()) stop.abort();
         runners.clear();
       };
+    },
+    rehome() {
+      sync(lastEntries);
     },
   };
 }

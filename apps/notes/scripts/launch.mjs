@@ -14,11 +14,12 @@
 // `launch(mode, options)` is the same for the tests.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import { parseJsonc } from "@statewalker/kernel.core";
 import { coreServerFragments } from "./core-fragments.mjs";
+import { answerPlacement, placementOf, readPlacementRecord } from "./placement.mjs";
 import { serveStatic } from "./static-server.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -43,7 +44,15 @@ const DIST = join(ROOT, "dist");
  * (scripts/core-fragments.mjs), then the app's own.
  */
 export function serverFragments() {
-  return [...coreServerFragments().map(({ id, dir }) => ({ id, dir })), ...appServerFragments()];
+  return [
+    ...coreServerFragments().map(({ id, dir }) => ({ id, dir, version: versionOf(dir) })),
+    ...appServerFragments(),
+  ];
+}
+
+/** A fragment's version, as its manifest (`fragment.jsonc`) says. */
+function versionOf(dir) {
+  return String(parseJsonc(readFileSync(join(dir, "fragment.jsonc"), "utf8")).value.version);
 }
 
 /** The app's fragments that have a server half: their id and source folder. */
@@ -54,7 +63,8 @@ function appServerFragments() {
     if (!folder.isDirectory()) continue;
     const dir = join(fragments, folder.name);
     const manifest = parseJsonc(readFileSync(join(dir, "fragment.jsonc"), "utf8")).value;
-    if (manifest.aspects?.server) found.push({ id: manifest.id, dir });
+    if (manifest.aspects?.server)
+      found.push({ id: manifest.id, dir, version: String(manifest.version) });
   }
   return found;
 }
@@ -67,12 +77,58 @@ const LOCAL_NAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
  * another site (`Sec-Fetch-Site`), or one addressed to another name (`Host`: a page of a domain
  * rebound to 127.0.0.1 is same-origin to itself). The fragments' DOs trust the app's pages only.
  */
-function fromElsewhere(request) {
+function fromElsewhere(request, allowed = NO_ORIGINS) {
   const site = request.headers.get("sec-fetch-site");
-  if (site !== null && site !== "same-origin" && site !== "none") return true;
+  if (
+    site !== null &&
+    site !== "same-origin" &&
+    site !== "none" &&
+    !allowedOrigin(request, allowed)
+  )
+    return true;
   const host = request.headers.get("host") ?? "";
   const name = host.startsWith("[") ? host.slice(0, host.indexOf("]") + 1) : host.split(":")[0];
   return !LOCAL_NAMES.has((name ?? "").toLowerCase());
+}
+
+const NO_ORIGINS = new Set();
+
+/**
+ * The origin of a request from another origin this host lets in (`allowOrigins`: the pages of an
+ * app whose fragment was moved here, statewalker/statewalker-root#263), or undefined.
+ */
+function allowedOrigin(request, allowed) {
+  const origin = request.headers.get("origin");
+  return origin !== null && allowed.has(origin) ? origin : undefined;
+}
+
+/** `response` with the CORS headers an allowed origin's page needs to read it. */
+function withCors(response, origin) {
+  if (!origin) return response;
+  const headers = new Headers(response.headers);
+  headers.set("access-control-allow-origin", origin);
+  headers.append("vary", "Origin");
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+/** The answer to a CORS preflight: allowed for an allowed origin, refused for any other. */
+function preflight(request, allowed) {
+  const origin = allowedOrigin(request, allowed);
+  if (!origin) return refusedElsewhere();
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "access-control-allow-origin": origin,
+      "access-control-allow-methods": "GET, POST, PUT, PATCH, DELETE",
+      "access-control-allow-headers": request.headers.get("access-control-request-headers") ?? "",
+      "access-control-max-age": "600",
+      vary: "Origin",
+    },
+  });
 }
 
 /**
@@ -140,9 +196,23 @@ function oneAtATime(run) {
   };
 }
 
+/** `run()` for an id, one at a time per id, whatever each one's end. */
+function oneAtATimeRun() {
+  const last = new Map();
+  return (id, run) => {
+    const next = (last.get(id) ?? Promise.resolve()).then(run);
+    const settled = next.catch(() => {});
+    last.set(id, settled);
+    void settled.then(() => {
+      if (last.get(id) === settled) last.delete(id);
+    });
+    return next;
+  };
+}
+
 /** Runs a "remove with data" request with `remove(id)`, as the app's own pages may ask it. */
-async function answerRemoveData(request, id, known, remove) {
-  if (fromElsewhere(request)) return refusedElsewhere();
+async function answerRemoveData(request, id, known, remove, allowed = NO_ORIGINS) {
+  if (fromElsewhere(request, allowed)) return refusedElsewhere();
   if (request.method !== "POST")
     return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
   if (simplePost(request)) return refusedSimple();
@@ -261,7 +331,14 @@ async function wranglerDev({ id, dir }, { persistTo, secret }) {
 /**
  * Serve the built app in a launch configuration.
  * @param {"browser" | "node" | "wrangler"} mode
- * @param {{ port?: number; data?: string; peerId?: string }} [options]
+ * @param {{
+ *   port?: number;
+ *   data?: string;
+ *   peerId?: string;
+ *   allowOrigins?: string[];
+ *   fragments?: string[];
+ *   versions?: Record<string, string>;
+ * }} [options]
  */
 export async function launch(mode, options = {}) {
   const { port = 0, data, peerId } = options;
@@ -274,27 +351,77 @@ export async function launch(mode, options = {}) {
   if (mode === "node") {
     const { createFragmentHost } = await import("@statewalker/cellb/node");
     const host = createFragmentHost({ ...(data ? { data } : {}), ...(peerId ? { peerId } : {}) });
-    const dirs = new Map(serverFragments().map(({ id, dir }) => [id, dir]));
+    const allowed = new Set(options.allowOrigins ?? []);
+    // What this host offers: every server half, at its manifest's version (or the one `versions`
+    // says, for a host offering another one).
+    const offered = new Map(
+      serverFragments().map(({ id, dir, version }) => [
+        id,
+        { dir, version: options.versions?.[id] ?? version },
+      ]),
+    );
+    const dirs = new Map([...offered].map(([id, { dir }]) => [id, dir]));
     // Removed with its data, a server half comes back empty: the host serves every app fragment.
     // One at a time per fragment (a second add of the same id would be refused).
     const removeData = oneAtATime(async (id) => {
       await host.remove(id, { withData: true });
       await host.add(id, dirs.get(id));
     });
-    for (const { id, dir } of serverFragments()) {
-      const added = await host.add(id, dir);
+    // Placement steps, one at a time per fragment, after any removal of it.
+    const serial = oneAtATimeRun();
+    // What runs from the start, as placement left it (scripts/placement.mjs): the fragments moved
+    // here too, not those moved away for good, nor data handed over to another host (it waits,
+    // not running, for a confirm or a rollback).
+    const record = readPlacementRecord(data);
+    const started = [
+      ...new Set([...(options.fragments ?? [...offered.keys()]), ...record.arrived]),
+    ].filter((id) => offered.has(id) && !record.left.includes(id));
+    for (const id of started) {
+      if (
+        data !== undefined &&
+        existsSync(join(data, "fragments", id, ".cellb-handed-over.json"))
+      ) {
+        console.warn(`${id}: its data here was handed over to another host: not started`);
+        continue;
+      }
+      const added = await host.add(id, /** @type {string} */ (dirs.get(id)));
       if (added.unsupported.length)
         console.warn(`${id}: unsupported: ${added.unsupported.join("; ")}`);
     }
     const server = await serveStatic(DIST, port, {
       launch: { fragments: "server", ...(peerId ? { peerId } : {}) },
       handle: async (request) => {
+        const { pathname } = new URL(request.url);
+        const ours = fragmentOf(pathname, peerId) !== undefined || pathname.startsWith("/_launch/");
+        if (!ours) return undefined;
+        if (request.method === "OPTIONS") return preflight(request, allowed);
+        if (fromElsewhere(request, allowed)) return refusedElsewhere();
+        const origin = allowedOrigin(request, allowed);
         const removing = removeDataOf(request);
         if (removing !== undefined)
-          return answerRemoveData(request, removing, (id) => dirs.has(id), removeData);
-        if (!fragmentOf(new URL(request.url).pathname, peerId)) return undefined;
-        if (fromElsewhere(request)) return refusedElsewhere();
-        return simplePost(request) ? refusedSimple() : host.fetch(request);
+          return withCors(
+            await answerRemoveData(request, removing, (id) => dirs.has(id), removeData, allowed),
+            origin,
+          );
+        const placement = placementOf(request);
+        if (placement) {
+          if (simplePost(request)) return refusedSimple();
+          return withCors(
+            await answerPlacement(request, placement, { host, offered, serial, dataDir: data }),
+            origin,
+          );
+        }
+        if (!fragmentOf(pathname, peerId)) return undefined;
+        if (simplePost(request)) return withCors(refusedSimple(), origin);
+        // A page of an origin this host lets in is one of the app's own here: the fragments'
+        // DOs, which take only same-origin pages (system.tasks' queue), see it as one.
+        let forwarded = request;
+        if (origin) {
+          const headers = new Headers(request.headers);
+          headers.set("sec-fetch-site", "same-origin");
+          forwarded = new Request(request, { headers, duplex: "half" });
+        }
+        return withCors(await host.fetch(forwarded), origin);
       },
     });
     return {

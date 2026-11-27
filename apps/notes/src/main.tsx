@@ -13,10 +13,13 @@ import type { Kernel } from "@statewalker/kernel.core";
 import { createSurfaceDock } from "@statewalker/system.a2ui/client";
 import { applyAppearance, BrandMark } from "@statewalker/system.appearance/client";
 import { LanguagePicker } from "@statewalker/system.l10n/client";
+import { createStorageProfile } from "@statewalker/system.profile";
 import { WorkbenchView } from "@statewalker/system.workbench/client";
 import { createRoot } from "react-dom/client";
+import application from "../application.json" with { type: "json" };
 import { boot } from "./boot.js";
 import { readLaunchConfig } from "./fragment-servers.js";
+import { createPlacement, type FragmentRoute, type Placement, ROUTES_KEY } from "./placement.js";
 import { bindLayoutToUrl } from "./url-layout.js";
 
 const base = new URL(".", document.baseURI);
@@ -24,6 +27,18 @@ const base = new URL(".", document.baseURI);
 // CellB (`browser`), or by the server the page came from (`server`), or none.
 const launch = await readLaunchConfig(base);
 window.launch = launch;
+// Where each fragment's server half is served (statewalker/statewalker-root#263): the route table
+// in the profile (the boot's own storage and prefix), read before boot, so that the client halves'
+// first requests already go to the fragments' homes.
+const routesProfile = createStorageProfile(localStorage, `${application.id}:`);
+const placement: Placement = createPlacement({
+  base: base.href,
+  profile: routesProfile,
+  routes: (routesProfile.get(ROUTES_KEY) ?? {}) as Record<string, FragmentRoute>,
+  version: (id) =>
+    platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.version,
+});
+window.placement = placement;
 /** The kernel, once boot has installed the app's fragments: the server halves start then. */
 let kernelKnown!: (kernel: Kernel) => void;
 const kernel = new Promise<Kernel>((resolve) => {
@@ -69,6 +84,14 @@ function within<T>(ms: number, promise: Promise<T>, message: string): Promise<T>
 const platform = await boot({
   base,
   locale: navigator.language,
+  // A fragment placed on another host: its tasks are queued and served there (#410).
+  taskHome: (id) => {
+    const host = placement.routeOf(id);
+    if (!host.startsWith("url:")) return undefined;
+    // A base URL, as placement resolves it: `fragments/…` stays under its path.
+    const url = host.slice(4);
+    return url.endsWith("/") ? url : `${url}/`;
+  },
   ...(launch.fragments === "none"
     ? {}
     : {
@@ -79,7 +102,8 @@ const platform = await boot({
             platform?.kernel.slots.getSnapshot(platform.slots.installed).get(id)?.manifest.aspects
               .server !== undefined,
           ready,
-          fetch: (request) => fetch(request),
+          // Each request to the fragment's home, as the route table says.
+          fetch: async (request) => fetch(await placement.route(request)),
         },
         // In this origin, the server halves start once the kernel has the app's fragments,
         // before their client halves activate: a fragment is active once its server half runs,
@@ -120,6 +144,8 @@ const platform = await boot({
       }),
 });
 window.platform = platform;
+// A Move or a route change: system.tasks' runners follow the fragment to its new home.
+placement.observe(() => platform.tasks?.rehome());
 // The brand's tokens, light or dark, its name and its logo, set on the page and kept set.
 applyAppearance(platform.appearance);
 // Surfaces popped out (by the user, or by system.workbench/open-surface) show in the dock.
