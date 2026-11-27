@@ -117,7 +117,7 @@ Requirements: Node 24 and pnpm 10 through corepack (the version is pinned in `pa
 1. `corepack enable`
 2. `pnpm install`
 3. `pnpm run build` — builds every package's `dist/` with tsdown, dependencies first.
-4. `pnpm run test` — vitest in every package: the packages' unit tests first, then the apps' browser tests (Playwright, with Chromium, workerd and wrangler), so the two never compete for the runner's CPUs (#70).
+4. `pnpm run test` — vitest in every package.
 5. `pnpm run typecheck` — `tsc --noEmit` in every package. Needs step 3 (see below).
 6. `pnpm run lint:check` and `pnpm run format:check` — Biome, as CI runs them. `pnpm run lint` and `pnpm run format` apply the fixes.
 
@@ -157,7 +157,7 @@ Most `.core` packages export a `./fragment` entry (an `init(ctx)` for the backbo
 | Command | Does |
 | --- | --- |
 | `pnpm run build` | `pnpm -r run build` (tsdown) |
-| `pnpm run test` | `pnpm -r run test` (vitest), packages before apps, then the repository's own tests |
+| `pnpm run test` | `pnpm -r run test` (vitest) |
 | `pnpm run typecheck` | `pnpm -r run typecheck` (`tsc --noEmit`) |
 | `pnpm run lint` / `lint:check` | `biome check --write .` / `biome check .` |
 | `pnpm run format` / `format:check` | `biome format --write .` / `biome format .` |

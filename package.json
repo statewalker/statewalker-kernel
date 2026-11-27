@@ -19,7 +19,7 @@
   },
   "scripts": {
     "build": "pnpm -r run build",
-    "test": "pnpm -r --filter '!./apps/**' run test && pnpm -r --filter './apps/**' run test && pnpm run test:repo",
+    "test": "pnpm -r run test && pnpm run test:repo",
     "typecheck": "pnpm -r run typecheck && tsc -p tests",
     "lint": "biome check --write .",
     "lint:check": "biome check . && node scripts/check-no-react.mjs",
